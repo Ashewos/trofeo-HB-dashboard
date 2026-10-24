@@ -46,7 +46,7 @@ Le logiciel remplace le logiciel officiel de Thermalright (TRCC) pour piloter l'
 | Format des images | JPEG |
 | Débit maximum | **~12,4 images/s**. La limite vient de l'écran (~73 ms pour valider une image), pas de l'USB (~7 ms pour l'envoyer). Ce plafond ne dépend pas de la taille de l'image (32 Ko à 700 Ko). |
 | Orientation | Sur le montage d'Alex, l'image doit être **tournée à 180°**. |
-| Persistance | L'écran **garde la dernière image** reçue, même après la fin du programme. |
+| Persistance | L'écran **repasse au logo Thermalright environ 3 s** après la dernière image reçue (constaté par Alex le 24/10/2026, après le plan 1). Il faut donc lui renvoyer une image au moins toutes les ~3 s, même si rien n'a changé. |
 | Gel | Envoyer une image **sans attendre la validation** de la précédente fige l'écran. On l'a débloqué avec : réinitialisation USB, lecture des réponses en attente, `clear halt` sur l'endpoint de sortie, puis une nouvelle poignée de main. |
 | Logiciel Thermalright | Il ne doit pas tourner en même temps : un seul programme à la fois peut prendre l'écran. |
 
@@ -82,7 +82,7 @@ Séparer l'affichage du reste a un autre avantage : un plantage du logiciel de r
 
 ### 4.3 Sobriété (objectifs à mesurer, pas des promesses)
 - Moins de **100 Mo** de mémoire et environ **1 % de CPU** en moyenne, en fond.
-- **On ne redessine et n'envoie que ce qui change.** Une image fixe n'est pas renvoyée, puisque l'écran garde la dernière. Les 12 images/s ne servent que pendant les animations.
+- **On ne redessine que ce qui change.** Sans changement, la dernière image (déjà encodée) est simplement **renvoyée une fois par seconde**, parce que l'écran repasse au logo au bout d'environ 3 s. Les 12 images/s ne servent que pendant les animations.
 - Prévoir une mesure de mémoire et de CPU dans le logiciel (onglet Paramètres) pour vérifier ces objectifs **(choix de Claude)**.
 
 ### 4.4 Droits administrateur

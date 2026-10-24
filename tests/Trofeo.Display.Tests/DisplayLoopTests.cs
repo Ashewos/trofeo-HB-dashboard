@@ -94,12 +94,14 @@ public sealed class DisplayLoopTests
     }
 
     [Fact]
-    public void Tick_Idle_SendsNothing()
+    public void Tick_Idle_ResendsLastFrameEverySecond_WithoutRerendering()
     {
+        // L'écran repasse au logo Thermalright environ 3 s après la dernière image reçue (constaté sur l'écran
+        // d'Alex) : sans changement, on renvoie la dernière image chaque seconde, sans la redessiner.
         using var rig = new Rig();
-        var transport = rig.AddHealthyScreen();
+        rig.AddHealthyScreen();
         rig.Loop.Tick();
-        var writesAfterFirstFrame = transport.Writes.Count();
+        var firstFrame = rig.Screen.LastFrame;
 
         for (var i = 0; i < 500; i++) // 5 s simulées à 10 ms
         {
@@ -108,8 +110,28 @@ public sealed class DisplayLoopTests
         }
 
         Assert.Equal(1, rig.Loop.FramesSent);
-        Assert.Equal(writesAfterFirstFrame, transport.Writes.Count());
+        Assert.Equal(5, rig.Loop.KeepAlivesSent); // à 1, 2, 3, 4 et 5 s
         Assert.Single(rig.Module.RenderCalls);
+        Assert.Equal(firstFrame, rig.Screen.LastFrame);
+    }
+
+    [Fact]
+    public void Tick_FrameJustSent_NoKeepAliveBeforeOneSecond()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+        rig.Time.Advance(TimeSpan.FromMilliseconds(600));
+        rig.Module.RaiseInvalidated();
+        rig.Loop.Tick(); // nouvelle image à 0,6 s : le compteur du renvoi repart de là
+
+        rig.Time.Advance(TimeSpan.FromMilliseconds(990));
+        rig.Loop.Tick();
+        Assert.Equal(0, rig.Loop.KeepAlivesSent);
+
+        rig.Time.Advance(TimeSpan.FromMilliseconds(10));
+        rig.Loop.Tick();
+        Assert.Equal(1, rig.Loop.KeepAlivesSent);
     }
 
     [Fact]

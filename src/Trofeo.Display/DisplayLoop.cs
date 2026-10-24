@@ -17,6 +17,12 @@ public sealed class DisplayLoop : IDisposable
     private static readonly TimeSpan ReconnectInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan PresenceInterval = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    /// L'écran repasse au logo Thermalright environ 3 s après la dernière image reçue : sans nouvelle image,
+    /// on lui renvoie la dernière (déjà encodée) à ce rythme.
+    /// </summary>
+    private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(1);
+
     private readonly DashboardLayout _layout;
     private readonly ScreenDevice _screen;
     private readonly FrameScheduler _scheduler;
@@ -29,6 +35,7 @@ public sealed class DisplayLoop : IDisposable
     private bool _hasTriedConnect;
     private long _lastConnectAttempt;
     private long _lastPresenceCheck;
+    private long _lastSend;
     private bool _forceReconnect;
     private int _reconnectRequested;
     private bool _disposed;
@@ -88,6 +95,9 @@ public sealed class DisplayLoop : IDisposable
     /// <summary>Nombre d'images envoyées et validées par l'écran depuis le démarrage.</summary>
     public int FramesSent { get; private set; }
 
+    /// <summary>Nombre de renvois de la dernière image (écran maintenu allumé sans changement).</summary>
+    public int KeepAlivesSent { get; private set; }
+
     /// <summary>Démarre les modules. Un module qui échoue est journalisé, les autres continuent.</summary>
     public void Start(CancellationToken ct)
     {
@@ -114,7 +124,8 @@ public sealed class DisplayLoop : IDisposable
 
     /// <summary>
     /// Une itération : abandonne la connexion si on l'a demandé ou si l'écran a disparu (sondé au plus une fois
-    /// par seconde), reconnecte si besoin (au plus toutes les 2 s), rend et envoie si l'ordonnanceur le demande.
+    /// par seconde), reconnecte si besoin (au plus toutes les 2 s), rend et envoie si l'ordonnanceur le demande,
+    /// sinon renvoie la dernière image si rien n'est parti depuis 1 s.
     /// </summary>
     public void Tick()
     {
@@ -137,6 +148,7 @@ public sealed class DisplayLoop : IDisposable
         }
 
         RenderAndSend();
+        KeepAlive();
     }
 
     public void Dispose()
@@ -174,6 +186,7 @@ public sealed class DisplayLoop : IDisposable
         if (!connected) return false;
 
         _lastPresenceCheck = _time.GetTimestamp(); // le sondage de présence repart de la connexion
+        _lastSend = _lastPresenceCheck; // TryConnect a renvoyé la dernière image, s'il y en avait une
 
         // ShouldRender consomme le drapeau : après une reconnexion, on redemande une image.
         _scheduler.MarkDirty();
@@ -213,6 +226,7 @@ public sealed class DisplayLoop : IDisposable
 
             if (sent)
             {
+                _lastSend = _time.GetTimestamp();
                 FramesSent++;
                 if (FramesSent <= 10 || FramesSent % 100 == 0)
                 {
@@ -227,6 +241,24 @@ public sealed class DisplayLoop : IDisposable
         finally
         {
             _scheduler.OnRendered();
+        }
+    }
+
+    private void KeepAlive()
+    {
+        if (_screen.State != ScreenState.Ready || _time.GetElapsedTime(_lastSend) < KeepAliveInterval) return;
+
+        var lastFrame = _screen.LastFrame;
+        if (lastFrame is null) return;
+
+        _lastSend = _time.GetTimestamp();
+        if (_screen.TrySendFrame(lastFrame))
+        {
+            KeepAlivesSent++;
+        }
+        else
+        {
+            _scheduler.MarkDirty(); // l'écran a décroché : une image fraîche partira après la reconnexion
         }
     }
 
