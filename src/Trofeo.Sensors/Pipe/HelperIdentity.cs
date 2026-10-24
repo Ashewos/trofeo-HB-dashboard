@@ -1,69 +1,42 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
+using System.IO.Pipes;
+using System.Security.Principal;
 
 namespace Trofeo.Sensors;
 
 /// <summary>
-/// Identité de l'assistant de capteurs : le client n'accepte un tube que si son serveur est un exécutable
-/// installé dans le dossier de l'assistant (écrit uniquement par un administrateur), jamais un processus
-/// quelconque qui aurait créé le tube avant l'assistant.
+/// Identité de l'assistant de capteurs. Le client n'accepte un tube que si son propriétaire est SYSTEM ou le
+/// groupe Administrateurs : un utilisateur ordinaire ne peut pas créer un objet qui leur appartienne, donc il
+/// ne peut pas se faire passer pour l'assistant en créant le tube avant lui. (Le chemin de l'exécutable du
+/// serveur n'est pas lisible depuis un processus non élevé quand l'assistant tourne sous SYSTEM.)
 /// </summary>
-public static partial class HelperIdentity
+public static class HelperIdentity
 {
-    private const uint ProcessQueryLimitedInformation = 0x1000;
-    private const int MaxPathChars = 32768;
-
-    /// <summary><c>%ProgramFiles%\trofeo-HB-dashboard\sensors\</c>, séparateur final compris (« sensors-evil » ne doit pas correspondre).</summary>
+    /// <summary><c>%ProgramFiles%\trofeo-HB-dashboard\sensors\</c>, séparateur final compris : dossier d'installation de l'assistant.</summary>
     public static string InstallDir { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "trofeo-HB-dashboard", "sensors")
         + Path.DirectorySeparatorChar;
 
-    /// <summary>Vrai si l'exécutable du processus est sous <see cref="InstallDir"/>. Toute erreur (processus disparu, accès refusé) donne faux.</summary>
-    public static bool IsTrusted(int processId)
+    /// <summary>Vrai si le tube connecté appartient à SYSTEM ou aux Administrateurs. Toute erreur de lecture donne faux.</summary>
+    public static bool IsTrusted(NamedPipeClientStream pipe)
     {
-        if (processId <= 0) return false;
         try
         {
-            using var process = OpenProcess(ProcessQueryLimitedInformation, false, (uint)processId);
-            if (process.IsInvalid) return false;
-
-            var buffer = new char[MaxPathChars];
-            var size = (uint)buffer.Length;
-            bool ok;
-            unsafe
-            {
-                fixed (char* name = buffer) ok = QueryFullProcessImageNameW(process, 0, name, ref size);
-            }
-            return ok && IsTrustedPath(new string(buffer, 0, (int)size));
+            return IsTrustedOwner(ReadOwner(pipe));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            Trace.TraceWarning($"Vérification de l'assistant de capteurs impossible : {ex.Message}");
+            Trace.TraceWarning($"Vérification du propriétaire du tube des capteurs impossible : {ex.Message}");
             return false;
         }
     }
 
-    /// <summary>Règle de préfixe : chemin absolu normalisé (« .. » résolus) sous <see cref="InstallDir"/>, casse ignorée.</summary>
-    internal static bool IsTrustedPath(string path)
-    {
-        // Un chemin relatif serait résolu depuis le dossier courant : on ne le compare jamais.
-        if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)) return false;
-        try
-        {
-            return Path.GetFullPath(path).StartsWith(InstallDir, StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return false;
-        }
-    }
+    /// <summary>Règle de confiance : SYSTEM (S-1-5-18) ou BUILTIN\Administrators (S-1-5-32-544).</summary>
+    internal static bool IsTrustedOwner(SecurityIdentifier? owner) =>
+        owner is not null
+        && (owner.IsWellKnown(WellKnownSidType.LocalSystemSid) || owner.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid));
 
-    // SafeProcessHandle : CloseHandle est appelé à la libération du handle, même en cas d'exception.
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial SafeProcessHandle OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool QueryFullProcessImageNameW(SafeProcessHandle process, uint flags, char* exeName, ref uint size);
+    /// <summary>Propriétaire du tube (demande le droit de lire le descripteur de sécurité, accordé aux utilisateurs authentifiés).</summary>
+    internal static SecurityIdentifier? ReadOwner(NamedPipeClientStream pipe) =>
+        pipe.GetAccessControl().GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
 }

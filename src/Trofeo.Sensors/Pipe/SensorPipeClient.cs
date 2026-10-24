@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.IO.Pipes;
-using System.Runtime.InteropServices;
 using System.Security.Principal;
-using Microsoft.Win32.SafeHandles;
 using Trofeo.Core.Rendering;
 
 namespace Trofeo.Sensors;
@@ -16,11 +14,11 @@ public interface ISnapshotStream
 
 /// <summary>
 /// Côté non élevé du tube : se connecte à l'assistant, vérifie qui sert le tube, puis relaie ses relevés.
-/// Ne contacte jamais un serveur dont <c>isTrustedServer</c> ne valide pas le processus, et ne lui envoie rien
+/// Ne contacte jamais un serveur dont <c>isTrustedServer</c> ne valide pas le propriétaire, et ne lui envoie rien
 /// (tube entrant). Réessaie toutes les 5 s tant qu'il n'est pas connecté.
 /// </summary>
-/// <param name="isTrustedServer">Reçoit l'identifiant du processus qui sert le tube ; faux = déconnexion (voir <see cref="HelperIdentity.IsTrusted"/>).</param>
-public sealed partial class SensorPipeClient(string pipeName, Func<int, bool> isTrustedServer, TimeProvider time) : ISnapshotStream, IDisposable
+/// <param name="isTrustedServer">Reçoit le tube connecté ; faux = déconnexion (voir <see cref="HelperIdentity.IsTrusted"/>).</param>
+public sealed class SensorPipeClient(string pipeName, Func<NamedPipeClientStream, bool> isTrustedServer, TimeProvider time) : ISnapshotStream, IDisposable
 {
     private const int ConnectTimeoutMs = 1000;
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(5);
@@ -75,10 +73,10 @@ public sealed partial class SensorPipeClient(string pipeName, Func<int, bool> is
             TokenImpersonationLevel.Identification);
         await pipe.ConnectAsync(ConnectTimeoutMs, ct);
 
-        if (!GetNamedPipeServerProcessId(pipe.SafePipeHandle, out var pid) || !isTrustedServer((int)pid))
+        if (!isTrustedServer(pipe))
         {
             if (!_warnedUntrusted)
-                Trace.TraceWarning($"Le tube des capteurs « {pipeName} » n'est pas servi par l'assistant installé : relevés ignorés.");
+                Trace.TraceWarning($"Le tube des capteurs « {pipeName} » n'appartient ni à SYSTEM ni aux Administrateurs : relevés ignorés.");
             _warnedUntrusted = true;
             return;
         }
@@ -98,8 +96,4 @@ public sealed partial class SensorPipeClient(string pipeName, Func<int, bool> is
             _connected = false;
         }
     }
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetNamedPipeServerProcessId(SafePipeHandle pipe, out uint serverProcessId);
 }

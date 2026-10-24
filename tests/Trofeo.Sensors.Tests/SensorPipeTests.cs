@@ -1,4 +1,6 @@
 using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 
 namespace Trofeo.Sensors.Tests;
@@ -11,6 +13,18 @@ public class SensorPipeTests
     private sealed class FakeReader(SensorSnapshot snapshot) : ISensorReader
     {
         public SensorSnapshot Read() => snapshot;
+        public void Dispose() { }
+    }
+
+    // Lève pendant les premiers appels, puis rend le relevé.
+    private sealed class FlakyReader(SensorSnapshot snapshot, int failures) : ISensorReader
+    {
+        private int _reads;
+        public int Reads => Volatile.Read(ref _reads);
+
+        public SensorSnapshot Read() =>
+            Interlocked.Increment(ref _reads) <= failures ? throw new InvalidOperationException("capteur en panne") : snapshot;
+
         public void Dispose() { }
     }
 
@@ -46,15 +60,15 @@ public class SensorPipeTests
         using var cts = new CancellationTokenSource();
         var server = new SensorPipeServer(name, new FakeReader(Sample()), TimeProvider.System);
         var serverTask = server.RunAsync(cts.Token);
-        int? seenPid = null;
-        using var client = new SensorPipeClient(name, pid => { seenPid = pid; return true; }, TimeProvider.System);
+        var sawConnectedPipe = false;
+        using var client = new SensorPipeClient(name, pipe => { sawConnectedPipe = pipe.IsConnected; return true; }, TimeProvider.System);
 
         var tcs = new TaskCompletionSource<SensorSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
         client.Received += (_, s) => tcs.TrySetResult(s);
         var clientTask = client.RunAsync(cts.Token);
         var snap = await Within(tcs.Task, "aucun relevé reçu");
 
-        Assert.Equal(Environment.ProcessId, seenPid);
+        Assert.True(sawConnectedPipe);
         Assert.True(client.IsConnected);
         Assert.Equal("CPU X", snap.CpuName);
         Assert.Equal("GPU Y", snap.GpuName);
@@ -191,6 +205,43 @@ public class SensorPipeTests
 
         await cts.CancelAsync();
         await Within(serverTask, "arrêt du serveur");
+    }
+
+    [Fact]
+    public async Task Server_ReaderThrowsOnce_KeepsServing()
+    {
+        var name = NewName();
+        using var cts = new CancellationTokenSource();
+        var reader = new FlakyReader(Sample(), failures: 1);
+        var serverTask = new SensorPipeServer(name, reader, TimeProvider.System).RunAsync(cts.Token);
+        using var client = new SensorPipeClient(name, _ => true, TimeProvider.System);
+        var tcs = new TaskCompletionSource<SensorSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.Received += (_, s) => tcs.TrySetResult(s);
+        var clientTask = client.RunAsync(cts.Token);
+
+        var snap = await Within(tcs.Task, "aucun relevé après l'erreur du lecteur");
+
+        Assert.Equal(34.0, snap.Values[SensorKeys.CpuLoad]);
+        Assert.True(reader.Reads >= 2); // le premier relevé a échoué, la connexion est restée ouverte
+        Assert.False(serverTask.IsCompleted);
+
+        await cts.CancelAsync();
+        await Within(Task.WhenAll(serverTask, clientTask), "arrêt");
+    }
+
+    [Fact]
+    public void BuildSecurity_DeniesNetwork_AndGrantsReadOnlyToAuthenticatedUsers()
+    {
+        var rules = SensorPipeServer.BuildSecurity().GetAccessRules(true, false, typeof(SecurityIdentifier))
+            .Cast<PipeAccessRule>().ToList();
+
+        var network = Assert.Single(rules, r => r.IdentityReference.Equals(new SecurityIdentifier(WellKnownSidType.NetworkSid, null)));
+        Assert.Equal(AccessControlType.Deny, network.AccessControlType);
+        Assert.Equal(PipeAccessRights.FullControl, network.PipeAccessRights);
+
+        var users = Assert.Single(rules, r => r.IdentityReference.Equals(new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null)));
+        Assert.Equal(AccessControlType.Allow, users.AccessControlType);
+        Assert.False(users.PipeAccessRights.HasFlag(PipeAccessRights.WriteData));
     }
 
     [Fact]
