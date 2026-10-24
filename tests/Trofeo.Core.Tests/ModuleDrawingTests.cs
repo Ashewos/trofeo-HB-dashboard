@@ -45,6 +45,7 @@ public class ModuleDrawingTests
         var body = result[..^1];
         Assert.Equal(0, body.Length % 2);
         Assert.All(body.EnumerateRunes(), r => Assert.Equal(0x1F3B5, r.Value));
+        Assert.True(ModuleDrawing.MeasureText(result, font) <= 100f);
     }
 
     [Fact]
@@ -90,15 +91,46 @@ public class ModuleDrawingTests
         // Garde-fou : Barlow ne contient pas ce caractère, sinon le test ne prouve rien.
         Assert.False(Themes.Classique.Typeface.ContainsGlyph('東'));
 
-        Assert.True(ModuleDrawing.MeasureText("東京 🎵", font) > 0f);
+        // Sans repli, le .notdef de Barlow aurait sa propre largeur : une mesure différente prouve le repli.
+        var withFallback = ModuleDrawing.MeasureText("東京", font);
+        Assert.True(withFallback > 0f);
+        Assert.NotEqual(font.MeasureText("東京"), withFallback);
+        Assert.True(ModuleDrawing.MeasureText("東京 🎵", font) > withFallback);
 
-        using var bitmap = new SKBitmap(300, 80);
-        using var canvas = new SKCanvas(bitmap);
-        canvas.Clear(SKColors.Black);
         using var paint = new SKPaint { Color = SKColors.White, IsAntialias = true };
-        ModuleDrawing.DrawText(canvas, "東京 🎵", 10f, 50f, SKTextAlign.Left, font, paint);
+        using var viaKit = RenderOnBlack(c => ModuleDrawing.DrawText(c, "東京 🎵", 10f, 50f, SKTextAlign.Left, font, paint));
+        using var forcedPrimary = RenderOnBlack(c => c.DrawText("東京 🎵", 10f, 50f, SKTextAlign.Left, font, paint));
 
-        Assert.True(CountPixels(bitmap, p => p != SKColors.Black) > 0);
+        Assert.True(CountPixels(viaKit, p => p != SKColors.Black) > 0);
+        Assert.NotEqual(forcedPrimary.Bytes, viaKit.Bytes);
+    }
+
+    [Fact]
+    public void Ellipsize_JapaneseAndEmojiTitle_FitsWidth()
+    {
+        using var font = NewFont();
+        var title = string.Concat(Enumerable.Repeat("東京の夜 🎵 ", 20));
+        var result = ModuleDrawing.Ellipsize(title, font, 180f);
+
+        Assert.EndsWith("…", result);
+        Assert.True(result.Length > 1);
+        Assert.True(ModuleDrawing.MeasureText(result, font) <= 180f);
+    }
+
+    [Fact]
+    public void Wrap_JapaneseAndEmojiTitle_KeepsEveryLineWithinWidth()
+    {
+        using var font = NewFont();
+        var title = string.Join(' ', Enumerable.Repeat("東京の夜 🎵", 30));
+        var lines = ModuleDrawing.Wrap(title, font, 180f, 3);
+
+        Assert.Equal(3, lines.Count);
+        Assert.EndsWith("…", lines[2]);
+        Assert.All(lines, l => Assert.True(ModuleDrawing.MeasureText(l, font) <= 180f));
+
+        var oneLongWord = ModuleDrawing.Wrap(new string('東', 100) + "🎵", font, 180f, 3);
+        Assert.Single(oneLongWord);
+        Assert.True(ModuleDrawing.MeasureText(oneLongWord[0], font) <= 180f);
     }
 
     [Fact]
@@ -215,6 +247,82 @@ public class ModuleDrawingTests
         Assert.True(maxX >= 0);
         Assert.InRange((minX + maxX) / 2.0, 190, 210);
         Assert.InRange((minY + maxY) / 2.0, 80, 120);
+    }
+
+    [Fact]
+    public void LayoutActionMessage_ShortMessage_UsesFullSize()
+    {
+        var (size, lines) = ModuleDrawing.LayoutActionMessage(Themes.Classique, 1f, 300f, "Réglages requis");
+
+        Assert.Equal(24f, size);
+        Assert.Equal(new[] { "Réglages requis" }, lines);
+    }
+
+    [Fact]
+    public void LayoutActionMessage_MessageNeedingMoreThanThreeLines_ShrinksInsteadOfEllipsizing()
+    {
+        var theme = Themes.Classique;
+        var (n, width, size, lines) = FindMessage(theme, 1f, (sz, ls) => sz < 24f && !ls[^1].EndsWith('…'));
+
+        Assert.True(n > 0, "aucun message ne demande une réduction sans ellipse");
+        Assert.InRange(size, 16f, 22f);
+        Assert.True(lines.Count <= 3);
+        // À pleine taille, le même message aurait dû être ellipsé.
+        using var full = new SKFont(theme.Typeface, 24f);
+        var atFullSize = ModuleDrawing.Wrap(Message(n), full, width, 3);
+        Assert.Equal(3, atFullSize.Count);
+        Assert.EndsWith("…", atFullSize[2]);
+    }
+
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(1.1f)]
+    [InlineData(1.2f)]
+    [InlineData(0.85f)]
+    public void LayoutActionMessage_HugeMessage_StopsExactlyAtMinimumSize(float scale)
+    {
+        var (size, lines) = ModuleDrawing.LayoutActionMessage(Themes.Classique, scale, 300f, Message(500));
+
+        Assert.Equal(16f * scale, size, 3);
+        Assert.Equal(3, lines.Count);
+        Assert.EndsWith("…", lines[2]);
+    }
+
+    [Fact]
+    public void LayoutActionMessage_FractionalScale_StillTriesMinimumSize()
+    {
+        // Avec 1.1 : 26.4, 24.4, 22.4, 20.4, 18.4 puis 17.6 (minimum) - ce dernier doit être essayé.
+        var (n, _, size, lines) = FindMessage(Themes.Classique, 1.1f, (sz, ls) => Math.Abs(sz - 17.6f) < 0.001f && !ls[^1].EndsWith('…'));
+
+        Assert.True(n > 0, "aucun message ne tient exactement à la taille minimale 17.6");
+        Assert.Equal(17.6f, size, 3);
+        Assert.True(lines.Count <= 3);
+    }
+
+    private static string Message(int words) => string.Join(' ', Enumerable.Repeat("mot", words));
+
+    /// <summary>Cherche (largeur, nombre de mots) dont la mise en page satisfait le prédicat ; <c>Words</c> = 0 si aucun.</summary>
+    private static (int Words, float Width, float Size, IReadOnlyList<string> Lines) FindMessage(
+        Theme theme, float scale, Func<float, IReadOnlyList<string>, bool> predicate)
+    {
+        for (var width = 200f; width <= 400f; width += 1f)
+        {
+            for (var n = 1; n <= 200; n++)
+            {
+                var (size, lines) = ModuleDrawing.LayoutActionMessage(theme, scale, width, Message(n));
+                if (predicate(size, lines)) return (n, width, size, lines);
+            }
+        }
+        return (0, 0f, 0f, Array.Empty<string>());
+    }
+
+    private static SKBitmap RenderOnBlack(Action<SKCanvas> draw)
+    {
+        var bitmap = new SKBitmap(300, 80);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.Black);
+        draw(canvas);
+        return bitmap;
     }
 
     private static int CountPixels(SKBitmap bitmap, Func<SKColor, bool> predicate, int xFrom = 0, int xTo = int.MaxValue)

@@ -135,23 +135,28 @@ public static class ModuleDrawing
     {
         if (string.IsNullOrWhiteSpace(message) || area.Width <= 0f || area.Height <= 0f) return;
 
-        const int maxLines = 3;
-        var maxSize = 24f * textScale;
-        var minSize = 16f * textScale;
+        var (size, lines) = LayoutActionMessage(theme, textScale, area.Width, message);
+        using var font = new SKFont(theme.Typeface, size) { Subpixel = true };
+        DrawCentered(canvas, area, theme, font, lines);
+    }
 
-        var size = maxSize;
+    /// <summary>
+    /// Choisit la taille et les lignes du message d'action : on part de 24 × <paramref name="textScale"/>
+    /// et on réduit par pas de 2 (le dernier pas tombe exactement sur 16 × <paramref name="textScale"/>)
+    /// tant que le texte doit être ellipsé sur 3 lignes.
+    /// </summary>
+    internal static (float Size, IReadOnlyList<string> Lines) LayoutActionMessage(Theme theme, float textScale, float width, string message)
+    {
+        const int maxLines = 3;
+        var minSize = 16f * textScale;
+        var size = 24f * textScale;
+
         while (true)
         {
             using var font = new SKFont(theme.Typeface, size) { Subpixel = true };
-            var (lines, truncated) = WrapCore(message, font, area.Width, maxLines);
-            if (truncated && size - 2f >= minSize)
-            {
-                size -= 2f;
-                continue;
-            }
-
-            DrawCentered(canvas, area, theme, font, lines);
-            return;
+            var (lines, truncated) = WrapCore(message, font, width, maxLines);
+            if (!truncated || size <= minSize) return (size, lines);
+            size = Math.Max(size - 2f, minSize);
         }
     }
 
