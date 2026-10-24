@@ -152,4 +152,20 @@ public class FrameComposerTests
         Assert.Equal(Themes.Classique.Background, frame.GetPixel(rect.Left, rect.Top)); // le coin arrondi n'est pas rouge
         Assert.Equal(SKColors.Red, frame.GetPixel(rect.Left + 40, rect.Top + 40));
     }
+
+    [Fact]
+    public void Compose_ModuleKeepsThrowing_LogsOnlyOnce()
+    {
+        var id = Guid.NewGuid();
+        var layout = new DashboardLayout(0, [Place(id, 12, 0, 4, 2)]);
+        var modules = new Dictionary<Guid, IModule> { [id] = new FakeModule(throwOnRender: true) };
+        var lines = new List<string>();
+        var composer = new FrameComposer(new RateLimitedErrorLog(TimeProvider.System, lines.Add));
+
+        for (var i = 0; i < 5; i++)
+            composer.Compose(layout, modules, Themes.Classique, DateTimeOffset.UnixEpoch).Dispose();
+
+        Assert.Single(lines);
+        Assert.Contains("fake", lines[0]);
+    }
 }

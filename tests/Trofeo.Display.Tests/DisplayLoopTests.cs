@@ -19,6 +19,25 @@ public sealed class DisplayLoopTests
         public IModule Create(JsonElement settings, TimeProvider time) => make();
     }
 
+    private sealed class ThrowingModuleFactory : IModuleFactory
+    {
+        public ModuleDescriptor Descriptor { get; } = new("boom", "boom", new GridSize(1, 1), new Dictionary<SizePreset, GridSize>());
+
+        public IModule Create(JsonElement settings, TimeProvider time) => throw new InvalidOperationException("création impossible");
+    }
+
+    private sealed class DisposeCountingModule : IModule
+    {
+        public int Disposed { get; private set; }
+        public ModuleDescriptor Descriptor { get; } = new("dup", "dup", new GridSize(1, 1), new Dictionary<SizePreset, GridSize>());
+        public ModuleStatus Status => new(ModuleHealth.Online);
+        public bool IsAnimating => false;
+        public event EventHandler? Invalidated { add { } remove { } }
+        public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+        public void Render(SkiaSharp.SKCanvas canvas, ModuleRenderContext ctx) { }
+        public void Dispose() => Disposed++;
+    }
+
     private sealed class Rig : IDisposable
     {
         public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 10, 24, 12, 0, 0, TimeSpan.Zero));
@@ -28,17 +47,20 @@ public sealed class DisplayLoopTests
         public DisplayLoop Loop { get; }
         public FrameScheduler Scheduler { get; }
 
-        public Rig(FakeModule? module = null, int cols = 4, int rows = 2, string typeId = "fake")
+        public Rig(FakeModule? module = null, int cols = 4, int rows = 2, string typeId = "fake",
+            IEnumerable<IModuleFactory>? extraFactories = null, IEnumerable<ModulePlacement>? extraPlacements = null)
         {
             Module = module ?? new FakeModule();
             Screen = new ScreenDevice(Usb, Time);
             Scheduler = new FrameScheduler(Time);
-            var registry = new ModuleRegistry([new FakeModuleFactory("fake", new GridSize(2, 1), () => Module)]);
-            var layout = new DashboardLayout(180,
-            [
-                new ModulePlacement(InstanceId, typeId, 0, 0, cols, rows, TextSize.Normal,
-                    JsonDocument.Parse("{}").RootElement.Clone()),
-            ]);
+            var registry = new ModuleRegistry(
+                [new FakeModuleFactory("fake", new GridSize(2, 1), () => Module), .. extraFactories ?? []]);
+            var placements = new List<ModulePlacement>
+            {
+                new(InstanceId, typeId, 0, 0, cols, rows, TextSize.Normal, JsonDocument.Parse("{}").RootElement.Clone()),
+            };
+            placements.AddRange(extraPlacements ?? []);
+            var layout = new DashboardLayout(180, placements);
             Loop = new DisplayLoop(layout, registry, Screen, Scheduler, Time);
         }
 
@@ -199,6 +221,146 @@ public sealed class DisplayLoopTests
     }
 
     [Fact]
+    public void Tick_ScreenRemovedWhileIdle_DetectedWithin1s()
+    {
+        using var rig = new Rig();
+        var transport = rig.AddHealthyScreen();
+        rig.Loop.Tick();
+        Assert.Equal(ScreenState.Ready, rig.Screen.State);
+
+        rig.Usb.Present = false;
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        rig.Loop.Tick();
+
+        Assert.Equal(ScreenState.Disconnected, rig.Screen.State);
+        Assert.Equal(ScreenDevice.AbsentReason, rig.Screen.Reason);
+        Assert.True(transport.IsDisposed);
+    }
+
+    [Fact]
+    public void Tick_ScreenPresent_ChecksPresenceAtMostOncePerSecond()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+
+        for (var i = 0; i < 300; i++) // 3 s simulées à 10 ms
+        {
+            rig.Time.Advance(TimeSpan.FromMilliseconds(10));
+            rig.Loop.Tick();
+        }
+
+        Assert.InRange(rig.Usb.PresenceChecks, 2, 3);
+        Assert.Equal(ScreenState.Ready, rig.Screen.State);
+    }
+
+    [Fact]
+    public void Tick_Replug_ReadyWithin3s()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+        Assert.Equal(1, rig.Loop.FramesSent);
+
+        rig.Usb.Present = false;
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        rig.Loop.Tick();
+        Assert.Equal(ScreenState.Disconnected, rig.Screen.State);
+
+        rig.Usb.Present = true;
+        var fresh = rig.AddHealthyScreen(); // un nouvel objet transport après le rebranchement
+        var elapsed = TimeSpan.Zero;
+        while (rig.Screen.State != ScreenState.Ready && elapsed < TimeSpan.FromSeconds(3))
+        {
+            rig.Time.Advance(TimeSpan.FromMilliseconds(10));
+            elapsed += TimeSpan.FromMilliseconds(10);
+            rig.Loop.Tick();
+        }
+
+        Assert.Equal(ScreenState.Ready, rig.Screen.State);
+        Assert.True(elapsed <= TimeSpan.FromSeconds(3), $"Ready après {elapsed}");
+        Assert.NotEmpty(fresh.Writes);
+        Assert.True(rig.Loop.FramesSent >= 2); // l'image est renvoyée sans nouvelle invalidation
+    }
+
+    [Fact]
+    public void Resume_ForcesReconnect()
+    {
+        using var rig = new Rig();
+        var first = rig.AddHealthyScreen();
+        rig.Loop.Tick();
+        var second = rig.AddHealthyScreen();
+
+        rig.Loop.RequestReconnect(); // reprise après veille, depuis un autre thread
+        rig.Time.Advance(TimeSpan.FromMilliseconds(100)); // bien avant les 2 s de la reconnexion normale
+        rig.Loop.Tick();
+
+        Assert.True(first.IsDisposed);
+        Assert.Equal(ScreenState.Ready, rig.Screen.State);
+        Assert.Equal(2, rig.Usb.OpenCount);
+        Assert.NotEmpty(second.Writes);
+        Assert.True(rig.Loop.FramesSent >= 2);
+    }
+
+    [Fact]
+    public void Resume_RecordsReason_WhenScreenIsNotBackYet()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+        var reasons = new List<string?>();
+        rig.Screen.StateChanged += (_, _) => reasons.Add(rig.Screen.Reason);
+
+        rig.Loop.RequestReconnect();
+        rig.Time.Advance(TimeSpan.FromMilliseconds(10));
+        rig.Loop.Tick(); // l'écran n'est pas encore ré-énuméré
+
+        Assert.Equal("Reprise après veille", reasons[0]);
+        Assert.Equal(ScreenState.Disconnected, rig.Screen.State);
+    }
+
+    [Fact]
+    public void Constructor_PlacementThrows_OthersStillRender()
+    {
+        var good = new FakeModule();
+        var bad = new ModulePlacement(
+            Guid.NewGuid(), "boom", 8, 0, 4, 2, TextSize.Normal, JsonDocument.Parse("{}").RootElement.Clone());
+        using var rig = new Rig(good, extraFactories: [new ThrowingModuleFactory()], extraPlacements: [bad]);
+        rig.AddHealthyScreen();
+
+        rig.Loop.Tick();
+
+        Assert.Equal(1, rig.Loop.FramesSent);
+        Assert.Single(good.RenderCalls);
+    }
+
+    [Fact]
+    public void Constructor_NullTypeId_DoesNotThrowAndOthersStillRender()
+    {
+        var good = new FakeModule();
+        var bad = new ModulePlacement(
+            Guid.NewGuid(), null!, 8, 0, 4, 2, TextSize.Normal, JsonDocument.Parse("{}").RootElement.Clone());
+        using var rig = new Rig(good, extraPlacements: [bad]);
+        rig.AddHealthyScreen();
+
+        rig.Loop.Tick();
+
+        Assert.Single(good.RenderCalls);
+    }
+
+    [Fact]
+    public void Constructor_DuplicateInstanceId_DisposesTheSecondModule()
+    {
+        var second = new DisposeCountingModule();
+        var dup = new ModulePlacement(
+            InstanceId, "dup", 8, 0, 4, 2, TextSize.Normal, JsonDocument.Parse("{}").RootElement.Clone());
+        using var rig = new Rig(
+            extraFactories: [new FakeModuleFactory("dup", new GridSize(1, 1), () => second)], extraPlacements: [dup]);
+
+        Assert.Equal(1, second.Disposed); // refusé et libéré : pas de minuteur orphelin
+    }
+
+    [Fact]
     public void Dispose_UnsubscribesInvalidated()
     {
         var rig = new Rig();
@@ -242,11 +404,23 @@ public sealed class ModuleRegistryTests
 public sealed class TrayIconTests
 {
     [Theory]
-    [InlineData(ScreenState.Ready, "Trofeo dashboard — écran : prêt")]
-    [InlineData(ScreenState.Disconnected, "Trofeo dashboard — écran : non branché")]
-    [InlineData(ScreenState.Recovering, "Trofeo dashboard — écran : reprise…")]
-    public void Tooltip_MapsScreenState(ScreenState state, string expected)
+    [InlineData(ScreenState.Ready, null, "Trofeo dashboard — écran : prêt")]
+    [InlineData(ScreenState.Ready, "ignoré", "Trofeo dashboard — écran : prêt")]
+    [InlineData(ScreenState.Recovering, null, "Trofeo dashboard — écran : reprise…")]
+    [InlineData(ScreenState.Disconnected, null, "Trofeo dashboard — écran : non branché")]
+    [InlineData(ScreenState.Disconnected, "Écran non branché", "Trofeo dashboard — écran : Écran non branché")]
+    [InlineData(ScreenState.Disconnected, ScreenDevice.BusyReason, "Trofeo dashboard — écran : " + ScreenDevice.BusyReason)]
+    public void Tooltip_MapsScreenStateAndReason(ScreenState state, string? reason, string expected)
     {
-        Assert.Equal(expected, TrayIcon.Tooltip(state));
+        Assert.Equal(expected, TrayIcon.Tooltip(state, reason));
+    }
+
+    [Fact]
+    public void Tooltip_LongReason_IsTruncatedTo127Chars()
+    {
+        var tooltip = TrayIcon.Tooltip(ScreenState.Disconnected, new string('x', 500));
+
+        Assert.Equal(127, tooltip.Length);
+        Assert.StartsWith("Trofeo dashboard — écran : xxx", tooltip);
     }
 }

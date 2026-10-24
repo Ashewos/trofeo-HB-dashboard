@@ -10,6 +10,12 @@ public sealed class FrameComposer
 {
     private const string ErrorText = "Erreur du module";
 
+    private readonly RateLimitedErrorLog _errors;
+
+    /// <param name="errors">Destination des échecs de rendu ; par défaut le <see cref="Trace"/>, une fois par minute et par message.</param>
+    public FrameComposer(RateLimitedErrorLog? errors = null) =>
+        _errors = errors ?? new RateLimitedErrorLog(TimeProvider.System);
+
     /// <summary>Peint le fond, puis pour chaque placement son panneau et le rendu du module (1920 × 462).</summary>
     public SKBitmap Compose(
         DashboardLayout layout,
@@ -41,8 +47,7 @@ public sealed class FrameComposer
             }
             catch (Exception ex)
             {
-                Trace.TraceError(
-                    $"Échec du rendu du module {placement.TypeId} ({placement.InstanceId}) : {ex}");
+                _errors.Report($"Échec du rendu du module {placement.TypeId} ({placement.InstanceId}) : {ex}");
                 canvas.RestoreToCount(saved);
                 PaintErrorPanel(canvas, rect, theme);
             }

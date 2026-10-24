@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Text;
+using Microsoft.Win32;
 using Trofeo.Core;
 using Trofeo.Core.Layout;
 using Trofeo.Core.Rendering;
@@ -11,7 +11,6 @@ namespace Trofeo.Display;
 static class Program
 {
     private const string MutexName = @"Local\trofeo-HB-dashboard.display";
-    private const long MaxLogBytes = 1_000_000;
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(10);
 
     [STAThread]
@@ -54,6 +53,15 @@ static class Program
         using var cts = new CancellationTokenSource();
         loop.Start(cts.Token);
 
+        // Après une veille, l'écran a pu être réinitialisé sans que le lien le dise : on repart d'une connexion neuve.
+        PowerModeChangedEventHandler onPowerChanged = (_, e) =>
+        {
+            if (e.Mode != PowerModes.Resume) return;
+            Trace.TraceInformation("Reprise après veille : reconnexion de l'écran.");
+            loop.RequestReconnect();
+        };
+        SystemEvents.PowerModeChanged += onPowerChanged;
+
         var thread = new Thread(() => TickLoop(loop, cts.Token)) { IsBackground = true, Name = "Trofeo.Display.Tick" };
         thread.Start();
 
@@ -64,6 +72,7 @@ static class Program
         }
         finally
         {
+            SystemEvents.PowerModeChanged -= onPowerChanged; // sinon le gestionnaire fuit
             cts.Cancel();
             if (!thread.Join(TimeSpan.FromSeconds(15)))
             {
@@ -135,71 +144,7 @@ static class Program
         var dir = Path.Combine(AppPaths.SettingsDir, "logs");
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, "display.log");
-        try
-        {
-            if (File.Exists(path) && new FileInfo(path).Length > MaxLogBytes)
-            {
-                File.Move(path, path + ".1", overwrite: true);
-            }
-        }
-        catch (IOException)
-        {
-            // Journal verrouillé : on continue d'écrire dans le fichier courant.
-        }
-
         Trace.Listeners.Add(new FileTraceListener(path));
         Trace.AutoFlush = true;
-    }
-}
-
-/// <summary>Écrit chaque message du <see cref="Trace"/> sur une ligne horodatée, dans un fichier lisible pendant l'exécution.</summary>
-internal sealed class FileTraceListener : TraceListener
-{
-    private readonly object _gate = new();
-    private readonly StreamWriter _writer;
-
-    public FileTraceListener(string path)
-    {
-        var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-        _writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
-    }
-
-    public override void Write(string? message) => WriteLine(message);
-
-    public override void WriteLine(string? message) => WriteEntry("Info", message);
-
-    public override void TraceEvent(TraceEventCache? eventCache, string source, TraceEventType eventType, int id, string? message) =>
-        WriteEntry(Level(eventType), message);
-
-    public override void TraceEvent(
-        TraceEventCache? eventCache, string source, TraceEventType eventType, int id, string? format, params object?[]? args) =>
-        WriteEntry(Level(eventType), args is { Length: > 0 } && format is not null ? string.Format(format, args) : format);
-
-    private static string Level(TraceEventType type) => type switch
-    {
-        TraceEventType.Critical or TraceEventType.Error => "Erreur",
-        TraceEventType.Warning => "Avert",
-        _ => "Info",
-    };
-
-    private void WriteEntry(string level, string? message)
-    {
-        lock (_gate)
-        {
-            try
-            {
-                _writer.WriteLine($"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{level}] {message}");
-            }
-            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
-            {
-                // Le journal ne doit jamais faire tomber le service.
-            }
-        }
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing) _writer.Dispose();
-        base.Dispose(disposing);
     }
 }

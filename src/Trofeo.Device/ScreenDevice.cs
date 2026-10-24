@@ -108,6 +108,9 @@ public sealed class ScreenDevice : IDisposable
         return true;
     }
 
+    /// <summary>Vrai si l'écran est branché (sans l'ouvrir).</summary>
+    public bool IsPresent() => _factory.IsPresent();
+
     /// <summary>
     /// Abandonne la connexion (écran disparu, reprise après veille) : libère le transport et passe en
     /// Disconnected avec ce motif. Sans effet si l'écran est déjà déconnecté.

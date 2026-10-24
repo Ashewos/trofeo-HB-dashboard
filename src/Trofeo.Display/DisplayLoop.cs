@@ -13,18 +13,24 @@ namespace Trofeo.Display;
 /// </summary>
 public sealed class DisplayLoop : IDisposable
 {
+    private const string ResumeReason = "Reprise après veille";
     private static readonly TimeSpan ReconnectInterval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan PresenceInterval = TimeSpan.FromSeconds(1);
 
     private readonly DashboardLayout _layout;
     private readonly ScreenDevice _screen;
     private readonly FrameScheduler _scheduler;
     private readonly TimeProvider _time;
-    private readonly FrameComposer _composer = new();
+    private readonly FrameComposer _composer;
+    private readonly RateLimitedErrorLog _renderErrors;
     private readonly Dictionary<Guid, IModule> _modules = [];
     private readonly IModule[] _moduleList;
     private readonly EventHandler _onInvalidated;
     private bool _hasTriedConnect;
     private long _lastConnectAttempt;
+    private long _lastPresenceCheck;
+    private bool _forceReconnect;
+    private int _reconnectRequested;
     private bool _disposed;
 
     public DisplayLoop(
@@ -35,25 +41,48 @@ public sealed class DisplayLoop : IDisposable
         _scheduler = scheduler;
         _time = time;
         _onInvalidated = (_, _) => _scheduler.MarkDirty();
+        _renderErrors = new RateLimitedErrorLog(time);
+        _composer = new FrameComposer(_renderErrors);
 
         foreach (var placement in layout.Placements)
         {
-            var error = LayoutValidator.Check(layout, placement, registry.Descriptors);
-            if (error != PlacementError.None)
+            try
             {
-                Trace.TraceWarning($"Module ignoré : « {placement.TypeId} » ({placement.InstanceId}) refusé : {error}.");
-                continue;
+                AddModule(layout, registry, placement, time);
             }
-
-            var module = registry.Create(placement, time);
-            if (module is null) continue;
-
-            module.Invalidated += _onInvalidated;
-            _modules[placement.InstanceId] = module;
+            catch (Exception ex)
+            {
+                // Une disposition mal formée ne doit jamais empêcher le service de démarrer.
+                Trace.TraceError($"Module ignoré : emplacement {placement?.InstanceId} refusé : {ex}");
+            }
         }
 
         _moduleList = [.. _modules.Values];
         _scheduler.MarkDirty(); // la première image part dès que l'écran est prêt
+    }
+
+    private void AddModule(DashboardLayout layout, ModuleRegistry registry, ModulePlacement placement, TimeProvider time)
+    {
+        var error = LayoutValidator.Check(layout, placement, registry.Descriptors);
+        if (error != PlacementError.None)
+        {
+            Trace.TraceWarning($"Module ignoré : « {placement.TypeId} » ({placement.InstanceId}) refusé : {error}.");
+            return;
+        }
+
+        var module = registry.Create(placement, time);
+        if (module is null) return;
+
+        if (_modules.ContainsKey(placement.InstanceId))
+        {
+            // Deux emplacements du même identifiant : le second ne doit pas écraser (ni laisser tourner) le premier.
+            Trace.TraceWarning($"Module ignoré : identifiant d'instance en double ({placement.InstanceId}).");
+            module.Dispose();
+            return;
+        }
+
+        module.Invalidated += _onInvalidated;
+        _modules[placement.InstanceId] = module;
     }
 
     /// <summary>Nombre d'images envoyées et validées par l'écran depuis le démarrage.</summary>
@@ -77,10 +106,30 @@ public sealed class DisplayLoop : IDisposable
         }
     }
 
-    /// <summary>Une itération : reconnecte si besoin (au plus toutes les 2 s), rend et envoie si l'ordonnanceur le demande.</summary>
+    /// <summary>
+    /// Demande d'abandonner la connexion et de se reconnecter tout de suite (reprise après veille). Peut être
+    /// appelée depuis n'importe quel thread : le prochain <see cref="Tick"/> s'en charge.
+    /// </summary>
+    public void RequestReconnect() => Volatile.Write(ref _reconnectRequested, 1);
+
+    /// <summary>
+    /// Une itération : abandonne la connexion si on l'a demandé ou si l'écran a disparu (sondé au plus une fois
+    /// par seconde), reconnecte si besoin (au plus toutes les 2 s), rend et envoie si l'ordonnanceur le demande.
+    /// </summary>
     public void Tick()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (Interlocked.Exchange(ref _reconnectRequested, 0) == 1)
+        {
+            _screen.MarkLost(ResumeReason);
+            _forceReconnect = true;
+        }
+        else if (_screen.State == ScreenState.Ready && _time.GetElapsedTime(_lastPresenceCheck) >= PresenceInterval)
+        {
+            _lastPresenceCheck = _time.GetTimestamp();
+            if (!_screen.IsPresent()) _screen.MarkLost(ScreenDevice.AbsentReason);
+        }
 
         if (_screen.State != ScreenState.Ready && !TryReconnect())
         {
@@ -113,15 +162,18 @@ public sealed class DisplayLoop : IDisposable
 
     private bool TryReconnect()
     {
-        if (_hasTriedConnect && _time.GetElapsedTime(_lastConnectAttempt) < ReconnectInterval)
+        if (!_forceReconnect && _hasTriedConnect && _time.GetElapsedTime(_lastConnectAttempt) < ReconnectInterval)
         {
             return false;
         }
 
+        _forceReconnect = false;
         _hasTriedConnect = true;
         _lastConnectAttempt = _time.GetTimestamp(); // début de la tentative : une toutes les 2 s exactement
         var connected = _screen.TryConnect();
         if (!connected) return false;
+
+        _lastPresenceCheck = _time.GetTimestamp(); // le sondage de présence repart de la connexion
 
         // ShouldRender consomme le drapeau : après une reconnexion, on redemande une image.
         _scheduler.MarkDirty();
@@ -142,7 +194,7 @@ public sealed class DisplayLoop : IDisposable
             }
             catch (Exception ex)
             {
-                Trace.TraceError($"Échec du rendu de l'image : {ex}");
+                _renderErrors.Report($"Échec du rendu de l'image : {ex}");
                 _scheduler.MarkDirty();
                 return;
             }
