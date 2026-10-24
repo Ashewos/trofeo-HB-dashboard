@@ -16,23 +16,61 @@ public sealed class LayoutStore
 
     public LayoutStore(string filePath) => _filePath = filePath;
 
-    /// <summary>Fichier absent : disposition par défaut. Fichier corrompu : défaut, et copie conservée en <c>.bad</c>.</summary>
+    /// <summary>
+    /// Ne lève jamais d'exception pour un problème de fichier. Fichier absent ou illisible (verrouillé) : disposition
+    /// par défaut, sans copie. Fichier corrompu ou invalide (JSON illisible, rotation hors {0, 180}, module hors du
+    /// damier, modules qui se chevauchent) : défaut, et copie conservée en <c>.bad</c>.
+    /// Les types inconnus et les tailles minimum dépendent du registre des modules : à vérifier par l'appelant
+    /// avec <see cref="LayoutValidator.Check"/>.
+    /// </summary>
     public DashboardLayout Load()
     {
-        if (!File.Exists(_filePath)) return DashboardLayout.Default;
+        string json;
+        try
+        {
+            if (!File.Exists(_filePath)) return DashboardLayout.Default;
+            json = File.ReadAllText(_filePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return DashboardLayout.Default;
+        }
 
         try
         {
-            var layout = JsonSerializer.Deserialize<DashboardLayout>(File.ReadAllText(_filePath), Options);
-            if (layout?.Placements is null || layout.Placements.Any(p => p is null || p.Settings.ValueKind == JsonValueKind.Undefined))
-                throw new JsonException("Disposition incomplète.");
+            var layout = JsonSerializer.Deserialize<DashboardLayout>(json, Options);
+            if (layout is null || !IsValid(layout))
+                throw new JsonException("Disposition invalide.");
             return layout;
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
-            File.Copy(_filePath, _filePath + ".bad", overwrite: true);
+            try
+            {
+                File.Copy(_filePath, _filePath + ".bad", overwrite: true);
+            }
+            catch (Exception copyEx) when (copyEx is IOException or UnauthorizedAccessException)
+            {
+                // La sauvegarde est un bonus : on retombe quand même sur la disposition par défaut.
+            }
             return DashboardLayout.Default;
         }
+    }
+
+    private static bool IsValid(DashboardLayout layout)
+    {
+        if (layout.Rotation is not (0 or 180) || layout.Placements is null) return false;
+
+        var placements = layout.Placements;
+        if (placements.Any(p => p is null || p.Settings.ValueKind == JsonValueKind.Undefined ||
+                                !LayoutValidator.IsInBounds(p)))
+            return false;
+
+        for (var i = 0; i < placements.Count; i++)
+            for (var j = i + 1; j < placements.Count; j++)
+                if (LayoutValidator.Intersects(placements[i], placements[j])) return false;
+
+        return true;
     }
 
     /// <summary>Écriture atomique : fichier temporaire puis remplacement.</summary>

@@ -17,10 +17,7 @@ public static class LayoutValidator
         if (!types.TryGetValue(candidate.TypeId, out var descriptor))
             return PlacementError.UnknownType;
 
-        if (candidate.Column < 0 || candidate.Row < 0 ||
-            candidate.Columns < 1 || candidate.Rows < 1 ||
-            candidate.Column + candidate.Columns > GridGeometry.Columns ||
-            candidate.Row + candidate.Rows > GridGeometry.Rows)
+        if (!IsInBounds(candidate))
             return PlacementError.OutOfBounds;
 
         if (candidate.Columns < descriptor.MinSize.Columns || candidate.Rows < descriptor.MinSize.Rows)
@@ -35,7 +32,13 @@ public static class LayoutValidator
         return PlacementError.None;
     }
 
-    private static bool Intersects(ModulePlacement a, ModulePlacement b) =>
+    /// <summary>Vrai si l'emplacement tient entièrement dans le damier.</summary>
+    internal static bool IsInBounds(ModulePlacement p) =>
+        p.Column >= 0 && p.Row >= 0 && p.Columns >= 1 && p.Rows >= 1 &&
+        p.Column + p.Columns <= GridGeometry.Columns &&
+        p.Row + p.Rows <= GridGeometry.Rows;
+
+    internal static bool Intersects(ModulePlacement a, ModulePlacement b) =>
         a.Column < b.Column + b.Columns && b.Column < a.Column + a.Columns &&
         a.Row < b.Row + b.Rows && b.Row < a.Row + a.Rows;
 }

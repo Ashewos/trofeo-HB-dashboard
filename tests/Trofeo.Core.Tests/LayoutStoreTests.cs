@@ -59,4 +59,65 @@ public sealed class LayoutStoreTests : IDisposable
         Assert.Single(layout.Placements);
         Assert.Equal("{nope", File.ReadAllText(FilePath + ".bad"));
     }
+
+    [Fact]
+    public void Load_LockedFile_ReturnsDefault()
+    {
+        new LayoutStore(FilePath).Save(new DashboardLayout(0, []));
+        using var locked = new FileStream(FilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        var layout = new LayoutStore(FilePath).Load();
+
+        Assert.Equal(180, layout.Rotation);
+        Assert.Single(layout.Placements);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    private const string ClockSettings = "{}";
+
+    private static string LayoutJson(int rotation, params (int c, int r, int cs, int rs)[] placements)
+    {
+        var items = placements.Select(p =>
+            $$"""{"InstanceId":"{{Guid.NewGuid()}}","TypeId":"clock","Column":{{p.c}},"Row":{{p.r}},"Columns":{{p.cs}},"Rows":{{p.rs}},"TextSize":"Normal","Settings":{{ClockSettings}}}""");
+        return $$"""{"Rotation":{{rotation}},"Placements":[{{string.Join(",", items)}}]}""";
+    }
+
+    private void AssertFallsBackAndKeepsBackup(string json)
+    {
+        File.WriteAllText(FilePath, json);
+
+        var layout = new LayoutStore(FilePath).Load();
+
+        Assert.Equal(180, layout.Rotation);
+        Assert.Equal(DashboardLayout.Default.Placements[0].InstanceId, Assert.Single(layout.Placements).InstanceId);
+        Assert.Equal(json, File.ReadAllText(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void Load_Rotation90_FallsBackAndKeepsBackup() =>
+        AssertFallsBackAndKeepsBackup(LayoutJson(90, (0, 0, 4, 2)));
+
+    [Fact]
+    public void Load_OverlappingPlacements_FallsBackAndKeepsBackup() =>
+        AssertFallsBackAndKeepsBackup(LayoutJson(180, (0, 0, 4, 2), (3, 1, 4, 2)));
+
+    [Theory]
+    [InlineData(14, 0, 4, 2)]
+    [InlineData(0, 3, 4, 2)]
+    [InlineData(-1, 0, 4, 2)]
+    [InlineData(0, 0, 0, 2)]
+    public void Load_OutOfGrid_FallsBackAndKeepsBackup(int c, int r, int cs, int rs) =>
+        AssertFallsBackAndKeepsBackup(LayoutJson(180, (c, r, cs, rs)));
+
+    [Fact]
+    public void Load_ValidHandWrittenFile_IsAccepted()
+    {
+        File.WriteAllText(FilePath, LayoutJson(0, (0, 0, 4, 2), (4, 0, 4, 2)));
+
+        var layout = new LayoutStore(FilePath).Load();
+
+        Assert.Equal(0, layout.Rotation);
+        Assert.Equal(2, layout.Placements.Count);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
 }
