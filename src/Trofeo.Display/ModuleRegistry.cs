@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Trofeo.Core.Layout;
+using Trofeo.Core.Logging;
 using Trofeo.ModuleKit;
 
 namespace Trofeo.Display;
@@ -8,9 +9,13 @@ namespace Trofeo.Display;
 public sealed class ModuleRegistry
 {
     private readonly Dictionary<string, IModuleFactory> _factories;
+    private readonly Func<string, ISecretStore> _secretsFor;
 
-    public ModuleRegistry(IEnumerable<IModuleFactory> factories)
+    /// <param name="factories">Les fabriques des types de modules connus.</param>
+    /// <param name="secretsFor">Le coffre à secrets d'un type de module, indexé par son identifiant de type.</param>
+    public ModuleRegistry(IEnumerable<IModuleFactory> factories, Func<string, ISecretStore> secretsFor)
     {
+        _secretsFor = secretsFor;
         _factories = factories.ToDictionary(f => f.Descriptor.TypeId);
         Descriptors = _factories.ToDictionary(f => f.Key, f => f.Value.Descriptor);
     }
@@ -28,7 +33,9 @@ public sealed class ModuleRegistry
 
         try
         {
-            return factory.Create(p.Settings, time);
+            var context = new ModuleContext(
+                p.InstanceId, p.Settings, time, new TraceModuleLog(p.TypeId, p.InstanceId, time), _secretsFor(p.TypeId));
+            return factory.Create(context);
         }
         catch (Exception ex)
         {

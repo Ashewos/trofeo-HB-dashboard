@@ -32,6 +32,7 @@ public sealed class DisplayLoop : IDisposable
     private readonly Dictionary<Guid, IModule> _modules = [];
     private readonly IModule[] _moduleList;
     private readonly EventHandler _onInvalidated;
+    private readonly EventHandler _onStatusChanged;
     private bool _hasTriedConnect;
     private long _lastConnectAttempt;
     private long _lastPresenceCheck;
@@ -48,6 +49,7 @@ public sealed class DisplayLoop : IDisposable
         _scheduler = scheduler;
         _time = time;
         _onInvalidated = (_, _) => _scheduler.MarkDirty();
+        _onStatusChanged = OnStatusChanged;
         _renderErrors = new RateLimitedErrorLog(time);
         _composer = new FrameComposer(_renderErrors);
 
@@ -89,7 +91,28 @@ public sealed class DisplayLoop : IDisposable
         }
 
         module.Invalidated += _onInvalidated;
+        module.StatusChanged += _onStatusChanged;
         _modules[placement.InstanceId] = module;
+    }
+
+    /// <summary>Journalise le nouvel état d'un module et redemande une image. Peut être appelé depuis n'importe quel thread.</summary>
+    private void OnStatusChanged(object? sender, EventArgs e)
+    {
+        if (sender is IModule module)
+        {
+            try
+            {
+                var status = module.Status;
+                var action = status.ActionMessage is { Length: > 0 } message ? $" — {message}" : "";
+                Trace.TraceInformation($"Module « {module.Descriptor.TypeId} » : {status.Health}{action}");
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError($"Échec de lecture de l'état d'un module : {ex.Message}");
+            }
+        }
+
+        _scheduler.MarkDirty();
     }
 
     /// <summary>Nombre d'images envoyées et validées par l'écran depuis le démarrage.</summary>
@@ -159,6 +182,7 @@ public sealed class DisplayLoop : IDisposable
         foreach (var module in _moduleList)
         {
             module.Invalidated -= _onInvalidated;
+            module.StatusChanged -= _onStatusChanged;
             try
             {
                 module.Dispose();

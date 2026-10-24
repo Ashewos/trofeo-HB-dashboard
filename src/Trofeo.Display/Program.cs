@@ -3,6 +3,7 @@ using Microsoft.Win32;
 using Trofeo.Core;
 using Trofeo.Core.Layout;
 using Trofeo.Core.Rendering;
+using Trofeo.Core.Secrets;
 using Trofeo.Device;
 using Trofeo.Modules.Clock;
 
@@ -45,7 +46,8 @@ static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Trace.TraceError($"Exception non gérée : {e.ExceptionObject}");
 
         var layout = LoadLayout();
-        var registry = new ModuleRegistry([new ClockFactory()]);
+        var vault = new DpapiSecretVault(Path.Combine(AppPaths.SettingsDir, "secrets.dat"));
+        var registry = new ModuleRegistry([new ClockFactory()], vault.Scope);
         var screen = new ScreenDevice(new WinUsbTransportFactory(), TimeProvider.System);
         screen.StateChanged += (_, _) => Trace.TraceInformation($"Écran : {screen.State} ({screen.Reason ?? "ok"}).");
 

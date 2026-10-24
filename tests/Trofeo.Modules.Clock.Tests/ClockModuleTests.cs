@@ -3,6 +3,7 @@ using Microsoft.Extensions.Time.Testing;
 using SkiaSharp;
 using Trofeo.ModuleKit;
 using Trofeo.Modules.Clock;
+using Trofeo.TestDoubles;
 
 namespace Trofeo.Modules.Clock.Tests;
 
@@ -14,7 +15,8 @@ public class ClockModuleTests
     private static IModule Create(TimeProvider time, string json = "{}")
     {
         using var doc = JsonDocument.Parse(json);
-        return new ClockFactory().Create(doc.RootElement.Clone(), time);
+        return new ClockFactory().Create(new ModuleContext(
+            Guid.NewGuid(), doc.RootElement.Clone(), time, new FakeModuleLog(), new FakeSecretStore()));
     }
 
     [Fact]

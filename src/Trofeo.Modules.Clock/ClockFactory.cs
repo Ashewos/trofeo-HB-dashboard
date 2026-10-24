@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Trofeo.ModuleKit;
 
 namespace Trofeo.Modules.Clock;
@@ -17,6 +16,6 @@ public sealed class ClockFactory : IModuleFactory
             [SizePreset.Large] = new GridSize(6, 2),
         });
 
-    public IModule Create(JsonElement settings, TimeProvider time) =>
-        new ClockModule(Descriptor, ClockSettings.FromJson(settings), time);
+    public IModule Create(ModuleContext context) =>
+        new ClockModule(Descriptor, ClockSettings.FromJson(context.Settings), context.Time);
 }

@@ -30,6 +30,9 @@ public sealed class ClockModule : IModule
 
     public event EventHandler? Invalidated;
 
+    /// <summary>Jamais levé : l'état de l'horloge est constant.</summary>
+    public event EventHandler? StatusChanged { add { } remove { } }
+
     public Task StartAsync(CancellationToken ct)
     {
         lock (_gate)

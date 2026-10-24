@@ -28,6 +28,8 @@ public sealed class FakeModule : IModule
 
     public event EventHandler? Invalidated;
 
+    public event EventHandler? StatusChanged;
+
     public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
 
     public void Render(SKCanvas canvas, ModuleRenderContext ctx)
@@ -43,6 +45,9 @@ public sealed class FakeModule : IModule
 
     /// <summary>Simule une demande de redessin du module.</summary>
     public void RaiseInvalidated() => Invalidated?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Simule un changement de <see cref="Status"/>.</summary>
+    public void RaiseStatusChanged() => StatusChanged?.Invoke(this, EventArgs.Empty);
 
     public void Dispose()
     {
