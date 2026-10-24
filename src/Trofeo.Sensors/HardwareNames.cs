@@ -9,6 +9,16 @@ public static partial class HardwareNames
     // « Graphics », sinon il resterait « with ».
     private static readonly string[] Symbols = ["with Radeon Graphics", "(R)", "(TM)", "®", "™"];
 
+    // Chaînes CPUID Intel : « 12th Gen Intel(R) Core(TM) i5-12400F », « ... i7-9700K CPU @ 3.60GHz ».
+    [GeneratedRegex(@"\b\d+(?:st|nd|rd|th) Gen\b")]
+    private static partial Regex GenerationRegex();
+
+    [GeneratedRegex(@"\bCPU\s*@\s*[\d.]+\s*GHz\b")]
+    private static partial Regex CpuClockRegex();
+
+    [GeneratedRegex(@"\bCPU\s*$")]
+    private static partial Regex TrailingCpuRegex();
+
     [GeneratedRegex(@"\b\d+-Core\b")]
     private static partial Regex CoreCountRegex();
 
@@ -30,8 +40,11 @@ public static partial class HardwareNames
         if (string.IsNullOrWhiteSpace(name)) return "";
         foreach (var symbol in Symbols)
             name = name.Replace(symbol, " ", StringComparison.Ordinal);
+        name = GenerationRegex().Replace(name, " ");
+        name = CpuClockRegex().Replace(name, " ");
         name = CoreCountRegex().Replace(name, " ");
         name = VendorWordsRegex().Replace(name, " ");
-        return SpacesRegex().Replace(name, " ").Trim();
+        name = SpacesRegex().Replace(name, " ").Trim();
+        return TrailingCpuRegex().Replace(name, "").TrimEnd();
     }
 }

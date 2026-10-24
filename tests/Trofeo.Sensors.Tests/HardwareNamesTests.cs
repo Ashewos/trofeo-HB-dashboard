@@ -10,6 +10,16 @@ public class HardwareNamesTests
     [InlineData("Intel(R) Core(TM) i5-12400F", "Intel(R) Arc(TM) A770 Graphics", "Core i5-12400F · Arc A770")]
     public void Short_StripsVendorNoise(string cpu, string gpu, string expected) => Assert.Equal(expected, HardwareNames.Short(cpu, gpu));
 
+    [Theory]
+    [InlineData("12th Gen Intel(R) Core(TM) i5-12400F", "Core i5-12400F")]
+    [InlineData("Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz", "Core i7-9700K")]
+    [InlineData("Intel(R) Xeon(R) CPU", "Xeon")]
+    public void Short_StripsCpuidBrandStrings(string cpu, string expected) => Assert.Equal(expected, HardwareNames.Short(cpu, null));
+
+    [Fact]
+    public void Short_RyzenWithIntegratedGraphics_KeepsOnlyCpu() =>
+        Assert.Equal("Ryzen 7 7800X3D", HardwareNames.Short("AMD Ryzen 7 7800X3D 8-Core Processor", "AMD Radeon(TM) Graphics"));
+
     [Fact]
     public void Short_NoGpu() => Assert.Equal("Core i7-13700K", HardwareNames.Short("Intel Core i7-13700K", null));
 

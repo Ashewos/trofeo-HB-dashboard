@@ -1,4 +1,4 @@
-using LibreHardwareMonitor.Hardware;
+using System.Diagnostics;
 
 namespace Trofeo.Sensors;
 
@@ -6,9 +6,11 @@ namespace Trofeo.Sensors;
 /// Lecteur de capteurs fondé sur LibreHardwareMonitor. Ajoute aux valeurs mappées la RAM
 /// (<c>GlobalMemoryStatusEx</c>) et le taux d'occupation du disque système (<see cref="DriveInfo"/>).
 /// <para>
-/// Ouverture paresseuse : LibreHardwareMonitor est ouvert une seule fois, au premier <see cref="Read"/>, et refermé
-/// par <see cref="Dispose"/>. Si l'ouverture échoue (pilote indisponible…), elle n'est pas retentée : les relevés
-/// suivants ne contiennent que la RAM et le disque.
+/// Ouverture paresseuse : LibreHardwareMonitor est ouvert au premier <see cref="Read"/> et refermé par
+/// <see cref="Dispose"/>. Si l'ouverture échoue (pilote indisponible…), l'échec est signalé par
+/// <see cref="Trace.TraceWarning(string)"/>, ce qui a été acquis est libéré, et l'ouverture est retentée au plus une
+/// fois tous les <see cref="RetryIntervalReads"/> appels à <see cref="Read"/>. Entre-temps, les relevés ne
+/// contiennent que la RAM et le disque, et <see cref="IsOpen"/> vaut <c>false</c>.
 /// </para>
 /// <para>
 /// Fil d'exécution : <see cref="Read"/> est appelé au plus une fois par seconde et jamais en parallèle (le hub
@@ -17,21 +19,30 @@ namespace Trofeo.Sensors;
 /// </summary>
 public sealed class LhmSensorReader : ISensorReader
 {
-    private static readonly UpdateVisitor Updater = new();
+    /// <summary>Nombre d'appels à <see cref="Read"/> entre deux tentatives d'ouverture après un échec.</summary>
+    internal const int RetryIntervalReads = 30;
 
-    private Computer? _computer;
-    private bool _opened;
+    private readonly Func<IHardwareSource> _createSource;
+    private IHardwareSource? _source;
+    private int _readsBeforeRetry;
     private bool _disposed;
+
+    public LhmSensorReader() : this(static () => new LhmHardwareSource())
+    {
+    }
+
+    internal LhmSensorReader(Func<IHardwareSource> createSource) => _createSource = createSource;
+
+    /// <summary>Vrai tant que LibreHardwareMonitor est ouvert. Faux avant le premier <see cref="Read"/>, après un échec d'ouverture et après <see cref="Dispose"/>.</summary>
+    public bool IsOpen => _source is not null;
 
     public SensorSnapshot Read()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        OpenOnce();
+        EnsureOpen();
 
         var elevated = Environment.IsPrivilegedProcess;
-        var snapshot = _computer is { } computer
-            ? SensorMapper.Map(ReadRaw(computer), elevated)
-            : new SensorSnapshot(null, null, new Dictionary<string, double>(), elevated);
+        var snapshot = ReadMapped(elevated);
 
         var values = new Dictionary<string, double>(snapshot.Values);
         if (MemoryStatus.TryRead(out var used, out var total))
@@ -49,76 +60,56 @@ public sealed class LhmSensorReader : ISensorReader
     {
         if (_disposed) return;
         _disposed = true;
-        try { _computer?.Close(); }
-        catch { /* le matériel est de toute façon libéré à la sortie du processus */ }
-        _computer = null;
+        DisposeSource();
     }
 
-    private void OpenOnce()
+    private SensorSnapshot ReadMapped(bool elevated)
     {
-        if (_opened) return;
-        _opened = true;
-        try
-        {
-            var computer = new Computer { IsCpuEnabled = true, IsGpuEnabled = true, IsStorageEnabled = true };
-            computer.Open();
-            _computer = computer;
-        }
-        catch
-        {
-            _computer = null;
-        }
-    }
-
-    private static List<RawSensor> ReadRaw(Computer computer)
-    {
-        try { computer.Accept(Updater); }
-        catch { /* on convertit ce qui a pu être mis à jour */ }
-
-        var raw = new List<RawSensor>();
-        foreach (var hardware in computer.Hardware)
-            Collect(hardware, raw);
-        return raw;
-    }
-
-    private static void Collect(IHardware hardware, List<RawSensor> raw)
-    {
-        var type = ToRaw(hardware.HardwareType);
-        foreach (var sensor in hardware.Sensors)
+        if (_source is { } source)
         {
             try
             {
-                raw.Add(new RawSensor(type, hardware.Name, ToRaw(sensor.SensorType), sensor.Name, sensor.Value));
+                return SensorMapper.Map(source.ReadRaw(), elevated);
             }
-            catch
+            catch (Exception e)
             {
-                // un capteur défaillant n'empêche pas la lecture des autres
+                Trace.TraceWarning($"Lecture des capteurs impossible : {e.Message}");
             }
         }
-        foreach (var sub in hardware.SubHardware)
-            Collect(sub, raw);
+        return new SensorSnapshot(null, null, new Dictionary<string, double>(), elevated);
     }
 
-    private static RawHardware ToRaw(HardwareType type) => type switch
+    private void EnsureOpen()
     {
-        HardwareType.Cpu => RawHardware.Cpu,
-        HardwareType.GpuNvidia => RawHardware.GpuNvidia,
-        HardwareType.GpuAmd => RawHardware.GpuAmd,
-        HardwareType.GpuIntel => RawHardware.GpuIntel,
-        HardwareType.Storage => RawHardware.Storage,
-        _ => RawHardware.Other,
-    };
+        if (_source is not null) return;
+        if (_readsBeforeRetry > 0)
+        {
+            _readsBeforeRetry--;
+            return;
+        }
 
-    private static RawKind ToRaw(SensorType type) => type switch
+        IHardwareSource? source = null;
+        try
+        {
+            source = _createSource();
+            source.Open();
+            _source = source;
+        }
+        catch (Exception e)
+        {
+            Trace.TraceWarning($"Ouverture des capteurs impossible, nouvel essai dans {RetryIntervalReads} lectures : {e.Message}");
+            try { source?.Dispose(); }
+            catch { /* déjà en échec : rien de plus à faire */ }
+            _readsBeforeRetry = RetryIntervalReads - 1;
+        }
+    }
+
+    private void DisposeSource()
     {
-        SensorType.Load => RawKind.Load,
-        SensorType.Temperature => RawKind.Temperature,
-        SensorType.Clock => RawKind.Clock,
-        SensorType.Power => RawKind.Power,
-        SensorType.SmallData => RawKind.SmallData,
-        SensorType.Fan => RawKind.Fan,
-        _ => RawKind.Other,
-    };
+        try { _source?.Dispose(); }
+        catch { /* le matériel est de toute façon libéré à la sortie du processus */ }
+        _source = null;
+    }
 
     private static bool TryReadSystemDiskUsage(out double percent)
     {
@@ -134,23 +125,5 @@ public sealed class LhmSensorReader : ISensorReader
         {
             return false;
         }
-    }
-
-    /// <summary>Met à jour chaque matériel ; un matériel qui échoue n'empêche pas les autres.</summary>
-    private sealed class UpdateVisitor : IVisitor
-    {
-        public void VisitComputer(IComputer computer) => computer.Traverse(this);
-
-        public void VisitHardware(IHardware hardware)
-        {
-            try { hardware.Update(); }
-            catch { /* ses capteurs garderont leur dernière valeur ou null */ }
-            foreach (var sub in hardware.SubHardware)
-                sub.Accept(this);
-        }
-
-        public void VisitSensor(ISensor sensor) { }
-
-        public void VisitParameter(IParameter parameter) { }
     }
 }

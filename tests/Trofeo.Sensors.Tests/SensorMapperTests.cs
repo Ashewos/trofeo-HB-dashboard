@@ -91,6 +91,67 @@ public class SensorMapperTests
     }
 
     [Fact]
+    public void Map_AmdIgpuAndAmdDgpu_PicksDiscrete()
+    {
+        List<RawSensor> sensors =
+        [
+            Gpu(RawKind.Load, "GPU Core", 3, RawHardware.GpuAmd, "AMD Radeon(TM) Graphics"),
+            Gpu(RawKind.SmallData, "GPU Memory Total", 512, RawHardware.GpuAmd, "AMD Radeon(TM) Graphics"),
+            Gpu(RawKind.Load, "GPU Core", 77, RawHardware.GpuAmd, "AMD Radeon RX 7800 XT"),
+            Gpu(RawKind.SmallData, "GPU Memory Total", 16384, RawHardware.GpuAmd, "AMD Radeon RX 7800 XT"),
+        ];
+
+        var snap = SensorMapper.Map(sensors, elevated: false);
+
+        Assert.Equal("AMD Radeon RX 7800 XT", snap.GpuName);
+        Assert.Equal(77, snap.Values[SensorKeys.GpuLoad]);
+        Assert.Equal(16384, snap.Values[SensorKeys.GpuVramTotal]);
+    }
+
+    [Fact]
+    public void Map_AmdIgpuAndIntelArc_PicksArc()
+    {
+        List<RawSensor> sensors =
+        [
+            Gpu(RawKind.Load, "GPU Core", 3, RawHardware.GpuAmd, "AMD Radeon(TM) Graphics"),
+            Gpu(RawKind.SmallData, "GPU Memory Total", 512, RawHardware.GpuAmd, "AMD Radeon(TM) Graphics"),
+            Gpu(RawKind.Load, "GPU Core", 40, RawHardware.GpuIntel, "Intel(R) Arc(TM) A770 Graphics"),
+            Gpu(RawKind.SmallData, "GPU Memory Total", 16384, RawHardware.GpuIntel, "Intel(R) Arc(TM) A770 Graphics"),
+        ];
+
+        var snap = SensorMapper.Map(sensors, elevated: false);
+
+        Assert.Equal("Intel(R) Arc(TM) A770 Graphics", snap.GpuName);
+        Assert.Equal(40, snap.Values[SensorKeys.GpuLoad]);
+    }
+
+    [Fact]
+    public void Map_EqualGpuMemory_PrefersNvidiaThenAmdThenIntel()
+    {
+        List<RawSensor> sensors =
+        [
+            Gpu(RawKind.SmallData, "GPU Memory Total", 8192, RawHardware.GpuIntel, "Intel Arc"),
+            Gpu(RawKind.SmallData, "GPU Memory Total", 8192, RawHardware.GpuAmd, "AMD Radeon RX"),
+            Gpu(RawKind.SmallData, "GPU Memory Total", 8192),
+        ];
+
+        Assert.Equal(NvidiaGpu, SensorMapper.Map(sensors, elevated: false).GpuName);
+        Assert.Equal("AMD Radeon RX", SensorMapper.Map(sensors.Take(2), elevated: false).GpuName);
+    }
+
+    [Fact]
+    public void Map_InvalidGpuMemoryTotal_IsIgnoredForChoice()
+    {
+        List<RawSensor> sensors =
+        [
+            Gpu(RawKind.SmallData, "GPU Memory Total", float.NaN, RawHardware.GpuIntel, "Intel Arc"),
+            Gpu(RawKind.Load, "GPU Core", 1),
+        ];
+
+        Assert.Equal(NvidiaGpu, SensorMapper.Map(sensors, elevated: false).GpuName);
+    }
+
+    [Fact]
     public void Map_NoGpu()
     {
         var snap = SensorMapper.Map([Cpu(RawKind.Load, "CPU Total", 12)], elevated: false);

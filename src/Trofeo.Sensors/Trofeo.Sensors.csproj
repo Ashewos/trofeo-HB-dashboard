@@ -10,6 +10,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Trofeo.Sensors.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Trofeo.Core\Trofeo.Core.csproj" />
   </ItemGroup>
 
