@@ -207,6 +207,7 @@ public sealed class DisplayLoopTests
         rig.Loop.Dispose();
 
         rig.Module.RaiseInvalidated(); // toléré après Dispose
+        rig.Time.Advance(TimeSpan.FromSeconds(1)); // au-delà des 12 images/s : seule la désinscription empêche le redessin
 
         Assert.False(rig.Scheduler.ShouldRender(false));
         rig.Screen.Dispose();

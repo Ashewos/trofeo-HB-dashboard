@@ -119,8 +119,8 @@ public sealed class DisplayLoop : IDisposable
         }
 
         _hasTriedConnect = true;
+        _lastConnectAttempt = _time.GetTimestamp(); // début de la tentative : une toutes les 2 s exactement
         var connected = _screen.TryConnect();
-        _lastConnectAttempt = _time.GetTimestamp();
         if (!connected) return false;
 
         // ShouldRender consomme le drapeau : après une reconnexion, on redemande une image.

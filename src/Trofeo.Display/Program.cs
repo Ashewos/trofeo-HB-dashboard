@@ -117,7 +117,20 @@ static class Program
         return layout;
     }
 
+    /// <summary>Le journal est un confort : s'il ne peut pas s'ouvrir, le service tourne sans.</summary>
     private static void InitializeLog()
+    {
+        try
+        {
+            OpenLog();
+        }
+        catch (Exception)
+        {
+            // Dossier inaccessible, disque plein, droits : pas de journal, mais on démarre.
+        }
+    }
+
+    private static void OpenLog()
     {
         var dir = Path.Combine(AppPaths.SettingsDir, "logs");
         Directory.CreateDirectory(dir);

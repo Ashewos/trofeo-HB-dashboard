@@ -28,7 +28,9 @@ public sealed class TrayIcon : ApplicationContext
             Visible = true,
         };
 
+        // S'abonner d'abord, lire l'état ensuite : un « prêt » atteint pendant la construction n'est pas perdu.
         screen.StateChanged += OnStateChanged;
+        _icon.Text = Tooltip(screen.State);
     }
 
     /// <summary>Texte de l'info-bulle pour un état de l'écran.</summary>
@@ -38,6 +40,12 @@ public sealed class TrayIcon : ApplicationContext
         ScreenState.Recovering => "Trofeo dashboard — écran : reprise…",
         _ => "Trofeo dashboard — écran : non branché",
     };
+
+    protected override void ExitThreadCore()
+    {
+        _screen.StateChanged -= OnStateChanged; // plus rien à poster une fois la boucle d'interface terminée
+        base.ExitThreadCore();
+    }
 
     protected override void Dispose(bool disposing)
     {
@@ -62,7 +70,14 @@ public sealed class TrayIcon : ApplicationContext
             return;
         }
 
-        _ui.Post(_ => UpdateText(), null);
+        try
+        {
+            _ui.Post(_ => UpdateText(), null);
+        }
+        catch (InvalidOperationException)
+        {
+            // La boucle d'interface est terminée : plus d'info-bulle à mettre à jour.
+        }
     }
 
     private void UpdateText()
