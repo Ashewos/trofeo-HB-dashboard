@@ -5,6 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Trofeo.Modules.Monitoring.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Trofeo.ModuleKit\Trofeo.ModuleKit.csproj" />
     <ProjectReference Include="..\Trofeo.Sensors\Trofeo.Sensors.csproj" />
   </ItemGroup>
