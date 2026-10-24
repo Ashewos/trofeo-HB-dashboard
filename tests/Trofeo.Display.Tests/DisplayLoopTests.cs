@@ -80,6 +80,7 @@ public sealed class DisplayLoopTests
         {
             Loop.Dispose();
             Screen.Dispose();
+            Scheduler.Dispose();
         }
     }
 
@@ -196,6 +197,88 @@ public sealed class DisplayLoopTests
         rig.Loop.Tick();
         Assert.Equal(3, rig.Usb.OpenCount);
         Assert.Equal(0, rig.Loop.FramesSent);
+    }
+
+    [Fact]
+    public void Tick_Idle_ReturnsTimeUntilKeepAlive()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+
+        Assert.Equal(TimeSpan.FromSeconds(1), rig.Loop.Tick()); // juste après l'envoi : un renvoi dans 1 s
+
+        rig.Time.Advance(TimeSpan.FromMilliseconds(400));
+        Assert.Equal(TimeSpan.FromMilliseconds(600), rig.Loop.Tick());
+    }
+
+    [Fact]
+    public void Tick_Animating_ReturnsFrameInterval()
+    {
+        using var rig = new Rig(new FakeModule { IsAnimating = true });
+        rig.AddHealthyScreen(acks: 100);
+
+        var delay = rig.Loop.Tick();
+
+        Assert.Equal(rig.Scheduler.MinInterval, delay);
+        Assert.InRange(delay.TotalMilliseconds, 83, 84);
+    }
+
+    [Fact]
+    public void Tick_Dirty_ReturnsTimeUntilNextSlot()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+        rig.Time.Advance(TimeSpan.FromMilliseconds(30));
+        rig.Module.RaiseInvalidated();
+
+        // 30 ms écoulés sur 83,3 ms : l'image attend le créneau, pas le renvoi dans 970 ms.
+        Assert.Equal(rig.Scheduler.MinInterval - TimeSpan.FromMilliseconds(30), rig.Loop.Tick());
+    }
+
+    [Fact]
+    public void Tick_Disconnected_ReturnsTimeUntilReconnect()
+    {
+        using var rig = new Rig(); // aucun écran : TryOpen renvoie null
+
+        // Juste après l'échec : 2 s avant le prochain essai, ramenées à 1 s par le plafond global.
+        Assert.Equal(TimeSpan.FromSeconds(1), rig.Loop.Tick());
+
+        rig.Time.Advance(TimeSpan.FromMilliseconds(1500));
+        Assert.Equal(TimeSpan.FromMilliseconds(500), rig.Loop.Tick()); // intervalle pas écoulé : le reste
+
+        rig.Time.Advance(TimeSpan.FromMilliseconds(490));
+        Assert.Equal(TimeSpan.FromMilliseconds(10), rig.Loop.Tick());
+        Assert.Equal(1, rig.Usb.OpenCount);
+
+        rig.Time.Advance(TimeSpan.FromMilliseconds(10)); // à l'échéance : essai, puis nouvelle attente
+        Assert.Equal(TimeSpan.FromSeconds(1), rig.Loop.Tick());
+        Assert.Equal(2, rig.Usb.OpenCount);
+    }
+
+    [Fact]
+    public void Tick_ConnectedButNothingToSend_NeverReturnsZeroForever()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+
+        rig.Time.Advance(TimeSpan.FromSeconds(3));
+        var delay = rig.Loop.Tick(); // présence et renvoi faits : le prochain est dans 1 s
+
+        Assert.Equal(TimeSpan.FromSeconds(1), delay);
+    }
+
+    [Fact]
+    public void RequestReconnect_SetsSignal()
+    {
+        using var rig = new Rig();
+        rig.Scheduler.Signal.WaitOne(0); // vide le signal de l'invalidation initiale
+        Assert.False(rig.Scheduler.Signal.WaitOne(0));
+
+        rig.Loop.RequestReconnect();
+
+        Assert.True(rig.Scheduler.Signal.WaitOne(0));
     }
 
     [Fact]

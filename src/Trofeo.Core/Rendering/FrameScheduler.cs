@@ -4,9 +4,10 @@ namespace Trofeo.Core.Rendering;
 /// Décide quand envoyer une image : seulement si quelque chose a changé (ou s'anime)
 /// et jamais plus souvent que le plafond d'images par seconde.
 /// </summary>
-public sealed class FrameScheduler
+public sealed class FrameScheduler : IDisposable
 {
     private readonly TimeProvider _time;
+    private readonly AutoResetEvent _signal = new(false);
     private int _dirty;
     private bool _hasRendered;
     private long _lastRenderTimestamp;
@@ -28,8 +29,49 @@ public sealed class FrameScheduler
     /// <summary>Durée minimale entre deux envois (1000 / maxFps ms).</summary>
     public TimeSpan MinInterval { get; }
 
-    /// <summary>Signale qu'un module doit être redessiné. Peut être appelé depuis n'importe quel thread.</summary>
-    public void MarkDirty() => Volatile.Write(ref _dirty, 1);
+    /// <summary>
+    /// Levé par <see cref="MarkDirty"/> et <see cref="Wake"/> : la boucle d'affichage dort dessus
+    /// (avec un délai) au lieu de se réveiller à intervalle fixe. Se réarme seul à chaque réveil.
+    /// </summary>
+    public WaitHandle Signal => _signal;
+
+    /// <summary>Vrai si un redessin est en attente (sans le consommer).</summary>
+    public bool IsDirty => Volatile.Read(ref _dirty) != 0;
+
+    /// <summary>Signale qu'un module doit être redessiné et réveille la boucle. Peut être appelé depuis n'importe quel thread.</summary>
+    public void MarkDirty()
+    {
+        Volatile.Write(ref _dirty, 1);
+        Wake();
+    }
+
+    /// <summary>Réveille la boucle sans demander de redessin. Peut être appelé depuis n'importe quel thread.</summary>
+    public void Wake()
+    {
+        try
+        {
+            _signal.Set();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Un module en fin de vie peut signaler après l'arrêt : sans conséquence.
+        }
+    }
+
+    /// <summary>
+    /// Délai avant que l'intervalle minimum entre deux images soit écoulé : 0 si aucune image n'a encore été
+    /// rendue, sinon <c>max(0, MinInterval − écoulé)</c>. À appeler depuis le thread de la boucle.
+    /// </summary>
+    public TimeSpan UntilNextSlot()
+    {
+        if (!_hasRendered)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var remaining = MinInterval - _time.GetElapsedTime(_lastRenderTimestamp);
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+    }
 
     /// <summary>
     /// Vrai s'il faut rendre une image maintenant. Quand la réponse est vraie, la demande de
@@ -38,7 +80,7 @@ public sealed class FrameScheduler
     /// </summary>
     public bool ShouldRender(bool anyAnimating)
     {
-        bool wanted = anyAnimating || Volatile.Read(ref _dirty) != 0;
+        bool wanted = anyAnimating || IsDirty;
         if (!wanted)
         {
             return false;
@@ -59,4 +101,6 @@ public sealed class FrameScheduler
         _lastRenderTimestamp = _time.GetTimestamp();
         _hasRendered = true;
     }
+
+    public void Dispose() => _signal.Dispose();
 }

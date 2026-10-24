@@ -13,7 +13,7 @@ namespace Trofeo.Display;
 static class Program
 {
     private const string MutexName = @"Local\trofeo-HB-dashboard.display";
-    private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(10);
+    private static readonly TimeSpan ErrorRetryDelay = TimeSpan.FromMilliseconds(100);
 
     [STAThread]
     static int Main()
@@ -56,7 +56,8 @@ static class Program
             Trace.TraceInformation($"Écran : {status.State} ({status.Reason ?? "ok"}).");
         };
 
-        using var loop = new DisplayLoop(layout, registry, screen, new FrameScheduler(TimeProvider.System), TimeProvider.System);
+        using var scheduler = new FrameScheduler(TimeProvider.System); // déclaré avant la boucle : libéré après elle
+        using var loop = new DisplayLoop(layout, registry, screen, scheduler, TimeProvider.System);
         using var cts = new CancellationTokenSource();
         loop.Start(cts.Token);
 
@@ -69,7 +70,7 @@ static class Program
         };
         SystemEvents.PowerModeChanged += onPowerChanged;
 
-        var thread = new Thread(() => TickLoop(loop, cts.Token)) { IsBackground = true, Name = "Trofeo.Display.Tick" };
+        var thread = new Thread(() => TickLoop(loop, scheduler, cts.Token)) { IsBackground = true, Name = "Trofeo.Display.Tick" };
         thread.Start();
 
         try
@@ -94,20 +95,24 @@ static class Program
         return 0;
     }
 
-    private static void TickLoop(DisplayLoop loop, CancellationToken ct)
+    private static void TickLoop(DisplayLoop loop, FrameScheduler scheduler, CancellationToken ct)
     {
+        WaitHandle[] handles = [ct.WaitHandle, scheduler.Signal];
         while (!ct.IsCancellationRequested)
         {
+            TimeSpan delay;
             try
             {
-                loop.Tick();
+                delay = loop.Tick();
             }
             catch (Exception ex)
             {
                 Trace.TraceError($"Erreur dans la boucle d'affichage : {ex}");
+                ct.WaitHandle.WaitOne(ErrorRetryDelay); // pas de boucle serrée si l'erreur se répète
+                continue;
             }
 
-            ct.WaitHandle.WaitOne(TickInterval);
+            WaitHandle.WaitAny(handles, delay); // dort jusqu'à l'échéance, un signal ou l'arrêt
         }
     }
 
