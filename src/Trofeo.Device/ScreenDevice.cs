@@ -34,7 +34,7 @@ public sealed class ScreenDevice : IDisposable
     /// <summary>Motif en français quand l'état est <see cref="ScreenState.Disconnected"/>, sinon <c>null</c>.</summary>
     public string? Reason { get; private set; }
 
-    /// <summary>Dernière image envoyée et validée par l'écran.</summary>
+    /// <summary>Copie de la dernière image envoyée et validée par l'écran.</summary>
     public byte[]? LastFrame { get; private set; }
 
     public event EventHandler? StateChanged;
@@ -64,14 +64,29 @@ public sealed class ScreenDevice : IDisposable
         }
 
         _transport = transport;
-        if (!TryHandshake(transport))
+        bool handshakeOk;
+        try
+        {
+            handshakeOk = TryHandshake(transport);
+        }
+        catch (IOException)
+        {
+            Disconnect(AbsentReason);
+            return false;
+        }
+
+        if (!handshakeOk)
         {
             Disconnect(NotRespondingReason);
             return false;
         }
 
+        // Ready n'est annoncé qu'une fois la dernière image renvoyée : pas de Ready -> Disconnected.
+        if (LastFrame is not null && !TrySend(transport, LastFrame))
+            return false;
+
         SetState(ScreenState.Ready, null);
-        return LastFrame is null || TrySendFrame(LastFrame);
+        return true;
     }
 
     /// <summary>
@@ -83,23 +98,39 @@ public sealed class ScreenDevice : IDisposable
         if (_transport is null || State != ScreenState.Ready)
             return false;
 
+        if (!TrySend(_transport, jpeg))
+            return false;
+
+        LastFrame = jpeg.ToArray(); // copie : l'appelant peut réutiliser son tampon
+        SetState(ScreenState.Ready, null);
+        return true;
+    }
+
+    public void Dispose() => DropTransport();
+
+    /// <summary>
+    /// Envoi avec reprise. Sur échec, libère le transport et passe en Disconnected ; sur succès,
+    /// l'appelant fixe l'état final.
+    /// </summary>
+    private bool TrySend(IUsbTransport transport, byte[] jpeg)
+    {
         var packets = LyProtocol.Packetize(jpeg);
         try
         {
             try
             {
-                SendPackets(_transport, packets);
+                SendPackets(transport, packets);
             }
             catch (UsbTimeoutException)
             {
                 SetState(ScreenState.Recovering, null);
-                if (!TryRecover(_transport))
+                if (!TryRecover(transport))
                 {
                     Disconnect(NotRespondingReason);
                     return false;
                 }
 
-                SendPackets(_transport, packets);
+                SendPackets(transport, packets);
             }
         }
         catch (UsbTimeoutException)
@@ -113,12 +144,8 @@ public sealed class ScreenDevice : IDisposable
             return false;
         }
 
-        LastFrame = jpeg;
-        SetState(ScreenState.Ready, null);
         return true;
     }
-
-    public void Dispose() => DropTransport();
 
     private static void SendPackets(IUsbTransport transport, byte[] packets)
     {

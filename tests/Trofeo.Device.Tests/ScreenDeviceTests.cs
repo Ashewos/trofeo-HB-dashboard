@@ -70,7 +70,7 @@ public sealed class ScreenDeviceTests
         Assert.Equal(6144, sent.Length); // 12 paquets de 512 octets
         Assert.Equal(LyProtocol.Packetize(jpeg), sent);
         Assert.Equal(ScreenState.Ready, device.State);
-        Assert.Same(jpeg, device.LastFrame);
+        Assert.Equal(jpeg, device.LastFrame);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public sealed class ScreenDeviceTests
             c => AssertCall(c, UsbCallKind.Read, 512, 1000));
         Assert.Equal(new[] { ScreenState.Recovering, ScreenState.Ready }, states);
         Assert.Equal(ScreenState.Ready, device.State);
-        Assert.Same(jpeg, device.LastFrame);
+        Assert.Equal(jpeg, device.LastFrame);
     }
 
     [Fact]
@@ -206,9 +206,87 @@ public sealed class ScreenDeviceTests
         Assert.True(device.TryConnect());
 
         Assert.Equal(ScreenState.Ready, device.State);
-        Assert.Same(frameA, device.LastFrame);
+        Assert.Equal(frameA, device.LastFrame);
         var resent = second.Writes.Skip(1).SelectMany(w => w.Data!).ToArray(); // après la poignée de main
         Assert.Equal(LyProtocol.Packetize(frameA), resent);
+    }
+
+    [Fact]
+    public void LastFrame_IsACopy()
+    {
+        var transport = ReadyTransport().EnqueueAck();
+        using var device = NewDevice(new FakeUsbTransportFactory().EnqueueTransport(transport));
+        device.TryConnect();
+        var jpeg = Jpeg(1000, 0x33);
+
+        device.TrySendFrame(jpeg);
+        Array.Fill(jpeg, (byte)0x44);
+
+        Assert.NotNull(device.LastFrame);
+        Assert.All(device.LastFrame!, b => Assert.Equal(0x33, b));
+    }
+
+    [Fact]
+    public void Send_WriteIOException_DisconnectsAsUnplugged()
+    {
+        var transport = ReadyTransport();
+        using var device = NewDevice(new FakeUsbTransportFactory().EnqueueTransport(transport));
+        device.TryConnect();
+        transport.FailNextWritesWithIOException(1);
+
+        Assert.False(device.TrySendFrame(Jpeg(1000)));
+
+        Assert.Equal(ScreenState.Disconnected, device.State);
+        Assert.Equal("Écran non branché", device.Reason);
+        Assert.True(transport.IsDisposed);
+    }
+
+    [Fact]
+    public void Send_AckReadIOException_DisconnectsAsUnplugged()
+    {
+        var transport = ReadyTransport().EnqueueReadIOException();
+        using var device = NewDevice(new FakeUsbTransportFactory().EnqueueTransport(transport));
+        device.TryConnect();
+
+        Assert.False(device.TrySendFrame(Jpeg(1000)));
+
+        Assert.Equal(ScreenState.Disconnected, device.State);
+        Assert.Equal("Écran non branché", device.Reason);
+        Assert.True(transport.IsDisposed);
+    }
+
+    [Fact]
+    public void Connect_HandshakeIOException_ReturnsFalse()
+    {
+        var transport = new FakeUsbTransport().FailNextWritesWithIOException(1);
+        using var device = NewDevice(new FakeUsbTransportFactory().EnqueueTransport(transport));
+
+        Assert.False(device.TryConnect());
+
+        Assert.Equal(ScreenState.Disconnected, device.State);
+        Assert.Equal("Écran non branché", device.Reason);
+        Assert.True(transport.IsDisposed);
+    }
+
+    [Fact]
+    public void Connect_FailedResend_NeverAnnouncesReady()
+    {
+        var first = ReadyTransport().EnqueueAck();
+        var second = ReadyTransport().EnqueueReadIOException(); // renvoi : écran débranché
+        var factory = new FakeUsbTransportFactory().EnqueueTransport(first).EnqueueTransport(second);
+        using var device = NewDevice(factory);
+        device.TryConnect();
+        device.TrySendFrame(Jpeg(1000));
+        first.FailNextWritesWithIOException(1);
+        Assert.False(device.TrySendFrame(Jpeg(1000))); // perte de l'écran
+        var states = new List<ScreenState>();
+        device.StateChanged += (_, _) => states.Add(device.State);
+
+        Assert.False(device.TryConnect());
+
+        Assert.DoesNotContain(ScreenState.Ready, states);
+        Assert.Equal(ScreenState.Disconnected, device.State);
+        Assert.True(second.IsDisposed);
     }
 
     [Fact]

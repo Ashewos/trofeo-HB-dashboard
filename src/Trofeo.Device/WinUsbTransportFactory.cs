@@ -29,18 +29,21 @@ public sealed class WinUsbTransportFactory : IUsbTransportFactory
         {
             var error = Marshal.GetLastWin32Error();
             file.Dispose();
-            return error == WinUsbNative.ErrorAccessDenied ? throw new UsbBusyException() : null;
+            return IsBusy(error) ? throw new UsbBusyException() : null;
         }
 
         if (!WinUsbNative.WinUsb_Initialize(file, out var usb))
         {
             var error = Marshal.GetLastWin32Error();
             file.Dispose();
-            return error == WinUsbNative.ErrorAccessDenied ? throw new UsbBusyException() : null;
+            return IsBusy(error) ? throw new UsbBusyException() : null;
         }
 
         return new WinUsbTransport(file, usb);
     }
+
+    private static bool IsBusy(int error) =>
+        error is WinUsbNative.ErrorAccessDenied or WinUsbNative.ErrorSharingViolation;
 
     private static string? FindDevicePath()
     {

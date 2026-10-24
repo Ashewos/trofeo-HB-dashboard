@@ -19,9 +19,10 @@ public sealed record UsbCall(UsbCallKind Kind, int Length, int TimeoutMs, byte[]
 /// </summary>
 public sealed class FakeUsbTransport : IUsbTransport
 {
-    /// <summary>Réponse d'une lecture : octets à renvoyer, ou <c>null</c> pour un délai dépassé.</summary>
-    private readonly Queue<byte[]?> _reads = new();
+    /// <summary>Résultat d'une lecture : octets à renvoyer, ou exception à lever.</summary>
+    private readonly Queue<(byte[]? Data, Exception? Error)> _reads = new();
     private int _failingWrites;
+    private bool _writesFailWithIOException;
 
     public List<UsbCall> Calls { get; } = [];
 
@@ -32,13 +33,20 @@ public sealed class FakeUsbTransport : IUsbTransport
 
     public FakeUsbTransport EnqueueRead(byte[] response)
     {
-        _reads.Enqueue(response);
+        _reads.Enqueue((response, null));
         return this;
     }
 
     public FakeUsbTransport EnqueueReadTimeout()
     {
-        _reads.Enqueue(null);
+        _reads.Enqueue((null, new UsbTimeoutException()));
+        return this;
+    }
+
+    /// <summary>La prochaine lecture lève une <see cref="IOException"/> (débranchement, par exemple).</summary>
+    public FakeUsbTransport EnqueueReadIOException()
+    {
+        _reads.Enqueue((null, new IOException("Périphérique débranché.")));
         return this;
     }
 
@@ -59,6 +67,15 @@ public sealed class FakeUsbTransport : IUsbTransport
     public FakeUsbTransport FailNextWrites(int count)
     {
         _failingWrites = count;
+        _writesFailWithIOException = false;
+        return this;
+    }
+
+    /// <summary>Les <paramref name="count"/> prochaines écritures lèvent <see cref="IOException"/>.</summary>
+    public FakeUsbTransport FailNextWritesWithIOException(int count)
+    {
+        _failingWrites = count;
+        _writesFailWithIOException = true;
         return this;
     }
 
@@ -68,7 +85,7 @@ public sealed class FakeUsbTransport : IUsbTransport
         if (_failingWrites > 0)
         {
             _failingWrites--;
-            throw new UsbTimeoutException();
+            throw _writesFailWithIOException ? new IOException("Périphérique débranché.") : new UsbTimeoutException();
         }
     }
 
@@ -78,11 +95,11 @@ public sealed class FakeUsbTransport : IUsbTransport
         if (_reads.Count == 0)
             throw new InvalidOperationException("FakeUsbTransport : aucune réponse de lecture programmée.");
 
-        var response = _reads.Dequeue();
-        if (response is null)
-            throw new UsbTimeoutException();
+        var (response, error) = _reads.Dequeue();
+        if (error is not null)
+            throw error;
 
-        var length = Math.Min(response.Length, buffer.Length);
+        var length = Math.Min(response!.Length, buffer.Length);
         response.AsSpan(0, length).CopyTo(buffer);
         return length;
     }

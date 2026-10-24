@@ -7,6 +7,7 @@ namespace Trofeo.Device;
 internal static partial class WinUsbNative
 {
     public const int ErrorAccessDenied = 5;
+    public const int ErrorSharingViolation = 32;
     public const int ErrorSemTimeout = 121;
     public const int ErrorInsufficientBuffer = 122;
 
