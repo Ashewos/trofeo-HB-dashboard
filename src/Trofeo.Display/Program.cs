@@ -48,7 +48,8 @@ static class Program
 
         var layout = LoadLayout();
         var vault = new DpapiSecretVault(Path.Combine(AppPaths.SettingsDir, "secrets.dat"));
-        var registry = new ModuleRegistry([new ClockFactory()], vault.Scope);
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) }; // déclaré avant la boucle : libéré après elle
+        var registry = new ModuleRegistry([new ClockFactory(new OpenMeteoClient(http))], vault.Scope);
         var screen = new ScreenDevice(new WinUsbTransportFactory(), TimeProvider.System);
         screen.StateChanged += (_, _) =>
         {

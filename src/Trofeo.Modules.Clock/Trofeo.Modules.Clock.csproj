@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Trofeo.Modules.Clock.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Trofeo.ModuleKit\Trofeo.ModuleKit.csproj" />
   </ItemGroup>
 

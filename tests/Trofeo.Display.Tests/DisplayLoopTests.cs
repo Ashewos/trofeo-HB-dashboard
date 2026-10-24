@@ -545,6 +545,14 @@ internal sealed class CapturingTraceListener : TraceListener
 
 public sealed class ModuleRegistryTests
 {
+    /// <summary>Fournisseur de météo qui n'est jamais interrogé : les réglages de ces tests n'ont pas de lieu.</summary>
+    private sealed class NoWeather : Trofeo.Modules.Clock.IWeatherProvider
+    {
+        public Task<Trofeo.Modules.Clock.WeatherNow> GetCurrentAsync(
+            Trofeo.Modules.Clock.WeatherLocation where, Trofeo.Modules.Clock.TemperatureUnit unit, CancellationToken ct) =>
+            throw new InvalidOperationException("Aucune météo attendue.");
+    }
+
     private sealed class CapturingFactory(Action<ModuleContext> capture) : IModuleFactory
     {
         public ModuleDescriptor Descriptor { get; } = new("fake", "fake", new GridSize(1, 1), new Dictionary<SizePreset, GridSize>());
@@ -562,7 +570,7 @@ public sealed class ModuleRegistryTests
     [Fact]
     public void Create_KnownType_ReturnsModule()
     {
-        var registry = new ModuleRegistry([new Trofeo.Modules.Clock.ClockFactory()], _ => new FakeSecretStore());
+        var registry = new ModuleRegistry([new Trofeo.Modules.Clock.ClockFactory(new NoWeather())], _ => new FakeSecretStore());
 
         using var module = registry.Create(Placement("clock"), TimeProvider.System);
 
@@ -610,7 +618,7 @@ public sealed class ModuleRegistryTests
     [Fact]
     public void Create_UnknownType_ReturnsNull()
     {
-        var registry = new ModuleRegistry([new Trofeo.Modules.Clock.ClockFactory()], _ => new FakeSecretStore());
+        var registry = new ModuleRegistry([new Trofeo.Modules.Clock.ClockFactory(new NoWeather())], _ => new FakeSecretStore());
 
         Assert.Null(registry.Create(Placement("meteo"), TimeProvider.System));
     }
