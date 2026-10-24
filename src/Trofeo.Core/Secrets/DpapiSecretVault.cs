@@ -10,7 +10,8 @@ namespace Trofeo.Core.Secrets;
 /// Coffre à secrets d'un fichier unique, chiffré par DPAPI (compte Windows courant). Contenu JSON
 /// <c>{ portée: { clé: valeur } }</c>, une portée par type de module. Le fichier est relu à chaque lecture et
 /// réécrit atomiquement ; les écritures se font sous un mutex nommé, car le logiciel de réglage écrit aussi.
-/// Un fichier illisible est gardé en <c>.bad</c> puis traité comme vide.
+/// Un fichier illisible est gardé en <c>.bad</c> puis traité comme vide ; un fichier momentanément verrouillé
+/// est traité comme vide à la lecture, sans copie. Les entrées nulles sont des entrées absentes.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class DpapiSecretVault
@@ -23,19 +24,25 @@ public sealed class DpapiSecretVault
 
     public DpapiSecretVault(string filePath) => _filePath = filePath;
 
-    /// <summary>La valeur de la clé dans la portée, ou <c>null</c> si absente (ou fichier absent ou illisible).</summary>
+    /// <summary>
+    /// La valeur de la clé dans la portée, ou <c>null</c> si absente (ou fichier absent, illisible ou verrouillé).
+    /// Ne lève rien pour un problème de fichier.
+    /// </summary>
     public string? Get(string scope, string key)
     {
         using var _ = Lock();
-        var data = Read();
+        var data = Read(failOnLockedFile: false);
         return data.TryGetValue(scope, out var keys) && keys.TryGetValue(key, out var value) ? value : null;
     }
 
-    /// <summary>Enregistre la valeur ; <c>null</c> efface la clé.</summary>
+    /// <summary>
+    /// Enregistre la valeur ; <c>null</c> efface la clé. Lève si le fichier est verrouillé ou ne peut pas être écrit :
+    /// partir d'un coffre vu comme vide écraserait les autres secrets.
+    /// </summary>
     public void Set(string scope, string key, string? value)
     {
         using var _ = Lock();
-        var data = Read();
+        var data = Read(failOnLockedFile: true);
         if (value is null)
         {
             if (!data.TryGetValue(scope, out var existing) || !existing.Remove(key)) return;
@@ -53,7 +60,7 @@ public sealed class DpapiSecretVault
     /// <summary>Une vue du coffre limitée à une portée (un type de module).</summary>
     public ISecretStore Scope(string scope) => new ScopedStore(this, scope);
 
-    private Dictionary<string, Dictionary<string, string>> Read()
+    private Dictionary<string, Dictionary<string, string>> Read(bool failOnLockedFile)
     {
         if (!File.Exists(_filePath)) return [];
 
@@ -61,13 +68,36 @@ public sealed class DpapiSecretVault
         {
             var protectedBytes = File.ReadAllBytes(_filePath);
             var json = ProtectedData.Unprotect(protectedBytes, Entropy, DataProtectionScope.CurrentUser);
-            return JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(json) ?? [];
+            return DropNulls(JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string?>?>>(json));
         }
         catch (Exception ex) when (ex is CryptographicException or JsonException or NotSupportedException)
         {
             KeepBackup();
             return [];
         }
+        catch (Exception ex) when (!failOnLockedFile && ex is IOException or UnauthorizedAccessException)
+        {
+            return []; // verrouillé ou inaccessible pour l'instant : pas une corruption, donc pas de copie .bad
+        }
+    }
+
+    /// <summary>Un JSON valide peut contenir des <c>null</c> : portée ou valeur nulle = absente.</summary>
+    private static Dictionary<string, Dictionary<string, string>> DropNulls(Dictionary<string, Dictionary<string, string?>?>? raw)
+    {
+        var data = new Dictionary<string, Dictionary<string, string>>();
+        foreach (var (scope, keys) in raw ?? [])
+        {
+            if (keys is null) continue;
+            var kept = new Dictionary<string, string>();
+            foreach (var (key, value) in keys)
+            {
+                if (value is not null) kept[key] = value;
+            }
+
+            if (kept.Count > 0) data[scope] = kept;
+        }
+
+        return data;
     }
 
     private void KeepBackup()

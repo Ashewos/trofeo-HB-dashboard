@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Trofeo.Core.Secrets;
 
@@ -86,5 +87,34 @@ public sealed class DpapiSecretVaultTests : IDisposable
 
         Assert.Null(vault.Get("network", "token"));
         Assert.False(File.Exists(FilePath));
+    }
+
+    [Fact]
+    public void Vault_ReadLocked_ReturnsNullWithoutBackup()
+    {
+        var vault = new DpapiSecretVault(FilePath);
+        vault.Set("network", "token", "abc");
+
+        using (new FileStream(FilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            Assert.Null(vault.Get("network", "token"));
+
+        Assert.False(File.Exists(FilePath + ".bad"));
+        Assert.Equal("abc", vault.Get("network", "token")); // une fois libéré, le secret est intact
+    }
+
+    [Theory]
+    [InlineData("{\"a\":null}")]
+    [InlineData("{\"a\":{\"k\":null}}")]
+    public void Vault_NullEntries_AreAbsent(string json)
+    {
+        Directory.CreateDirectory(_dir);
+        var protectedBytes = ProtectedData.Protect(
+            Encoding.UTF8.GetBytes(json), Encoding.UTF8.GetBytes("trofeo-HB-dashboard"), DataProtectionScope.CurrentUser);
+        File.WriteAllBytes(FilePath, protectedBytes);
+        var vault = new DpapiSecretVault(FilePath);
+
+        Assert.Null(vault.Get("a", "k"));
+        vault.Set("a", "k", "v"); // un Set par-dessus des entrées nulles fonctionne aussi
+        Assert.Equal("v", vault.Get("a", "k"));
     }
 }

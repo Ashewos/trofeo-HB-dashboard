@@ -368,6 +368,41 @@ public sealed class ScreenDeviceTests
         Assert.Equal(ScreenState.Disconnected, device.State);
     }
 
+    [Fact]
+    public void Status_ReasonMatchesState_AfterEachTransition()
+    {
+        var factory = new FakeUsbTransportFactory()
+            .EnqueueAbsent()
+            .EnqueueTransport(ReadyTransport())
+            .EnqueueBusy()
+            .EnqueueTransport(new FakeUsbTransport().EnqueueReadTimeout().EnqueueRead(new byte[512])); // poignée de main refusée
+        using var device = NewDevice(factory);
+        var seen = new List<ScreenStatus>();
+        device.StateChanged += (_, _) =>
+        {
+            var status = device.Status; // lu d'un bloc : jamais un état avec le motif d'un autre
+            Assert.Equal(status.State, device.State);
+            seen.Add(status);
+        };
+
+        device.TryConnect(); // Absent
+        device.TryConnect(); // Ready
+        device.MarkLost("perdu");
+        device.TryConnect(); // Busy
+        device.TryConnect(); // NotResponding
+
+        Assert.Equal(
+            [
+                new ScreenStatus(ScreenState.Ready, null),
+                new ScreenStatus(ScreenState.Disconnected, "perdu"),
+                new ScreenStatus(ScreenState.Disconnected, ScreenDevice.BusyReason),
+                new ScreenStatus(ScreenState.Disconnected, ScreenDevice.NotRespondingReason),
+            ],
+            seen);
+        Assert.Equal(device.Status.Reason, device.Reason);
+        Assert.Equal(device.Status.State, device.State);
+    }
+
     private static void AssertCall(UsbCall call, UsbCallKind kind, int length, int timeoutMs)
     {
         Assert.Equal(kind, call.Kind);

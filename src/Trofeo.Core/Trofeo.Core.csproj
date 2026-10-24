@@ -9,6 +9,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Trofeo.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Assets\Fonts\*.ttf" LogicalName="Trofeo.Core.Assets.Fonts.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\Fonts\OFL.txt" LogicalName="Trofeo.Core.Assets.Fonts.OFL.txt" />
   </ItemGroup>

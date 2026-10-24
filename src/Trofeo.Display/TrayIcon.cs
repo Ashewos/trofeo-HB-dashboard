@@ -49,7 +49,11 @@ public sealed class TrayIcon : ApplicationContext
         return text.Length > MaxTooltipLength ? text[..MaxTooltipLength] : text;
     }
 
-    private string CurrentTooltip() => Tooltip(_screen.State, _screen.Reason);
+    private string CurrentTooltip()
+    {
+        var status = _screen.Status; // d'un bloc : l'affichage peut le remplacer pendant qu'on lit depuis l'interface
+        return Tooltip(status.State, status.Reason);
+    }
 
     protected override void ExitThreadCore()
     {

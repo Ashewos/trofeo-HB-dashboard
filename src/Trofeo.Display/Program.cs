@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Win32;
 using Trofeo.Core;
 using Trofeo.Core.Layout;
+using Trofeo.Core.Logging;
 using Trofeo.Core.Rendering;
 using Trofeo.Core.Secrets;
 using Trofeo.Device;
@@ -49,7 +50,11 @@ static class Program
         var vault = new DpapiSecretVault(Path.Combine(AppPaths.SettingsDir, "secrets.dat"));
         var registry = new ModuleRegistry([new ClockFactory()], vault.Scope);
         var screen = new ScreenDevice(new WinUsbTransportFactory(), TimeProvider.System);
-        screen.StateChanged += (_, _) => Trace.TraceInformation($"Écran : {screen.State} ({screen.Reason ?? "ok"}).");
+        screen.StateChanged += (_, _) =>
+        {
+            var status = screen.Status;
+            Trace.TraceInformation($"Écran : {status.State} ({status.Reason ?? "ok"}).");
+        };
 
         using var loop = new DisplayLoop(layout, registry, screen, new FrameScheduler(TimeProvider.System), TimeProvider.System);
         using var cts = new CancellationTokenSource();

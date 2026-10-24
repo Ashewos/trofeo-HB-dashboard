@@ -462,6 +462,17 @@ internal sealed class CapturingTraceListener : TraceListener
 
 public sealed class ModuleRegistryTests
 {
+    private sealed class CapturingFactory(Action<ModuleContext> capture) : IModuleFactory
+    {
+        public ModuleDescriptor Descriptor { get; } = new("fake", "fake", new GridSize(1, 1), new Dictionary<SizePreset, GridSize>());
+
+        public IModule Create(ModuleContext context)
+        {
+            capture(context);
+            return new FakeModule();
+        }
+    }
+
     private static ModulePlacement Placement(string typeId) => new(
         Guid.NewGuid(), typeId, 0, 0, 4, 2, TextSize.Normal, JsonDocument.Parse("{}").RootElement.Clone());
 
@@ -474,6 +485,41 @@ public sealed class ModuleRegistryTests
 
         Assert.NotNull(module);
         Assert.True(registry.Descriptors.ContainsKey("clock"));
+    }
+
+    [Fact]
+    public void Create_BuildsContextFromPlacement()
+    {
+        ModuleContext? captured = null;
+        var scopes = new List<string>();
+        var registry = new ModuleRegistry(
+            [new CapturingFactory(ctx => captured = ctx)],
+            typeId => { scopes.Add(typeId); return new FakeSecretStore(); });
+        var settings = JsonDocument.Parse("{\"k\":42}").RootElement.Clone();
+        var placement = Placement("fake") with { Settings = settings };
+        var time = new FakeTimeProvider();
+        var listener = new CapturingTraceListener();
+        Trace.Listeners.Add(listener);
+
+        try
+        {
+            using var module = registry.Create(placement, time);
+
+            Assert.NotNull(module);
+            Assert.NotNull(captured);
+            Assert.Equal(placement.InstanceId, captured.InstanceId);
+            Assert.Equal(42, captured.Settings.GetProperty("k").GetInt32());
+            Assert.Same(time, captured.Time);
+            Assert.Equal(["fake"], scopes);
+
+            captured.Log.Info("bonjour");
+            Assert.Contains(
+                listener.Lines, l => l.Contains($"[fake {placement.InstanceId.ToString("N")[..8]}] bonjour"));
+        }
+        finally
+        {
+            Trace.Listeners.Remove(listener);
+        }
     }
 
     [Fact]

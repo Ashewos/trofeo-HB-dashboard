@@ -4,7 +4,8 @@ namespace Trofeo.Device;
 
 /// <summary>
 /// L'écran : poignée de main, envoi d'une image à la fois avec validation, et garde-fou de reprise
-/// quand l'écran ne répond plus. Utilisé depuis un seul thread (la boucle d'affichage).
+/// quand l'écran ne répond plus. Utilisé depuis un seul thread (la boucle d'affichage) ; seul
+/// <see cref="Status"/> se lit depuis un autre thread.
 /// </summary>
 public sealed class ScreenDevice : IDisposable
 {
@@ -23,18 +24,22 @@ public sealed class ScreenDevice : IDisposable
     private readonly IUsbTransportFactory _factory;
     private readonly TimeProvider _time;
     private IUsbTransport? _transport;
+    private ScreenStatus _status = new(ScreenState.Disconnected, AbsentReason);
 
     public ScreenDevice(IUsbTransportFactory factory, TimeProvider time)
     {
         _factory = factory;
         _time = time;
-        Reason = AbsentReason;
     }
 
-    public ScreenState State { get; private set; } = ScreenState.Disconnected;
+    /// <summary>État et motif, remplacés d'un bloc : sûr à lire depuis n'importe quel thread (icône de la zone de notification).</summary>
+    public ScreenStatus Status => Volatile.Read(ref _status);
 
-    /// <summary>Motif en français quand l'état est <see cref="ScreenState.Disconnected"/>, sinon <c>null</c>.</summary>
-    public string? Reason { get; private set; }
+    /// <summary>Raccourci vers <c>Status.State</c>. Pour lire l'état et le motif ensemble, passer par <see cref="Status"/>.</summary>
+    public ScreenState State => Status.State;
+
+    /// <summary>Raccourci vers <c>Status.Reason</c> : motif en français quand l'état est <see cref="ScreenState.Disconnected"/>, sinon <c>null</c>.</summary>
+    public string? Reason => Status.Reason;
 
     /// <summary>Copie de la dernière image envoyée et validée par l'écran.</summary>
     public byte[]? LastFrame { get; private set; }
@@ -225,11 +230,11 @@ public sealed class ScreenDevice : IDisposable
 
     private void SetState(ScreenState state, string? reason)
     {
-        if (State == state && Reason == reason)
+        var status = new ScreenStatus(state, reason);
+        if (Status == status)
             return;
 
-        State = state;
-        Reason = reason;
+        Volatile.Write(ref _status, status);
         try
         {
             StateChanged?.Invoke(this, EventArgs.Empty);

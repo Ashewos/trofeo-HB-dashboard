@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Time.Testing;
+using Trofeo.Core.Logging;
 
-namespace Trofeo.Display.Tests;
+namespace Trofeo.Core.Tests;
 
 public sealed class FileTraceListenerTests : IDisposable
 {
@@ -48,5 +50,37 @@ public sealed class FileTraceListenerTests : IDisposable
             listener.TraceEvent(null, "src", TraceEventType.Error, 0, "boum");
 
         Assert.Contains("[Erreur] boum", File.ReadAllText(LogPath));
+    }
+
+    [Fact]
+    public void Write_ReopenFails_RecoversOnLaterWrite()
+    {
+        var time = new FakeTimeProvider();
+        var opens = 0;
+        Stream Open(string path)
+        {
+            // 1re ouverture : constructeur ; 2e : réouverture après la rotation, qui échoue ; ensuite normal.
+            if (++opens == 2) throw new IOException("réouverture impossible");
+            return new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+        }
+
+        using (var listener = new FileTraceListener(LogPath, maxBytes: 200, time, Open))
+        {
+            listener.WriteLine(new string('x', 250)); // dépasse le plafond
+            listener.WriteLine("perdue 1"); // rotation, réouverture en échec
+            listener.WriteLine("perdue 2"); // aucune exception, pas de nouvel essai avant 60 s
+            time.Advance(TimeSpan.FromSeconds(59));
+            listener.WriteLine("perdue 3");
+            Assert.Equal(2, opens);
+
+            time.Advance(TimeSpan.FromSeconds(1));
+            listener.WriteLine("revenue");
+        }
+
+        Assert.Equal(3, opens);
+        var text = File.ReadAllText(LogPath);
+        Assert.Contains("revenue", text);
+        Assert.DoesNotContain("perdue", text);
+        Assert.True(File.Exists(LogPath + ".1"));
     }
 }

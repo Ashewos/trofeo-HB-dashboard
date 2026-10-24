@@ -24,40 +24,49 @@ public sealed class FrameComposer
         DateTimeOffset now)
     {
         var bitmap = new SKBitmap(GridGeometry.Width, GridGeometry.Height);
-        using var canvas = new SKCanvas(bitmap);
-        canvas.Clear(theme.Background);
-
-        foreach (var placement in layout.Placements)
+        try
         {
-            var rect = ToRect(GridGeometry.ModuleRect(placement.Column, placement.Row, placement.Columns, placement.Rows));
-            PaintPanel(canvas, rect, theme);
+            using var canvas = new SKCanvas(bitmap);
+            canvas.Clear(theme.Background);
 
-            if (!modules.TryGetValue(placement.InstanceId, out var module))
+            foreach (var placement in layout.Placements)
             {
-                continue;
+                var rect = ToRect(GridGeometry.ModuleRect(placement.Column, placement.Row, placement.Columns, placement.Rows));
+                PaintPanel(canvas, rect, theme);
+
+                if (!modules.TryGetValue(placement.InstanceId, out var module))
+                {
+                    continue;
+                }
+
+                int saved = canvas.Save();
+                try
+                {
+                    using var clip = new SKRoundRect(rect, theme.CornerRadius);
+                    canvas.ClipRoundRect(clip, antialias: true); // même arrondi que le panneau
+                    var ctx = new ModuleRenderContext(
+                        rect, new GridSize(placement.Columns, placement.Rows), theme, placement.TextSize.Factor(), now);
+                    module.Render(canvas, ctx);
+                }
+                catch (Exception ex)
+                {
+                    _errors.Report($"Échec du rendu du module {placement.TypeId} ({placement.InstanceId}) : {ex}");
+                    canvas.RestoreToCount(saved);
+                    PaintErrorPanel(canvas, rect, theme);
+                }
+                finally
+                {
+                    canvas.RestoreToCount(saved);
+                }
             }
 
-            int saved = canvas.Save();
-            try
-            {
-                canvas.ClipRoundRect(new SKRoundRect(rect, theme.CornerRadius), antialias: true); // même arrondi que le panneau
-                var ctx = new ModuleRenderContext(
-                    rect, new GridSize(placement.Columns, placement.Rows), theme, placement.TextSize.Factor(), now);
-                module.Render(canvas, ctx);
-            }
-            catch (Exception ex)
-            {
-                _errors.Report($"Échec du rendu du module {placement.TypeId} ({placement.InstanceId}) : {ex}");
-                canvas.RestoreToCount(saved);
-                PaintErrorPanel(canvas, rect, theme);
-            }
-            finally
-            {
-                canvas.RestoreToCount(saved);
-            }
+            return bitmap;
         }
-
-        return bitmap;
+        catch
+        {
+            bitmap.Dispose(); // pas de bitmap orphelin de 3,5 Mo si la composition échoue
+            throw;
+        }
     }
 
     private static SKRect ToRect(SKRectI r) => SKRect.Create(r.Left, r.Top, r.Width, r.Height);
