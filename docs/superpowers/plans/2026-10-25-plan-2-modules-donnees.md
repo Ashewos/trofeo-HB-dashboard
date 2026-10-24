@@ -74,7 +74,8 @@ Le plan règle aussi les points laissés ouverts par le plan 1.
 - **Secrets rangés par type de module** (`network`), pas par instance : deux modules Réseau partagent la même Freebox.
 - **L'assistant capteurs tourne en `SYSTEM`**, déclenché à l'ouverture de toute session, avec un mutex global d'instance unique. Ainsi il marche même si l'utilisateur n'est pas administrateur au quotidien.
 - **Pas de journal dans `%ProgramData%`.** L'assistant élevé écrit son journal dans son propre dossier de Program Files, qui n'est modifiable que par un administrateur. Un utilisateur ne peut donc pas y glisser un lien vers un autre fichier.
-- **UniFi : `txRateBps` / `rxRateBps` lus comme des bits par seconde.** À confirmer sur la console d'un ami ; le cas échéant, on ne change qu'un facteur dans `UniFiSource`.
+- **UniFi : `txRateBps` / `rxRateBps` lus comme des bits par seconde**, selon l'ami d'Alex. Sa capture montrait l'ancienne API (`rx_bytes-r`, en octets/s), pas `statistics/latest` : la comparaison des deux reste à faire. Si elle contredit, on ne change qu'un facteur dans `UniFiSource`.
+- **Titre par défaut du Monitoring** : les noms réels du CPU et du GPU lus par LibreHardwareMonitor. S'ils sont introuvables : « Monitoring » (demande d'Alex).
 - **Freebox en HTTP sur le réseau local.** Le jeton d'application n'est jamais envoyé ; seul son HMAC l'est. HTTPS demanderait d'embarquer les autorités de certification de Free.
 - **UniFi en HTTPS avec certificat auto-signé** : on mémorise l'empreinte du certificat au premier contact. Un changement ensuite est refusé et signalé.
 - **Module Monitoring sans températures CPU** : la ligne d'explication remplace le titre, pour ne pas faire tomber une ligne de valeurs.
@@ -336,7 +337,7 @@ public sealed class LhmSensorReader : ISensorReader { } // ajoute RAM et disque 
 **Noms courts** (`HardwareNames.Short`) :
 - Retirer « Intel », « AMD », « NVIDIA », « GeForce », « Radeon », « (R) », « (TM) », « ® », « ™ », « Processor », « Graphics », « with Radeon Graphics » et le suffixe « N-Core ».
 - Réduire les espaces.
-- Joindre CPU et GPU par « · » en sautant les absents. Si les deux manquent : « PC ».
+- Joindre CPU et GPU par « · » en sautant les absents. Si les deux manquent : « Monitoring ».
 
 - [ ] **Step 1: Tests des noms**
 
@@ -346,7 +347,7 @@ public sealed class LhmSensorReader : ISensorReader { } // ajoute RAM et disque 
 [InlineData("AMD Ryzen 7 7800X3D 8-Core Processor", "AMD Radeon RX 7800 XT", "Ryzen 7 7800X3D · RX 7800 XT")]
 [InlineData("Intel(R) Core(TM) i5-12400F", "Intel(R) Arc(TM) A770 Graphics", "Core i5-12400F · Arc A770")]
 public void Short_StripsVendorNoise(string cpu, string gpu, string expected) => Assert.Equal(expected, HardwareNames.Short(cpu, gpu));
-// Short_NoGpu: ("Intel Core i7-13700K", null) → "Core i7-13700K" ; Short_Nothing: (null, null) → "PC"
+// Short_NoGpu: ("Intel Core i7-13700K", null) → "Core i7-13700K" ; Short_Nothing: (null, null) → "Monitoring"
 ```
 
 - [ ] **Step 2: Tests du choix des capteurs**
