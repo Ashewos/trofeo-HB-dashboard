@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Trofeo.Modules.Network\Trofeo.Modules.Network.csproj" />
+    <ProjectReference Include="..\..\src\Trofeo.Core\Trofeo.Core.csproj" />
+    <ProjectReference Include="..\Trofeo.TestDoubles\Trofeo.TestDoubles.csproj" />
+  </ItemGroup>
+
+</Project>
