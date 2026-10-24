@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 
 namespace Trofeo.Sensors;
@@ -24,11 +25,20 @@ public enum InstallResult
 /// </summary>
 /// <param name="sourceDir">Dossier d'où copier l'assistant (celui de l'exécutable en cours).</param>
 /// <param name="installDir">Dossier d'installation (voir <see cref="HelperIdentity.InstallDir"/>).</param>
-public sealed class HelperInstaller(ICommandRunner runner, IPawnIoDetector pawnIo, string sourceDir, string installDir)
+/// <param name="sleep">Attente entre deux essais quand un fichier est encore tenu par l'ancien assistant ; sert aux tests à ne pas dormir.</param>
+public sealed class HelperInstaller(
+    ICommandRunner runner, IPawnIoDetector pawnIo, string sourceDir, string installDir, Action<TimeSpan>? sleep = null)
 {
     private const string ExeName = "Trofeo.SensorHelper.exe";
+    private const string StagedXmlName = "task.xml";
     private const int PawnIoRebootRequired = 3010;
     private static readonly string QuotedTask = "\"" + TaskDefinition.TaskName + "\"";
+
+    // Attentes successives (environ 10 s au total) pour laisser l'ancien assistant, arrêté par « schtasks /End », relâcher ses fichiers.
+    private static readonly TimeSpan[] RetryDelays =
+        [.. new[] { 250, 500, 1000, 2000, 3000, 3000 }.Select(ms => TimeSpan.FromMilliseconds(ms))];
+
+    private readonly Action<TimeSpan> _sleep = sleep ?? Thread.Sleep;
 
     /// <param name="pawnIoSetupPath">Installeur de PawnIO, utilisé seulement si PawnIO est absent.</param>
     public InstallResult Install(string? pawnIoSetupPath)
@@ -49,27 +59,51 @@ public sealed class HelperInstaller(ICommandRunner runner, IPawnIoDetector pawnI
 
         if (!SameDirectory(sourceDir, installDir)) CopyDirectory(sourceDir, installDir);
 
-        var xmlPath = Path.Combine(Path.GetTempPath(), $"trofeo-sensors-{Guid.NewGuid():N}.xml");
+        CreateTask();
+
+        Check(runner.Run("schtasks", $"/Run /TN {QuotedTask}"), "démarrage de la tâche planifiée");
+        return rebootRequired ? InstallResult.InstalledRebootRequired : InstallResult.Installed;
+    }
+
+    /// <summary>
+    /// Arrête et supprime la tâche, puis le dossier d'installation. PawnIO reste en place : d'autres logiciels peuvent s'en servir.
+    /// Refuse, avant de rien changer, d'être lancée depuis la copie installée : son propre exécutable ne peut pas se supprimer.
+    /// </summary>
+    public void Uninstall()
+    {
+        if (SameDirectory(sourceDir, installDir))
+            throw new InvalidOperationException(
+                "La désinstallation ne peut pas se lancer depuis la copie installée : lancez-la depuis le dossier de l'application.");
+
+        runner.Run("schtasks", $"/End /TN {QuotedTask}");
+        runner.Run("schtasks", $"/Delete /TN {QuotedTask} /F");
+        if (Directory.Exists(installDir)) Retry(() => Directory.Delete(installDir, recursive: true));
+    }
+
+    /// <summary>
+    /// Écrit le XML dans le dossier d'installation (réservé aux administrateurs : un processus ordinaire ne peut pas
+    /// y substituer une autre commande entre l'écriture et la lecture par schtasks), puis le garde ouvert en lecture
+    /// seule, sans partage d'écriture, pendant que schtasks le lit.
+    /// </summary>
+    private void CreateTask()
+    {
+        Directory.CreateDirectory(installDir);
+        var xmlPath = Path.Combine(installDir, StagedXmlName);
         try
         {
-            File.WriteAllText(xmlPath, TaskDefinition.Xml(Path.Combine(installDir, ExeName)), Encoding.Unicode); // UTF-16 avec BOM
+            using (var writer = new FileStream(xmlPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                var bytes = Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes(TaskDefinition.Xml(Path.Combine(installDir, ExeName)))).ToArray();
+                writer.Write(bytes); // UTF-16 avec BOM
+            }
+
+            using var guard = new FileStream(xmlPath, FileMode.Open, FileAccess.Read, FileShare.Read);
             Check(runner.Run("schtasks", $"/Create /TN {QuotedTask} /XML \"{xmlPath}\" /F"), "création de la tâche planifiée");
         }
         finally
         {
             File.Delete(xmlPath);
         }
-
-        Check(runner.Run("schtasks", $"/Run /TN {QuotedTask}"), "démarrage de la tâche planifiée");
-        return rebootRequired ? InstallResult.InstalledRebootRequired : InstallResult.Installed;
-    }
-
-    /// <summary>Arrête et supprime la tâche, puis le dossier d'installation. PawnIO reste en place : d'autres logiciels peuvent s'en servir.</summary>
-    public void Uninstall()
-    {
-        runner.Run("schtasks", $"/End /TN {QuotedTask}");
-        runner.Run("schtasks", $"/Delete /TN {QuotedTask} /F");
-        if (Directory.Exists(installDir)) Directory.Delete(installDir, recursive: true);
     }
 
     private static void Check(int exitCode, string step)
@@ -82,13 +116,44 @@ public sealed class HelperInstaller(ICommandRunner runner, IPawnIoDetector pawnI
 
     private static string Normalize(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
 
-    /// <summary>Copie récursive qui écrase les fichiers existants et ne supprime rien. Les fichiers créés héritent des droits du dossier de destination.</summary>
-    private static void CopyDirectory(string source, string destination)
+    /// <summary>Exécute l'action, en la retentant après chaque attente de <see cref="RetryDelays"/> tant qu'un fichier est tenu ; la dernière erreur est relancée.</summary>
+    private void Retry(Action action)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                action();
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < RetryDelays.Length)
+            {
+                _sleep(RetryDelays[attempt]);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Copie récursive qui écrase les fichiers existants et ne supprime rien. Les fichiers créés héritent des droits du dossier
+    /// de destination. Les jonctions et liens symboliques sont ignorés : la copie est élevée et ne doit pas suivre un lien vers
+    /// un autre dossier (ni tourner en boucle sur un lien vers un parent).
+    /// </summary>
+    private void CopyDirectory(string source, string destination)
     {
         Directory.CreateDirectory(destination);
-        foreach (var file in Directory.EnumerateFiles(source))
-            File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), overwrite: true);
-        foreach (var dir in Directory.EnumerateDirectories(source))
-            CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)));
+        foreach (var entry in new DirectoryInfo(source).EnumerateFileSystemInfos())
+        {
+            if (IsReparsePoint(entry))
+            {
+                Trace.TraceWarning($"Lien ignoré lors de la copie : {entry.FullName}");
+                continue;
+            }
+
+            var target = Path.Combine(destination, entry.Name);
+            if (entry is DirectoryInfo) CopyDirectory(entry.FullName, target);
+            else Retry(() => File.Copy(entry.FullName, target, overwrite: true));
+        }
     }
+
+    private static bool IsReparsePoint(FileSystemInfo entry) => entry.Attributes.HasFlag(FileAttributes.ReparsePoint);
 }

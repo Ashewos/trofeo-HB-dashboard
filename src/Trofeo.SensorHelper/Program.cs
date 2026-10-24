@@ -8,7 +8,8 @@ namespace Trofeo.SensorHelper;
 /// <summary>
 /// Assistant de capteurs. Sans argument, il sert les relevés sur le tube (lancé en SYSTEM par la tâche planifiée) ;
 /// <c>install</c> et <c>uninstall</c> gèrent la tâche depuis un terminal administrateur.
-/// Codes de sortie : 0 succès, 1 usage, 2 pas élevé, 3 PawnIO manquant, 4 échec de PawnIO, 5 erreur.
+/// Codes de sortie : 0 succès, 1 usage ou installeur de PawnIO introuvable, 2 pas élevé, 3 PawnIO manquant,
+/// 4 échec de PawnIO, 5 erreur (programme impossible à lancer, fichier tenu, désinstallation depuis la copie installée…).
 /// </summary>
 internal static partial class Program
 {
@@ -53,6 +54,16 @@ internal static partial class Program
         {
             Console.Error.WriteLine("Cette commande doit être lancée depuis un terminal administrateur.");
             return 2;
+        }
+
+        if (pawnIoSetup is not null)
+        {
+            pawnIoSetup = Path.GetFullPath(pawnIoSetup);
+            if (!File.Exists(pawnIoSetup))
+            {
+                Console.Error.WriteLine($"L'installeur de PawnIO est introuvable : {pawnIoSetup}");
+                return 1;
+            }
         }
 
         var installer = new HelperInstaller(new ProcessCommandRunner(), new PawnIoDetector(), AppContext.BaseDirectory, HelperIdentity.InstallDir);

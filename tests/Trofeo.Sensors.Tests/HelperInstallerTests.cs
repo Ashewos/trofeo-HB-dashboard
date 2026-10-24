@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Xml.Linq;
 
@@ -13,6 +14,7 @@ public sealed class HelperInstallerTests : IDisposable
     private readonly string _install;
     private readonly FakeRunner _runner = new();
     private readonly FakePawnIo _pawnIo = new();
+    private readonly List<TimeSpan> _sleeps = [];
 
     public HelperInstallerTests()
     {
@@ -23,7 +25,7 @@ public sealed class HelperInstallerTests : IDisposable
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
-    private HelperInstaller Installer() => new(_runner, _pawnIo, _source, _install);
+    private HelperInstaller Installer() => new(_runner, _pawnIo, _source, _install, _sleeps.Add);
 
     [Fact]
     public void Install_PawnIoMissing_NoPath_ChangesNothing()
@@ -174,6 +176,131 @@ public sealed class HelperInstallerTests : IDisposable
         _runner.ExitCodes["schtasks"] = 1;
         Installer().Uninstall();
         Assert.Equal(2, _runner.Calls.Count);
+    }
+
+    [Fact]
+    public void Install_StagesTaskXmlInsideInstallDir_NotInTemp()
+    {
+        _pawnIo.Installed = true;
+
+        Installer().Install(null);
+
+        // Dossier réservé aux administrateurs, pas le dossier temporaire de l'utilisateur.
+        Assert.Equal(Path.Combine(_install, "task.xml"), _runner.XmlPath);
+        Assert.False(File.Exists(_runner.XmlPath));
+    }
+
+    [Fact]
+    public void Install_SkipsJunctions_AndDoesNotFollowThem()
+    {
+        _pawnIo.Installed = true;
+        var outside = Path.Combine(_root, "outside");
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "secret.txt"), "s");
+        File.WriteAllText(Path.Combine(_source, "ok.txt"), "ok");
+        CreateJunction(Path.Combine(_source, "link"), outside);
+        CreateJunction(Path.Combine(_source, "loop"), _source); // boucle vers le parent
+
+        try
+        {
+            Installer().Install(null);
+
+            Assert.True(File.Exists(Path.Combine(_install, "ok.txt")));
+            Assert.False(Directory.Exists(Path.Combine(_install, "link")));
+            Assert.False(Directory.Exists(Path.Combine(_install, "loop")));
+        }
+        finally
+        {
+            // Le nettoyage récursif refuse de traverser une jonction : on retire d'abord les liens eux-mêmes.
+            Directory.Delete(Path.Combine(_source, "link"));
+            Directory.Delete(Path.Combine(_source, "loop"));
+        }
+    }
+
+    [Fact]
+    public void Install_RetriesCopy_WhileTheOldHelperHoldsAFile()
+    {
+        _pawnIo.Installed = true;
+        File.WriteAllText(Path.Combine(_source, "a.dll"), "nouveau");
+        Directory.CreateDirectory(_install);
+        var locked = Path.Combine(_install, "a.dll");
+        File.WriteAllText(locked, "ancien");
+        var hold = new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None);
+        var installer = new HelperInstaller(_runner, _pawnIo, _source, _install, delay =>
+        {
+            _sleeps.Add(delay);
+            if (_sleeps.Count == 2) hold.Dispose(); // l'ancien assistant se termine après deux attentes
+        });
+
+        try { Assert.Equal(InstallResult.Installed, installer.Install(null)); }
+        finally { hold.Dispose(); }
+
+        Assert.Equal(2, _sleeps.Count);
+        Assert.Equal("nouveau", File.ReadAllText(locked));
+    }
+
+    [Fact]
+    public void Install_GivesUpAfterBoundedWait_WhenFileStaysLocked()
+    {
+        _pawnIo.Installed = true;
+        File.WriteAllText(Path.Combine(_source, "a.dll"), "nouveau");
+        Directory.CreateDirectory(_install);
+        var locked = Path.Combine(_install, "a.dll");
+        File.WriteAllText(locked, "ancien");
+        using var hold = new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        Assert.Throws<IOException>(() => Installer().Install(null));
+
+        Assert.InRange(_sleeps.Count, 3, 20);
+        Assert.InRange(_sleeps.Sum(s => s.TotalSeconds), 5, 15);
+        Assert.DoesNotContain(_runner.Calls, c => c.Args.StartsWith("/Create", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Uninstall_RetriesDelete_WhileAFileIsHeld()
+    {
+        Directory.CreateDirectory(_install);
+        var locked = Path.Combine(_install, "a.dll");
+        File.WriteAllText(locked, "x");
+        var hold = new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None);
+        var installer = new HelperInstaller(_runner, _pawnIo, _source, _install, delay =>
+        {
+            _sleeps.Add(delay);
+            if (_sleeps.Count == 2) hold.Dispose();
+        });
+
+        try { installer.Uninstall(); }
+        finally { hold.Dispose(); }
+
+        Assert.Equal(2, _sleeps.Count);
+        Assert.False(Directory.Exists(_install));
+    }
+
+    [Fact]
+    public void Uninstall_FromTheInstalledCopy_RefusesBeforeChangingAnything()
+    {
+        Directory.CreateDirectory(_install);
+        File.WriteAllText(Path.Combine(_install, "a.txt"), "a");
+        var installer = new HelperInstaller(_runner, _pawnIo, _install.TrimEnd(Path.DirectorySeparatorChar), _install, _sleeps.Add);
+
+        var ex = Assert.Throws<InvalidOperationException>(installer.Uninstall);
+
+        Assert.Contains("dossier de l'application", ex.Message);
+        Assert.Empty(_runner.Calls);
+        Assert.True(File.Exists(Path.Combine(_install, "a.txt")));
+    }
+
+    private static void CreateJunction(string link, string target)
+    {
+        using var cmd = Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        cmd.StandardOutput.ReadToEnd();
+        cmd.WaitForExit();
+        Assert.True(Directory.Exists(link), "jonction non créée");
     }
 
     private sealed class FakePawnIo : IPawnIoDetector
