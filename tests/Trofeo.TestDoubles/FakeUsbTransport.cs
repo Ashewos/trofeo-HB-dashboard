@@ -1,0 +1,156 @@
+using Trofeo.Device;
+
+namespace Trofeo.TestDoubles;
+
+/// <summary>Un appel reçu par <see cref="FakeUsbTransport"/>, dans l'ordre.</summary>
+public enum UsbCallKind
+{
+    Write,
+    Read,
+    ResetPipes,
+}
+
+/// <summary>Appel enregistré : <paramref name="Length"/> est la taille écrite ou la taille du tampon de lecture.</summary>
+public sealed record UsbCall(UsbCallKind Kind, int Length, int TimeoutMs, byte[]? Data = null);
+
+/// <summary>
+/// Transport USB scriptable : les lectures consomment une file de réponses (ou de délais dépassés),
+/// les écritures peuvent être programmées pour dépasser leur délai. Tous les appels sont enregistrés.
+/// </summary>
+public sealed class FakeUsbTransport : IUsbTransport
+{
+    /// <summary>Résultat d'une lecture : octets à renvoyer, ou exception à lever.</summary>
+    private readonly Queue<(byte[]? Data, Exception? Error)> _reads = new();
+    private int _failingWrites;
+    private bool _writesFailWithIOException;
+
+    public List<UsbCall> Calls { get; } = [];
+
+    public bool IsDisposed { get; private set; }
+
+    /// <summary>Appels d'écriture, avec leurs données.</summary>
+    public IEnumerable<UsbCall> Writes => Calls.Where(c => c.Kind == UsbCallKind.Write);
+
+    public FakeUsbTransport EnqueueRead(byte[] response)
+    {
+        _reads.Enqueue((response, null));
+        return this;
+    }
+
+    public FakeUsbTransport EnqueueReadTimeout()
+    {
+        _reads.Enqueue((null, new UsbTimeoutException()));
+        return this;
+    }
+
+    /// <summary>La prochaine lecture lève une <see cref="IOException"/> (débranchement, par exemple).</summary>
+    public FakeUsbTransport EnqueueReadIOException()
+    {
+        _reads.Enqueue((null, new IOException("Périphérique débranché.")));
+        return this;
+    }
+
+    /// <summary>Réponse valide à la poignée de main (annexe A).</summary>
+    public FakeUsbTransport EnqueueHandshakeReply()
+    {
+        var reply = new byte[512];
+        reply[0] = 0x03;
+        reply[1] = 0xFF;
+        reply[8] = 0x01;
+        return EnqueueRead(reply);
+    }
+
+    /// <summary>Validation d'une image : 512 octets quelconques.</summary>
+    public FakeUsbTransport EnqueueAck() => EnqueueRead(new byte[512]);
+
+    /// <summary>Les <paramref name="count"/> prochaines écritures lèvent <see cref="UsbTimeoutException"/>.</summary>
+    public FakeUsbTransport FailNextWrites(int count)
+    {
+        _failingWrites = count;
+        _writesFailWithIOException = false;
+        return this;
+    }
+
+    /// <summary>Les <paramref name="count"/> prochaines écritures lèvent <see cref="IOException"/>.</summary>
+    public FakeUsbTransport FailNextWritesWithIOException(int count)
+    {
+        _failingWrites = count;
+        _writesFailWithIOException = true;
+        return this;
+    }
+
+    public void Write(ReadOnlySpan<byte> data, int timeoutMs)
+    {
+        Calls.Add(new UsbCall(UsbCallKind.Write, data.Length, timeoutMs, data.ToArray()));
+        if (_failingWrites > 0)
+        {
+            _failingWrites--;
+            throw _writesFailWithIOException ? new IOException("Périphérique débranché.") : new UsbTimeoutException();
+        }
+    }
+
+    public int Read(Span<byte> buffer, int timeoutMs)
+    {
+        Calls.Add(new UsbCall(UsbCallKind.Read, buffer.Length, timeoutMs));
+        if (_reads.Count == 0)
+            throw new InvalidOperationException("FakeUsbTransport : aucune réponse de lecture programmée.");
+
+        var (response, error) = _reads.Dequeue();
+        if (error is not null)
+            throw error;
+
+        var length = Math.Min(response!.Length, buffer.Length);
+        response.AsSpan(0, length).CopyTo(buffer);
+        return length;
+    }
+
+    public void ResetPipes() => Calls.Add(new UsbCall(UsbCallKind.ResetPipes, 0, 0));
+
+    public void Dispose() => IsDisposed = true;
+}
+
+/// <summary>Fabrique scriptable : chaque <see cref="TryOpen"/> consomme un résultat ; file vide = écran absent.</summary>
+public sealed class FakeUsbTransportFactory : IUsbTransportFactory
+{
+    private readonly Queue<Func<IUsbTransport?>> _outcomes = new();
+
+    public int OpenCount { get; private set; }
+
+    /// <summary>Réponse de <see cref="IsPresent"/> : l'écran est branché (par défaut) ou non.</summary>
+    public bool Present { get; set; } = true;
+
+    public int PresenceChecks { get; private set; }
+
+    /// <summary>Le prochain <see cref="TryOpen"/> renvoie ce transport.</summary>
+    public FakeUsbTransportFactory EnqueueTransport(IUsbTransport transport)
+    {
+        _outcomes.Enqueue(() => transport);
+        return this;
+    }
+
+    /// <summary>Le prochain <see cref="TryOpen"/> renvoie <c>null</c> (écran absent).</summary>
+    public FakeUsbTransportFactory EnqueueAbsent()
+    {
+        _outcomes.Enqueue(() => null);
+        return this;
+    }
+
+    /// <summary>Le prochain <see cref="TryOpen"/> lève <see cref="UsbBusyException"/>.</summary>
+    public FakeUsbTransportFactory EnqueueBusy()
+    {
+        _outcomes.Enqueue(() => throw new UsbBusyException());
+        return this;
+    }
+
+    public bool IsPresent()
+    {
+        PresenceChecks++;
+        return Present;
+    }
+
+    public IUsbTransport? TryOpen()
+    {
+        OpenCount++;
+        return _outcomes.Count == 0 ? null : _outcomes.Dequeue()();
+    }
+}
