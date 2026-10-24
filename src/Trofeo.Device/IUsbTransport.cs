@@ -32,4 +32,7 @@ public interface IUsbTransport : IDisposable
 public interface IUsbTransportFactory
 {
     IUsbTransport? TryOpen();
+
+    /// <summary>Vrai si l'écran est branché (sans l'ouvrir) : sert à détecter un débranchement entre deux images.</summary>
+    bool IsPresent();
 }

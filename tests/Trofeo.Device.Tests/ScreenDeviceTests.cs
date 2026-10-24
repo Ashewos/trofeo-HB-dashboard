@@ -321,6 +321,53 @@ public sealed class ScreenDeviceTests
         Assert.Null(device.LastFrame);
     }
 
+    [Fact]
+    public void MarkLost_DisposesTransport_AndSetsReason()
+    {
+        var transport = ReadyTransport();
+        using var device = NewDevice(new FakeUsbTransportFactory().EnqueueTransport(transport));
+        device.TryConnect();
+        var changes = 0;
+        device.StateChanged += (_, _) => changes++;
+
+        device.MarkLost("Écran non branché");
+
+        Assert.Equal(ScreenState.Disconnected, device.State);
+        Assert.Equal("Écran non branché", device.Reason);
+        Assert.True(transport.IsDisposed);
+        Assert.Equal(1, changes);
+        Assert.False(device.TrySendFrame(Jpeg(10)));
+    }
+
+    [Fact]
+    public void MarkLost_WhenAlreadyDisconnected_IsNoOp()
+    {
+        using var device = NewDevice(new FakeUsbTransportFactory().EnqueueBusy());
+        device.TryConnect();
+        var changes = 0;
+        device.StateChanged += (_, _) => changes++;
+
+        device.MarkLost("Reprise après veille");
+
+        Assert.Equal(ScreenDevice.BusyReason, device.Reason);
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
+    public void StateChanged_SubscriberThrows_StateMachineKeepsWorking()
+    {
+        var transport = ReadyTransport().EnqueueAck();
+        using var device = NewDevice(new FakeUsbTransportFactory().EnqueueTransport(transport));
+        device.StateChanged += (_, _) => throw new InvalidOperationException("abonné défaillant");
+
+        Assert.True(device.TryConnect());
+        Assert.True(device.TrySendFrame(Jpeg(1000)));
+
+        Assert.Equal(ScreenState.Ready, device.State);
+        device.MarkLost("test");
+        Assert.Equal(ScreenState.Disconnected, device.State);
+    }
+
     private static void AssertCall(UsbCall call, UsbCallKind kind, int length, int timeoutMs)
     {
         Assert.Equal(kind, call.Kind);

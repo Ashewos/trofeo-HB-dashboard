@@ -45,16 +45,31 @@ public sealed class WinUsbTransportFactory : IUsbTransportFactory
     private static bool IsBusy(int error) =>
         error is WinUsbNative.ErrorAccessDenied or WinUsbNative.ErrorSharingViolation;
 
-    private static string? FindDevicePath()
+    /// <inheritdoc />
+    public bool IsPresent()
+    {
+        using var set = OpenFirstInterface(out _);
+        return set is not null;
+    }
+
+    /// <summary>Liste les interfaces présentes ; renvoie l'ensemble (à libérer) si l'écran y figure, sinon <c>null</c>.</summary>
+    private static SafeDeviceInfoSetHandle? OpenFirstInterface(out WinUsbNative.SpDeviceInterfaceData data)
     {
         var guid = InterfaceGuid;
-        using var set = WinUsbNative.SetupDiGetClassDevs(
+        data = new WinUsbNative.SpDeviceInterfaceData { CbSize = (uint)Marshal.SizeOf<WinUsbNative.SpDeviceInterfaceData>() };
+        var set = WinUsbNative.SetupDiGetClassDevs(
             ref guid, 0, 0, WinUsbNative.DigcfPresent | WinUsbNative.DigcfDeviceInterface);
-        if (set.IsInvalid)
-            return null;
+        if (!set.IsInvalid && WinUsbNative.SetupDiEnumDeviceInterfaces(set, 0, ref guid, 0, ref data))
+            return set;
 
-        var data = new WinUsbNative.SpDeviceInterfaceData { CbSize = (uint)Marshal.SizeOf<WinUsbNative.SpDeviceInterfaceData>() };
-        if (!WinUsbNative.SetupDiEnumDeviceInterfaces(set, 0, ref guid, 0, ref data))
+        set.Dispose();
+        return null;
+    }
+
+    private static string? FindDevicePath()
+    {
+        using var set = OpenFirstInterface(out var data);
+        if (set is null)
             return null;
 
         // Premier appel pour connaître la taille, second pour lire le chemin.

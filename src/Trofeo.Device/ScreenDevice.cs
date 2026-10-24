@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Trofeo.Device;
 
 /// <summary>
@@ -104,6 +106,18 @@ public sealed class ScreenDevice : IDisposable
         LastFrame = jpeg.ToArray(); // copie : l'appelant peut réutiliser son tampon
         SetState(ScreenState.Ready, null);
         return true;
+    }
+
+    /// <summary>
+    /// Abandonne la connexion (écran disparu, reprise après veille) : libère le transport et passe en
+    /// Disconnected avec ce motif. Sans effet si l'écran est déjà déconnecté.
+    /// </summary>
+    public void MarkLost(string reason)
+    {
+        if (State == ScreenState.Disconnected)
+            return;
+
+        Disconnect(reason);
     }
 
     public void Dispose() => DropTransport();
@@ -213,6 +227,14 @@ public sealed class ScreenDevice : IDisposable
 
         State = state;
         Reason = reason;
-        StateChanged?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            // Un abonné défaillant ne doit pas casser la machine d'états.
+            Trace.TraceError($"Un abonné de StateChanged a échoué : {ex}");
+        }
     }
 }

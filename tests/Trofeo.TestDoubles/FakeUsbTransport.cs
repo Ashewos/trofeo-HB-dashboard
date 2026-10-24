@@ -116,6 +116,11 @@ public sealed class FakeUsbTransportFactory : IUsbTransportFactory
 
     public int OpenCount { get; private set; }
 
+    /// <summary>Réponse de <see cref="IsPresent"/> : l'écran est branché (par défaut) ou non.</summary>
+    public bool Present { get; set; } = true;
+
+    public int PresenceChecks { get; private set; }
+
     /// <summary>Le prochain <see cref="TryOpen"/> renvoie ce transport.</summary>
     public FakeUsbTransportFactory EnqueueTransport(IUsbTransport transport)
     {
@@ -135,6 +140,12 @@ public sealed class FakeUsbTransportFactory : IUsbTransportFactory
     {
         _outcomes.Enqueue(() => throw new UsbBusyException());
         return this;
+    }
+
+    public bool IsPresent()
+    {
+        PresenceChecks++;
+        return Present;
     }
 
     public IUsbTransport? TryOpen()
