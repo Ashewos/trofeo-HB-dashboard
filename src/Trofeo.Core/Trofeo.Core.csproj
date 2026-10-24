@@ -4,4 +4,9 @@
     <ProjectReference Include="..\Trofeo.ModuleKit\Trofeo.ModuleKit.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Fonts\*.ttf" LogicalName="Trofeo.Core.Assets.Fonts.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Fonts\OFL.txt" LogicalName="Trofeo.Core.Assets.Fonts.OFL.txt" />
+  </ItemGroup>
+
 </Project>
