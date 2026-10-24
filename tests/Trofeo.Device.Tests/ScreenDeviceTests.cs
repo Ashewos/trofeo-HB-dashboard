@@ -8,7 +8,8 @@ public sealed class ScreenDeviceTests
 
     private static ScreenDevice NewDevice(FakeUsbTransportFactory factory) => new(factory, TimeProvider.System);
 
-    private static FakeUsbTransport ReadyTransport() => new FakeUsbTransport().EnqueueHandshakeReply();
+    /// <summary>Écran sain : la connexion vide la file (délai dépassé) puis la poignée de main réussit.</summary>
+    private static FakeUsbTransport ReadyTransport() => new FakeUsbTransport().EnqueueReadTimeout().EnqueueHandshakeReply();
 
     [Fact]
     public void Connect_Handshake_Ready()
@@ -25,22 +26,43 @@ public sealed class ScreenDeviceTests
         Assert.Equal(1, changes);
         Assert.Collection(
             transport.Calls,
+            c => Assert.Equal(UsbCallKind.ResetPipes, c.Kind),
+            c => AssertCall(c, UsbCallKind.Read, 512, 300), // vidage : file vide
             c =>
             {
-                Assert.Equal(UsbCallKind.Write, c.Kind);
+                AssertCall(c, UsbCallKind.Write, 2048, 1000);
                 Assert.Equal(LyProtocol.BuildHandshake(), c.Data);
             },
-            c =>
-            {
-                Assert.Equal(UsbCallKind.Read, c.Kind);
-                Assert.Equal(512, c.Length);
-            });
+            c => AssertCall(c, UsbCallKind.Read, 512, 1000));
+    }
+
+    [Fact]
+    public void Connect_FrozenScreen_ResetsAndDrainsBeforeHandshake()
+    {
+        var stale = new byte[512];
+        stale[0] = 0x03; // validation restée en file par un processus précédent
+        var transport = new FakeUsbTransport()
+            .EnqueueRead(stale)
+            .EnqueueReadTimeout()
+            .EnqueueHandshakeReply();
+        using var device = NewDevice(new FakeUsbTransportFactory().EnqueueTransport(transport));
+
+        Assert.True(device.TryConnect());
+
+        Assert.Equal(ScreenState.Ready, device.State);
+        Assert.Collection(
+            transport.Calls,
+            c => Assert.Equal(UsbCallKind.ResetPipes, c.Kind),
+            c => AssertCall(c, UsbCallKind.Read, 512, 300), // réponse périmée
+            c => AssertCall(c, UsbCallKind.Read, 512, 300), // file vidée
+            c => AssertCall(c, UsbCallKind.Write, 2048, 1000), // poignée de main
+            c => AssertCall(c, UsbCallKind.Read, 512, 1000));
     }
 
     [Fact]
     public void Connect_InvalidHandshakeReply_Disconnected()
     {
-        var transport = new FakeUsbTransport().EnqueueRead(new byte[512]);
+        var transport = new FakeUsbTransport().EnqueueReadTimeout().EnqueueRead(new byte[512]);
         using var device = NewDevice(new FakeUsbTransportFactory().EnqueueTransport(transport));
 
         Assert.False(device.TryConnect());
@@ -133,6 +155,7 @@ public sealed class ScreenDeviceTests
             .EnqueueReadTimeout(); // validation manquante après reprise
         using var device = NewDevice(new FakeUsbTransportFactory().EnqueueTransport(transport));
         device.TryConnect();
+        transport.Calls.Clear();
 
         Assert.False(device.TrySendFrame(Jpeg(1000)));
 
@@ -258,7 +281,7 @@ public sealed class ScreenDeviceTests
     [Fact]
     public void Connect_HandshakeIOException_ReturnsFalse()
     {
-        var transport = new FakeUsbTransport().FailNextWritesWithIOException(1);
+        var transport = new FakeUsbTransport().EnqueueReadTimeout().FailNextWritesWithIOException(1);
         using var device = NewDevice(new FakeUsbTransportFactory().EnqueueTransport(transport));
 
         Assert.False(device.TryConnect());

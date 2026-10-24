@@ -67,7 +67,7 @@ public sealed class ScreenDevice : IDisposable
         bool handshakeOk;
         try
         {
-            handshakeOk = TryHandshake(transport);
+            handshakeOk = TryResetAndHandshake(transport);
         }
         catch (IOException)
         {
@@ -124,7 +124,7 @@ public sealed class ScreenDevice : IDisposable
             catch (UsbTimeoutException)
             {
                 SetState(ScreenState.Recovering, null);
-                if (!TryRecover(transport))
+                if (!TryResetAndHandshake(transport))
                 {
                     Disconnect(NotRespondingReason);
                     return false;
@@ -158,8 +158,11 @@ public sealed class ScreenDevice : IDisposable
         transport.Read(new byte[AckSize], AckTimeoutMs);
     }
 
-    /// <summary>Reprise : reset des pipes, vidage des réponses en attente, nouvelle poignée de main.</summary>
-    private static bool TryRecover(IUsbTransport transport)
+    /// <summary>
+    /// Reset des pipes, vidage des réponses en attente, poignée de main. Sert à la reprise et à chaque
+    /// connexion : un processus précédent a pu figer l'écran en laissant une validation en file.
+    /// </summary>
+    private static bool TryResetAndHandshake(IUsbTransport transport)
     {
         transport.ResetPipes();
         var drain = new byte[AckSize];
