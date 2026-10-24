@@ -492,9 +492,10 @@ public sealed class ModuleRegistryTests
     {
         ModuleContext? captured = null;
         var scopes = new List<string>();
+        var store = new FakeSecretStore();
         var registry = new ModuleRegistry(
             [new CapturingFactory(ctx => captured = ctx)],
-            typeId => { scopes.Add(typeId); return new FakeSecretStore(); });
+            typeId => { scopes.Add(typeId); return store; });
         var settings = JsonDocument.Parse("{\"k\":42}").RootElement.Clone();
         var placement = Placement("fake") with { Settings = settings };
         var time = new FakeTimeProvider();
@@ -511,6 +512,7 @@ public sealed class ModuleRegistryTests
             Assert.Equal(42, captured.Settings.GetProperty("k").GetInt32());
             Assert.Same(time, captured.Time);
             Assert.Equal(["fake"], scopes);
+            Assert.Same(store, captured.Secrets);
 
             captured.Log.Info("bonjour");
             Assert.Contains(
