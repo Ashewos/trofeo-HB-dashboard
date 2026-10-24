@@ -34,7 +34,7 @@ public sealed class FrameComposer
             int saved = canvas.Save();
             try
             {
-                canvas.ClipRect(rect);
+                canvas.ClipRoundRect(new SKRoundRect(rect, theme.CornerRadius), antialias: true); // même arrondi que le panneau
                 var ctx = new ModuleRenderContext(
                     rect, new GridSize(placement.Columns, placement.Rows), theme, placement.TextSize.Factor(), now);
                 module.Render(canvas, ctx);

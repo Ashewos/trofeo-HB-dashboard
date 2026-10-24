@@ -19,7 +19,7 @@ public sealed class LayoutStore
     /// <summary>
     /// Ne lève jamais d'exception pour un problème de fichier. Fichier absent ou illisible (verrouillé) : disposition
     /// par défaut, sans copie. Fichier corrompu ou invalide (JSON illisible, rotation hors {0, 180}, module hors du
-    /// damier, modules qui se chevauchent) : défaut, et copie conservée en <c>.bad</c>.
+    /// damier, modules qui se chevauchent, type absent, identifiants d'instance en double) : défaut, et copie conservée en <c>.bad</c>.
     /// Les types inconnus et les tailles minimum dépendent du registre des modules : à vérifier par l'appelant
     /// avec <see cref="LayoutValidator.Check"/>.
     /// </summary>
@@ -43,8 +43,9 @@ public sealed class LayoutStore
                 throw new JsonException("Disposition invalide.");
             return layout;
         }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        catch (Exception)
         {
+            // Toute erreur de lecture ou de validation (JSON, type absent, débordement...) : défaut + copie .bad.
             try
             {
                 File.Copy(_filePath, _filePath + ".bad", overwrite: true);
@@ -62,9 +63,11 @@ public sealed class LayoutStore
         if (layout.Rotation is not (0 or 180) || layout.Placements is null) return false;
 
         var placements = layout.Placements;
-        if (placements.Any(p => p is null || p.Settings.ValueKind == JsonValueKind.Undefined ||
-                                !LayoutValidator.IsInBounds(p)))
+        if (placements.Any(p => p is null || string.IsNullOrWhiteSpace(p.TypeId) ||
+                                p.Settings.ValueKind == JsonValueKind.Undefined || !LayoutValidator.IsInBounds(p)))
             return false;
+
+        if (placements.Select(p => p.InstanceId).Distinct().Count() != placements.Count) return false;
 
         for (var i = 0; i < placements.Count; i++)
             for (var j = i + 1; j < placements.Count; j++)

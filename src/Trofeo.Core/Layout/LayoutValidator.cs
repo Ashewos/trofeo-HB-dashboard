@@ -35,10 +35,10 @@ public static class LayoutValidator
     /// <summary>Vrai si l'emplacement tient entièrement dans le damier.</summary>
     internal static bool IsInBounds(ModulePlacement p) =>
         p.Column >= 0 && p.Row >= 0 && p.Columns >= 1 && p.Rows >= 1 &&
-        p.Column + p.Columns <= GridGeometry.Columns &&
-        p.Row + p.Rows <= GridGeometry.Rows;
+        (long)p.Column + p.Columns <= GridGeometry.Columns && // long : pas de débordement d'entier
+        (long)p.Row + p.Rows <= GridGeometry.Rows;
 
     internal static bool Intersects(ModulePlacement a, ModulePlacement b) =>
-        a.Column < b.Column + b.Columns && b.Column < a.Column + a.Columns &&
-        a.Row < b.Row + b.Rows && b.Row < a.Row + a.Rows;
+        a.Column < (long)b.Column + b.Columns && b.Column < (long)a.Column + a.Columns &&
+        a.Row < (long)b.Row + b.Rows && b.Row < (long)a.Row + a.Rows;
 }

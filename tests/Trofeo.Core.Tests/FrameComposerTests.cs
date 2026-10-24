@@ -135,4 +135,21 @@ public class FrameComposerTests
         Assert.Equal(Themes.Classique.Background, frame.GetPixel(5, 5));
         Assert.Equal(SKColors.Red, frame.GetPixel(1500, 100));
     }
+
+    [Fact]
+    public void Compose_ModuleFillsBounds_IsClippedToRoundedCorners()
+    {
+        var id = Guid.NewGuid();
+        var layout = new DashboardLayout(0, [Place(id, 12, 0, 4, 2)]);
+        var modules = new Dictionary<Guid, IModule>
+        {
+            [id] = new FakeModule((canvas, ctx) => canvas.DrawRect(ctx.Bounds, new SKPaint { Color = SKColors.Red })),
+        };
+        var rect = GridGeometry.ModuleRect(12, 0, 4, 2);
+
+        using var frame = new FrameComposer().Compose(layout, modules, Themes.Classique, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(Themes.Classique.Background, frame.GetPixel(rect.Left, rect.Top)); // le coin arrondi n'est pas rouge
+        Assert.Equal(SKColors.Red, frame.GetPixel(rect.Left + 40, rect.Top + 40));
+    }
 }

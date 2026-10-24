@@ -109,6 +109,27 @@ public sealed class LayoutStoreTests : IDisposable
     public void Load_OutOfGrid_FallsBackAndKeepsBackup(int c, int r, int cs, int rs) =>
         AssertFallsBackAndKeepsBackup(LayoutJson(180, (c, r, cs, rs)));
 
+    [Theory]
+    [InlineData("""{"InstanceId":"11111111-1111-1111-1111-111111111111","Column":0,"Row":0,"Columns":4,"Rows":2,"TextSize":"Normal","Settings":{}}""")]
+    [InlineData("""{"InstanceId":"11111111-1111-1111-1111-111111111111","TypeId":null,"Column":0,"Row":0,"Columns":4,"Rows":2,"TextSize":"Normal","Settings":{}}""")]
+    [InlineData("""{"InstanceId":"11111111-1111-1111-1111-111111111111","TypeId":"  ","Column":0,"Row":0,"Columns":4,"Rows":2,"TextSize":"Normal","Settings":{}}""")]
+    public void Load_MissingTypeId_FallsBackAndKeepsBackup(string placement) =>
+        AssertFallsBackAndKeepsBackup("""{"Rotation":180,"Placements":[""" + placement + "]}");
+
+    [Fact]
+    public void Load_DuplicateInstanceId_FallsBackAndKeepsBackup()
+    {
+        string Place(int column) =>
+            """{"InstanceId":"11111111-1111-1111-1111-111111111111","TypeId":"clock","Column":COL,"Row":0,"Columns":4,"Rows":2,"TextSize":"Normal","Settings":{}}"""
+                .Replace("COL", column.ToString());
+
+        AssertFallsBackAndKeepsBackup("""{"Rotation":180,"Placements":[""" + Place(0) + "," + Place(4) + "]}");
+    }
+
+    [Fact]
+    public void Load_IntOverflowPlacement_FallsBackAndKeepsBackup() =>
+        AssertFallsBackAndKeepsBackup(LayoutJson(180, (int.MaxValue, 0, 2, 2)));
+
     [Fact]
     public void Load_ValidHandWrittenFile_IsAccepted()
     {

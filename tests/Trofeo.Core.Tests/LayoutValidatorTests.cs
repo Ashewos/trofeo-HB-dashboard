@@ -26,6 +26,16 @@ public class LayoutValidatorTests
     }
 
     [Fact]
+    public void Check_IntOverflow_IsOutOfBounds()
+    {
+        var candidate = Placement(Guid.NewGuid(), int.MaxValue, 0, 4, 2);
+        Assert.Equal(PlacementError.OutOfBounds, LayoutValidator.Check(Existing, candidate, Types));
+
+        var rows = Placement(Guid.NewGuid(), 0, int.MaxValue, 4, 2);
+        Assert.Equal(PlacementError.OutOfBounds, LayoutValidator.Check(Existing, rows, Types));
+    }
+
+    [Fact]
     public void Check_Overlap()
     {
         var candidate = Placement(Guid.NewGuid(), 11, 0, 4, 2);
