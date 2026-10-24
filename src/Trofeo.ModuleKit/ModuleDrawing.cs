@@ -1,0 +1,285 @@
+using System.Collections.Concurrent;
+using System.Text;
+using SkiaSharp;
+
+namespace Trofeo.ModuleKit;
+
+/// <summary>
+/// Primitives de dessin partagées par les modules : texte avec police de secours, coupure,
+/// barres de progression et message d'action. Tout est sans état hormis le cache des polices
+/// de secours (thread-safe) : appelable depuis le thread d'affichage.
+/// </summary>
+public static class ModuleDrawing
+{
+    private const string Ellipsis = "…";
+
+    /// <summary>Polices de secours déjà résolues, par (famille de la police principale, point de code). <c>null</c> = aucune trouvée.</summary>
+    private static readonly ConcurrentDictionary<(string Family, int CodePoint), SKTypeface?> FallbackCache = new();
+
+    /// <summary>Suite de caractères dessinée avec une même police (principale ou de secours).</summary>
+    private readonly record struct Run(string Text, SKTypeface Typeface);
+
+    /// <summary>Largeur du texte en pixels, caractères absents de la police principale compris (police de secours).</summary>
+    public static float MeasureText(string text, SKFont font)
+    {
+        if (string.IsNullOrEmpty(text)) return 0f;
+
+        var width = 0f;
+        foreach (var run in Split(text, font))
+        {
+            if (ReferenceEquals(run.Typeface, font.Typeface))
+            {
+                width += font.MeasureText(run.Text);
+            }
+            else
+            {
+                using var fallback = CloneFont(font, run.Typeface);
+                width += fallback.MeasureText(run.Text);
+            }
+        }
+        return width;
+    }
+
+    /// <summary>
+    /// Dessine le texte sur sa ligne de base. Les caractères absents de la police principale sont
+    /// dessinés avec une police de secours du système ; l'alignement porte sur la largeur totale.
+    /// </summary>
+    public static void DrawText(SKCanvas canvas, string text, float x, float baseline, SKTextAlign align, SKFont font, SKPaint paint)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+
+        var runs = Split(text, font);
+        var start = x;
+        if (align != SKTextAlign.Left)
+        {
+            var total = MeasureText(text, font);
+            start = align == SKTextAlign.Center ? x - total / 2f : x - total;
+        }
+
+        foreach (var run in runs)
+        {
+            if (ReferenceEquals(run.Typeface, font.Typeface))
+            {
+                canvas.DrawText(run.Text, start, baseline, SKTextAlign.Left, font, paint);
+                start += font.MeasureText(run.Text);
+            }
+            else
+            {
+                using var fallback = CloneFont(font, run.Typeface);
+                canvas.DrawText(run.Text, start, baseline, SKTextAlign.Left, fallback, paint);
+                start += fallback.MeasureText(run.Text);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Raccourcit le texte pour qu'il tienne dans <paramref name="maxWidth"/> : le plus long préfixe
+    /// suivi de « … » qui tient (sans jamais couper une paire de substitution), ou « … » seul.
+    /// </summary>
+    public static string Ellipsize(string text, SKFont font, float maxWidth)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        if (MeasureText(text, font) <= maxWidth) return text;
+
+        var runes = text.EnumerateRunes().ToArray();
+        // Recherche dichotomique du plus grand nombre de caractères conservés.
+        int low = 0, high = runes.Length - 1;
+        while (low < high)
+        {
+            var mid = (low + high + 1) / 2;
+            if (MeasureText(Prefix(runes, mid) + Ellipsis, font) <= maxWidth) low = mid;
+            else high = mid - 1;
+        }
+        return low == 0 ? Ellipsis : Prefix(runes, low) + Ellipsis;
+    }
+
+    /// <summary>
+    /// Coupe le texte sur les espaces en lignes d'au plus <paramref name="maxWidth"/>, sur au plus
+    /// <paramref name="maxLines"/> lignes. Un mot trop long est ellipsé sur sa ligne ; s'il reste du texte
+    /// après la dernière ligne autorisée, celle-ci est ellipsée.
+    /// </summary>
+    public static IReadOnlyList<string> Wrap(string text, SKFont font, float maxWidth, int maxLines)
+        => WrapCore(text, font, maxWidth, maxLines).Lines;
+
+    /// <summary>Remplit <paramref name="rect"/> d'une piste arrondie, puis de la fraction (bornée à [0, 1], NaN = 0) en <paramref name="fill"/>.</summary>
+    public static void DrawBar(SKCanvas canvas, SKRect rect, float fraction, SKColor fill, SKColor track)
+    {
+        if (rect.Width <= 0f || rect.Height <= 0f) return;
+
+        var clamped = float.IsNaN(fraction) ? 0f : Math.Clamp(fraction, 0f, 1f);
+        var radius = rect.Height / 2f;
+        using var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
+
+        paint.Color = track;
+        canvas.DrawRoundRect(rect, radius, radius, paint);
+
+        if (clamped <= 0f) return;
+
+        // Le remplissage est rogné par la piste : extrémités arrondies même pour une fraction faible.
+        canvas.Save();
+        using (var rounded = new SKRoundRect(rect, radius, radius))
+        {
+            canvas.ClipRoundRect(rounded, SKClipOperation.Intersect, antialias: true);
+        }
+        paint.Color = fill;
+        canvas.DrawRect(new SKRect(rect.Left, rect.Top, rect.Left + rect.Width * clamped, rect.Bottom), paint);
+        canvas.Restore();
+    }
+
+    /// <summary>
+    /// Message d'action (ex. « Réglages requis ») en <see cref="Theme.Warning"/>, centré dans
+    /// <paramref name="area"/> sur au plus 3 lignes. Taille 24 × <paramref name="textScale"/>, réduite
+    /// par pas de 2 jusqu'à 16 × <paramref name="textScale"/> si le texte ne tient pas.
+    /// </summary>
+    public static void DrawActionMessage(SKCanvas canvas, SKRect area, Theme theme, float textScale, string message)
+    {
+        if (string.IsNullOrWhiteSpace(message) || area.Width <= 0f || area.Height <= 0f) return;
+
+        const int maxLines = 3;
+        var maxSize = 24f * textScale;
+        var minSize = 16f * textScale;
+
+        var size = maxSize;
+        while (true)
+        {
+            using var font = new SKFont(theme.Typeface, size) { Subpixel = true };
+            var (lines, truncated) = WrapCore(message, font, area.Width, maxLines);
+            if (truncated && size - 2f >= minSize)
+            {
+                size -= 2f;
+                continue;
+            }
+
+            DrawCentered(canvas, area, theme, font, lines);
+            return;
+        }
+    }
+
+    private static void DrawCentered(SKCanvas canvas, SKRect area, Theme theme, SKFont font, IReadOnlyList<string> lines)
+    {
+        var metrics = font.Metrics;
+        var lineHeight = font.Spacing;
+        var top = area.MidY - lineHeight * lines.Count / 2f;
+
+        using var paint = new SKPaint { Color = theme.Warning, IsAntialias = true };
+        canvas.Save();
+        canvas.ClipRect(area);
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var baseline = top + i * lineHeight - metrics.Ascent;
+            DrawText(canvas, lines[i], area.MidX, baseline, SKTextAlign.Center, font, paint);
+        }
+        canvas.Restore();
+    }
+
+    private static (IReadOnlyList<string> Lines, bool Truncated) WrapCore(string text, SKFont font, float maxWidth, int maxLines)
+    {
+        var lines = new List<string>();
+        if (maxLines <= 0 || string.IsNullOrWhiteSpace(text)) return (lines, false);
+
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var truncated = false;
+        var current = string.Empty;
+
+        for (var i = 0; i < words.Length; i++)
+        {
+            var candidate = current.Length == 0 ? words[i] : current + " " + words[i];
+            if (MeasureText(candidate, font) <= maxWidth)
+            {
+                current = candidate;
+                continue;
+            }
+
+            if (current.Length > 0)
+            {
+                if (lines.Count == maxLines - 1)
+                {
+                    // Dernière ligne autorisée : elle absorbe tout le reste du texte et est ellipsée.
+                    lines.Add(Ellipsize(string.Join(' ', words[(i - CountWords(current))..]), font, maxWidth));
+                    return (lines, true);
+                }
+                lines.Add(current);
+            }
+
+            // Un mot plus large que la ligne est ellipsé sur sa propre ligne.
+            if (MeasureText(words[i], font) > maxWidth)
+            {
+                truncated = true;
+                if (lines.Count == maxLines - 1)
+                {
+                    lines.Add(Ellipsize(string.Join(' ', words[i..]), font, maxWidth));
+                    return (lines, true);
+                }
+                lines.Add(Ellipsize(words[i], font, maxWidth));
+                current = string.Empty;
+            }
+            else
+            {
+                current = words[i];
+            }
+        }
+
+        if (current.Length > 0) lines.Add(current);
+        return (lines, truncated);
+    }
+
+    private static int CountWords(string line)
+    {
+        var count = 1;
+        foreach (var c in line)
+        {
+            if (c == ' ') count++;
+        }
+        return count;
+    }
+
+    private static string Prefix(Rune[] runes, int count)
+    {
+        var sb = new StringBuilder(count * 2);
+        for (var i = 0; i < count; i++) sb.Append(runes[i].ToString());
+        return sb.ToString();
+    }
+
+    /// <summary>Découpe le texte en suites de caractères résolus vers la même police.</summary>
+    private static List<Run> Split(string text, SKFont font)
+    {
+        var runs = new List<Run>(1);
+        var primary = font.Typeface;
+        var sb = new StringBuilder(text.Length);
+        SKTypeface? current = null;
+
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var typeface = Resolve(rune.Value, primary);
+            if (current is not null && !ReferenceEquals(typeface, current))
+            {
+                runs.Add(new Run(sb.ToString(), current));
+                sb.Clear();
+            }
+            current = typeface;
+            sb.Append(rune.ToString());
+        }
+
+        if (current is not null) runs.Add(new Run(sb.ToString(), current));
+        return runs;
+    }
+
+    private static SKTypeface Resolve(int codePoint, SKTypeface primary)
+    {
+        if (primary.ContainsGlyph(codePoint)) return primary;
+
+        var fallback = FallbackCache.GetOrAdd(
+            (primary.FamilyName, codePoint),
+            static key => SKFontManager.Default.MatchCharacter(key.CodePoint));
+        return fallback ?? primary;
+    }
+
+    private static SKFont CloneFont(SKFont source, SKTypeface typeface) => new(typeface, source.Size, source.ScaleX, source.SkewX)
+    {
+        Edging = source.Edging,
+        Subpixel = source.Subpixel,
+        Hinting = source.Hinting,
+        LinearMetrics = source.LinearMetrics,
+        Embolden = source.Embolden,
+    };
+}
