@@ -62,6 +62,8 @@ public sealed class LayoutStore
     {
         if (layout.Rotation is not (0 or 180) || layout.Placements is null) return false;
 
+        if (layout.Shortcuts is { } shortcuts && shortcuts.Any(s => s is null)) return false;
+
         var placements = layout.Placements;
         if (placements.Any(p => p is null || string.IsNullOrWhiteSpace(p.TypeId) ||
                                 p.Settings.ValueKind == JsonValueKind.Undefined || !LayoutValidator.IsInBounds(p)))

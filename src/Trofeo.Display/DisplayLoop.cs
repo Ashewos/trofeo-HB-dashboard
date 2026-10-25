@@ -102,6 +102,30 @@ public sealed class DisplayLoop : IDisposable
         _modules[placement.InstanceId] = module;
     }
 
+    /// <summary>
+    /// Le module qui reçoit une commande de raccourci : l'instance demandée si elle accepte les commandes, sinon le
+    /// premier module qui les accepte, dans l'ordre de la disposition (colonne, puis rangée). <c>null</c> s'il n'y en a aucun.
+    /// Appelable depuis le thread de l'interface : <c>_modules</c> n'est modifié que par le constructeur et <see cref="Dispose"/>,
+    /// et l'appelant doit cesser d'appeler avant de libérer la boucle.
+    /// </summary>
+    public ICommandableModule? FindCommandTarget(Guid? instanceId)
+    {
+        if (instanceId is { } id && _modules.TryGetValue(id, out var requested) && requested is ICommandableModule target)
+        {
+            return target;
+        }
+
+        foreach (var placement in _layout.Placements.OrderBy(p => p.Column).ThenBy(p => p.Row))
+        {
+            if (_modules.TryGetValue(placement.InstanceId, out var module) && module is ICommandableModule commandable)
+            {
+                return commandable;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Journalise le nouvel état d'un module et redemande une image. Peut être appelé depuis n'importe quel thread.</summary>
     private void OnStatusChanged(object? sender, EventArgs e)
     {

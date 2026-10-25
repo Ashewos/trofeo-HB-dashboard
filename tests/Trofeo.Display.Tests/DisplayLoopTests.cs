@@ -468,6 +468,76 @@ public sealed class DisplayLoopTests
         Assert.Equal(1, second.Disposed); // refusé et libéré : pas de minuteur orphelin
     }
 
+    private sealed class CommandableModule(string typeId) : IModule, ICommandableModule
+    {
+        public ModuleDescriptor Descriptor { get; } = new(typeId, typeId, new GridSize(1, 1), new Dictionary<SizePreset, GridSize>());
+        public ModuleStatus Status => new(ModuleHealth.Online);
+        public bool IsAnimating => false;
+        public event EventHandler? Invalidated { add { } remove { } }
+        public event EventHandler? StatusChanged { add { } remove { } }
+        public bool HandleCommand(ModuleCommand command) => true;
+        public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+        public void Render(SkiaSharp.SKCanvas canvas, ModuleRenderContext ctx) { }
+        public void Dispose() { }
+    }
+
+    private static readonly Guid IdA = new("aaaaaaaa-0000-0000-0000-000000000001");
+    private static readonly Guid IdB = new("bbbbbbbb-0000-0000-0000-000000000002");
+    private static readonly Guid IdC = new("cccccccc-0000-0000-0000-000000000003");
+
+    private static ModulePlacement Placed(Guid id, string typeId, int column, int row) =>
+        new(id, typeId, column, row, 4, 1, TextSize.Normal, JsonDocument.Parse("{}").RootElement.Clone());
+
+    /// <summary>Le module « fake » (non commandable) en (0, 0), plus des commandables posés dans l'ordre donné.</summary>
+    private static Rig CommandRig(params (CommandableModule Module, ModulePlacement Placement)[] commandables) =>
+        new(rows: 1,
+            extraFactories: [.. commandables.Select(c => new FakeModuleFactory(c.Placement.TypeId, new GridSize(1, 1), () => c.Module))],
+            extraPlacements: commandables.Select(c => c.Placement));
+
+    [Fact]
+    public void FindCommandTarget_FirstByColumn()
+    {
+        var a = new CommandableModule("cmd-a");
+        var b = new CommandableModule("cmd-b");
+        var c = new CommandableModule("cmd-c");
+        // Listés dans le désordre : c est à la colonne la plus à gauche, bien que sur la rangée 1.
+        using var rig = CommandRig((b, Placed(IdB, "cmd-b", 12, 0)), (a, Placed(IdA, "cmd-a", 8, 0)), (c, Placed(IdC, "cmd-c", 4, 1)));
+
+        Assert.Same(c, rig.Loop.FindCommandTarget(null));
+        Assert.Same(c, rig.Loop.FindCommandTarget(Guid.NewGuid())); // instance inconnue : le premier
+        Assert.Same(c, rig.Loop.FindCommandTarget(InstanceId)); // le module « fake » n'accepte pas les commandes
+    }
+
+    [Fact]
+    public void FindCommandTarget_SameColumn_FirstByRow()
+    {
+        var a = new CommandableModule("cmd-a");
+        var b = new CommandableModule("cmd-b");
+        using var rig = CommandRig((a, Placed(IdA, "cmd-a", 8, 1)), (b, Placed(IdB, "cmd-b", 8, 0)));
+
+        Assert.Same(b, rig.Loop.FindCommandTarget(null));
+    }
+
+    [Fact]
+    public void FindCommandTarget_ExplicitInstance()
+    {
+        var a = new CommandableModule("cmd-a");
+        var b = new CommandableModule("cmd-b");
+        using var rig = CommandRig((a, Placed(IdA, "cmd-a", 4, 0)), (b, Placed(IdB, "cmd-b", 8, 0)));
+
+        Assert.Same(b, rig.Loop.FindCommandTarget(IdB));
+        Assert.Same(a, rig.Loop.FindCommandTarget(IdA));
+    }
+
+    [Fact]
+    public void FindCommandTarget_NoCommandableModule_Null()
+    {
+        using var rig = new Rig();
+
+        Assert.Null(rig.Loop.FindCommandTarget(null));
+        Assert.Null(rig.Loop.FindCommandTarget(InstanceId));
+    }
+
     [Fact]
     public void StatusChanged_MarksDirtyAndLogs()
     {

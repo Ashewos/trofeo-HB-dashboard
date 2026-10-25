@@ -5,6 +5,7 @@ using Trofeo.Core.Layout;
 using Trofeo.Core.Logging;
 using Trofeo.Core.Rendering;
 using Trofeo.Core.Secrets;
+using Trofeo.Core.Shortcuts;
 using Trofeo.Device;
 using Trofeo.Modules.Clock;
 using Trofeo.Modules.Monitoring;
@@ -96,6 +97,14 @@ static class Program
 
         try
         {
+            // Sur le thread de l'interface, avant la pompe de messages. Déclarés après la boucle et dans ce bloc :
+            // le routeur (qui retire les raccourcis) puis la fenêtre sont libérés avant elle, plus aucun raccourci
+            // ne peut atteindre une boucle libérée.
+            using var hotkeyWindow = new HotkeyWindow();
+            using var hotkeys = new HotkeyRouter(hotkeyWindow, layout.Shortcuts ?? ShortcutDefaults.All, loop.FindCommandTarget);
+            hotkeyWindow.Hotkey += hotkeys.OnHotkey;
+            hotkeys.RegisterAll();
+
             using var tray = new TrayIcon(screen);
             Application.Run(tray);
         }

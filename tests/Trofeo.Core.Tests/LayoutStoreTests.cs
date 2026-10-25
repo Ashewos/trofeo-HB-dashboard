@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Trofeo.Core.Layout;
+using Trofeo.Core.Shortcuts;
 using Trofeo.ModuleKit;
 
 namespace Trofeo.Core.Tests;
@@ -80,6 +81,56 @@ public sealed class LayoutStoreTests : IDisposable
         Assert.Equal(JsonValueKind.Object, p.Settings.ValueKind);
         Assert.Contains("\"Large\"", File.ReadAllText(FilePath));
         Assert.False(File.Exists(FilePath + ".tmp"));
+    }
+
+    [Fact]
+    public void Layout_WithShortcuts_RoundTrips()
+    {
+        var target = Guid.NewGuid();
+        var placement = new ModulePlacement(
+            Guid.NewGuid(), "clock", 0, 0, 4, 2, TextSize.Normal, JsonDocument.Parse("{}").RootElement.Clone());
+        var layout = new DashboardLayout(180, [placement],
+        [
+            new ShortcutBinding("Ctrl+Alt+Right", ModuleCommandKind.NextTab),
+            new ShortcutBinding("Ctrl+Shift+F5", ModuleCommandKind.SelectTab, 4, target),
+        ]);
+        var store = new LayoutStore(FilePath);
+
+        store.Save(layout);
+        var loaded = store.Load();
+
+        Assert.NotNull(loaded.Shortcuts);
+        Assert.Equal(
+            [
+                new ShortcutBinding("Ctrl+Alt+Right", ModuleCommandKind.NextTab),
+                new ShortcutBinding("Ctrl+Shift+F5", ModuleCommandKind.SelectTab, 4, target),
+            ],
+            loaded.Shortcuts);
+        Assert.Contains("\"NextTab\"", File.ReadAllText(FilePath));
+    }
+
+    [Fact]
+    public void Layout_OldFile_ShortcutsNull()
+    {
+        File.WriteAllText(FilePath, $$"""
+            {"Rotation":180,"Placements":[{"InstanceId":"11111111-1111-1111-1111-111111111111","TypeId":"clock","Column":0,"Row":0,"Columns":4,"Rows":2,"TextSize":"Normal","Settings":{{ClockSettings}}}]}
+            """);
+
+        var loaded = new LayoutStore(FilePath).Load();
+
+        Assert.Single(loaded.Placements);
+        Assert.Null(loaded.Shortcuts);
+    }
+
+    [Fact]
+    public void Layout_NullShortcutEntry_FallsBackToDefault()
+    {
+        File.WriteAllText(FilePath, """{"Rotation":180,"Placements":[],"Shortcuts":[null]}""");
+
+        var loaded = new LayoutStore(FilePath).Load();
+
+        Assert.Same(DashboardLayout.Default, loaded);
+        Assert.True(File.Exists(FilePath + ".bad"));
     }
 
     [Fact]
