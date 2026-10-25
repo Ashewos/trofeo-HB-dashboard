@@ -27,7 +27,13 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
         public TranscriptTail Tail { get; } = new(path);
 
         public CodexRollout Rollout { get; } = new();
+
+        // La première ligne (session_meta) reste à lire : la lecture est repartie de la fin et n'a pas encore pu l'obtenir.
+        public bool HeadPending { get; set; }
     }
+
+    /// <summary>Lecteur de la première ligne d'un fichier (remplaçable par les tests).</summary>
+    internal Func<string, string?> HeadReader { get; init; } = ReadFirstLine;
 
     private sealed record Candidate(FileInfo File, DateTimeOffset WrittenAt);
 
@@ -43,11 +49,18 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
         var sessions = new List<(AgentSessionSummary Summary, CodexRollout Rollout)>();
         foreach (var candidate in tracked)
         {
-            var rollout = Update(candidate.File.FullName);
-            var id = rollout.SessionId ?? Path.GetFileNameWithoutExtension(candidate.File.Name);
-            var startedAt = rollout.StartedAt ?? new DateTimeOffset(candidate.File.CreationTimeUtc, TimeSpan.Zero);
-            sessions.Add((new AgentSessionSummary(id, ProjectName(rollout.Cwd), rollout.Activity(now), startedAt,
-                rollout.LastEventAt ?? candidate.WrittenAt), rollout));
+            try
+            {
+                var rollout = Update(candidate.File.FullName);
+                var id = rollout.SessionId ?? Path.GetFileNameWithoutExtension(candidate.File.Name);
+                var startedAt = rollout.StartedAt ?? new DateTimeOffset(candidate.File.CreationTimeUtc, TimeSpan.Zero);
+                sessions.Add((new AgentSessionSummary(id, ProjectName(rollout.Cwd), rollout.Activity(now), startedAt,
+                    rollout.LastEventAt ?? candidate.WrittenAt), rollout));
+            }
+            catch (Exception)
+            {
+                // Un fichier qui pose problème ne fait perdre que lui-même : les autres sessions restent listées.
+            }
         }
 
         sessions.Sort((a, b) =>
@@ -110,8 +123,9 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
 
     /// <summary>
     /// Applique les lignes nouvelles de la transcription. Après un redémarrage de la lecture, l'état est remis à zéro et
-    /// la première ligne du fichier (que la fin peut omettre) est appliquée avant les autres. Une ligne ou un fichier qui
-    /// pose problème ne fait perdre que lui-même.
+    /// la première ligne du fichier (que la fin peut omettre) est appliquée avant les autres ; si on n'a pas pu la lire
+    /// (verrou passager, ligne pas encore complète), on réessaie à chaque relevé tant que la session n'a pas d'identifiant.
+    /// Une ligne ou un fichier qui pose problème ne fait perdre que lui-même.
     /// </summary>
     private CodexRollout Update(string path)
     {
@@ -124,12 +138,18 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
         try
         {
             var lines = state.Tail.ReadNewLines();
-            if (state.Tail.Restarted)
+            var restarted = state.Tail.Restarted;
+            if (restarted)
             {
                 state.Rollout.Reset();
+                state.HeadPending = true;
+            }
+
+            if (state.HeadPending && state.Rollout.SessionId is null && HeadReader(path) is { } head)
+            {
+                state.HeadPending = false;
                 // Si la fin recouvre tout le fichier, la première ligne en fait déjà partie.
-                var head = ReadFirstLine(path);
-                if (head is not null && !(lines.Count > 0 && lines[0] == head))
+                if (!(restarted && lines.Count > 0 && lines[0] == head))
                 {
                     ApplyLine(state.Rollout, head);
                 }
@@ -139,10 +159,15 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
             {
                 ApplyLine(state.Rollout, line);
             }
+
+            if (state.Rollout.SessionId is not null)
+            {
+                state.HeadPending = false;
+            }
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception)
         {
-            // Fichier verrouillé ou disparu : on garde ce qu'on sait, et on réessaie au prochain relevé.
+            // Fichier verrouillé, disparu ou inattendu : on garde ce qu'on sait, et on réessaie au prochain relevé.
         }
 
         return state.Rollout;
@@ -160,8 +185,11 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
         }
     }
 
-    /// <summary>La première ligne du fichier (64 Kio au plus), ou <c>null</c> si elle est absente, incomplète ou trop longue.</summary>
-    private static string? ReadFirstLine(string path)
+    /// <summary>
+    /// La première ligne du fichier (64 Kio au plus). <c>null</c> si elle est absente, incomplète ou illisible pour
+    /// l'instant : on réessaiera. Vide si elle dépasse 64 Kio (inutile de réessayer).
+    /// </summary>
+    internal static string? ReadFirstLine(string path)
     {
         try
         {
@@ -171,7 +199,7 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
             var end = Array.IndexOf(buffer, (byte)'\n', 0, read);
             if (end < 0)
             {
-                return null;
+                return read == buffer.Length ? "" : null;
             }
 
             var length = end > 0 && buffer[end - 1] == (byte)'\r' ? end - 1 : end;

@@ -19,6 +19,9 @@ public sealed class CodexRollout
     private IReadOnlyList<AgentTask> _tasks = [];
     // Une tâche a démarré (task_started) et rien ne l'a terminée depuis.
     private bool _taskOpen;
+    // Un task_started, task_complete ou turn_aborted a été vu depuis le dernier Reset. Sinon (fin de fichier qui a coupé
+    // le début d'un long tour), on ne sait pas si une tâche est ouverte et on se fie à la fraîcheur du dernier événement.
+    private bool _turnSeen;
     // Le dernier événement est une demande d'approbation ou de réponse à l'utilisateur.
     private bool _waiting;
 
@@ -70,13 +73,15 @@ public sealed class CodexRollout
         ContextPercent = null;
         Quotas = null;
         _taskOpen = false;
+        _turnSeen = false;
         _waiting = false;
     }
 
     /// <summary>
     /// Ce que fait la session à l'instant <paramref name="now"/> : elle attend l'utilisateur si une demande
-    /// d'approbation est le dernier événement ; elle travaille si une tâche a démarré sans finir et que le dernier
-    /// événement a moins de 10 minutes ; sinon elle est inactive.
+    /// d'approbation est le dernier événement ; elle travaille si le dernier événement a moins de 10 minutes et que
+    /// la tâche est ouverte (<c>task_started</c> sans fin depuis) ou que l'on n'a vu aucun début ni fin de tâche (le
+    /// début d'un long tour a pu sortir de la partie lue) ; sinon elle est inactive.
     /// </summary>
     public AgentActivity Activity(DateTimeOffset now)
     {
@@ -85,7 +90,8 @@ public sealed class CodexRollout
             return AgentActivity.Waiting;
         }
 
-        return _taskOpen && LastEventAt is { } last && now - last < WorkingMaxSilence ? AgentActivity.Working : AgentActivity.Idle;
+        var open = !_turnSeen || _taskOpen;
+        return open && LastEventAt is { } last && now - last < WorkingMaxSilence ? AgentActivity.Working : AgentActivity.Idle;
     }
 
     /// <summary>Prend en compte une ligne de la transcription. Une ligne vide, illisible ou inconnue est ignorée.</summary>
@@ -118,8 +124,16 @@ public sealed class CodexRollout
 
             if (outcome != Outcome.Ignored)
             {
-                LastEventAt = at ?? LastEventAt;
-                _waiting = outcome == Outcome.Approval;
+                if (at is { } moment && (LastEventAt is not { } last || moment > last))
+                {
+                    LastEventAt = moment;
+                }
+
+                // Un relevé de jetons (ou la ligne de méta) ne répond pas à la demande : l'attente continue.
+                if (outcome != Outcome.Passive)
+                {
+                    _waiting = outcome == Outcome.Approval;
+                }
             }
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException)
@@ -128,14 +142,15 @@ public sealed class CodexRollout
         }
     }
 
-    private enum Outcome { Ignored, Event, Approval }
+    /// <summary>Effet d'une ligne : ignorée ; événement (met fin à l'attente) ; demande d'approbation ; ou événement qui laisse l'attente en l'état.</summary>
+    private enum Outcome { Ignored, Event, Approval, Passive }
 
     private Outcome ApplyMeta(JsonElement payload, DateTimeOffset? at)
     {
         SessionId = Str(payload, "id") ?? SessionId;
         Cwd = Str(payload, "cwd") ?? Cwd;
         StartedAt = Time(Str(payload, "timestamp")) ?? at ?? StartedAt;
-        return Outcome.Event;
+        return Outcome.Passive;
     }
 
     private Outcome ApplyTurnContext(JsonElement payload)
@@ -165,15 +180,17 @@ public sealed class CodexRollout
                 }
             case "task_started":
                 _taskOpen = true;
+                _turnSeen = true;
                 break;
             case "task_complete" or "turn_aborted":
                 _taskOpen = false;
+                _turnSeen = true;
                 break;
             case "exec_approval_request" or "apply_patch_approval_request" or "request_user_input":
                 return Outcome.Approval;
             case "token_count":
                 ApplyTokenCount(payload, at);
-                break;
+                return Outcome.Passive;
         }
 
         return Outcome.Event;
@@ -228,9 +245,10 @@ public sealed class CodexRollout
             }
         }
 
+        // Fusion fenêtre par fenêtre : un relevé qui n'en porte qu'une garde l'autre telle qu'on la connaissait.
         if (fiveHour is not null || weekly is not null)
         {
-            Quotas = new AgentQuotas(fiveHour, weekly, at);
+            Quotas = new AgentQuotas(fiveHour ?? Quotas?.FiveHour, weekly ?? Quotas?.Weekly, at);
         }
     }
 

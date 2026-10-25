@@ -262,6 +262,60 @@ public sealed class CodexSourceTests : IDisposable
     }
 
     [Fact]
+    public void Source_HeadUnreadable_RetriedUntilSessionHasAnId()
+    {
+        var cwd = Project("retry");
+        var lines = new List<string> { Meta("meta-id", cwd, Now.AddMinutes(-30)) };
+        lines.AddRange(Enumerable.Range(0, 700).Select(Filler));
+        var path = Rollout(Now, "rollout-big.jsonl", Now.AddSeconds(-5), [.. lines]);
+        var attempts = 0;
+
+        // Première lecture de la première ligne : verrou passager.
+        using var source = new CodexSource(_home, _time) { HeadReader = p => ++attempts == 1 ? null : CodexSource.ReadFirstLine(p) };
+
+        Assert.Equal("rollout-big", Assert.Single(source.Poll(null, Now).Sessions).Id);
+        Assert.Equal(1, attempts);
+
+        File.AppendAllText(path, Event("task_started", Now.AddSeconds(-2)) + "\n");
+        var summary = Assert.Single(source.Poll(null, Now).Sessions);
+        Assert.Equal("meta-id", summary.Id);
+        Assert.Equal("retry", summary.ProjectName);
+        Assert.Equal(AgentActivity.Working, summary.Activity);
+        Assert.Equal(2, attempts);
+
+        // Identifiant connu : plus de relecture.
+        Assert.Equal("meta-id", Assert.Single(source.Poll(null, Now).Sessions).Id);
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public void Source_HeadTooLong_NotRetried()
+    {
+        var path = Rollout(Now, "rollout-long.jsonl", Now.AddSeconds(-5), new string('x', 70 * 1024), Event("task_started", Now.AddSeconds(-2)));
+        var attempts = 0;
+
+        using var source = new CodexSource(_home, _time) { HeadReader = p => { attempts++; return CodexSource.ReadFirstLine(p); } };
+        source.Poll(null, Now);
+        source.Poll(null, Now);
+
+        Assert.Equal(1, attempts);
+        Assert.True(File.Exists(path));
+    }
+
+    [Fact]
+    public void Source_UnexpectedException_KeepsTheSession()
+    {
+        Rollout(Now, "rollout-a.jsonl", Now.AddMinutes(-1), Meta("a", Project("a"), Now.AddMinutes(-5)));
+        Rollout(Now, "rollout-b.jsonl", Now.AddMinutes(-2), Meta("b", Project("b"), Now.AddMinutes(-4)));
+
+        using var source = new CodexSource(_home, _time) { HeadReader = _ => throw new InvalidOperationException("inattendu") };
+        var snapshot = source.Poll(null, Now);
+
+        Assert.True(snapshot.Installed);
+        Assert.Equal(2, snapshot.Sessions.Count);
+    }
+
+    [Fact]
     public void Source_SmallFile_HeadLineNotAppliedTwice()
     {
         // Fichier sans session_meta dont la première ligne est un appel d'outil : lue par la fin, pas aussi par le début.

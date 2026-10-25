@@ -248,6 +248,90 @@ public sealed class CodexRolloutTests
     }
 
     [Fact]
+    public void Activity_NoTurnBoundarySeen_RecentEventIsWorking()
+    {
+        // Le début du tour est sorti de la partie lue : seul compte la fraîcheur du dernier événement.
+        var rollout = Build(Call("shell", """{"command":"ls"}""", 0));
+
+        Assert.Equal(AgentActivity.Working, rollout.Activity(T0.AddMinutes(9)));
+        Assert.Equal(AgentActivity.Idle, rollout.Activity(T0.AddMinutes(11)));
+    }
+
+    [Fact]
+    public void Activity_NoTurnBoundarySeen_ApprovalStillWaits()
+    {
+        var rollout = Build(Call("shell", """{"command":"ls"}""", 0), Event("exec_approval_request", 1));
+
+        Assert.Equal(AgentActivity.Waiting, rollout.Activity(T0.AddMinutes(30)));
+    }
+
+    [Fact]
+    public void Activity_CompleteSeenWithoutStart_IsIdle()
+    {
+        var rollout = Build(Call("shell", """{"command":"ls"}""", 0), Event("task_complete", 1));
+
+        Assert.Equal(AgentActivity.Idle, rollout.Activity(T0.AddSeconds(2)));
+    }
+
+    [Fact]
+    public void Activity_ResetForgetsTurnBoundaries()
+    {
+        var rollout = Build(Event("task_complete", 0));
+        rollout.Reset();
+        rollout.Apply(Call("shell", """{"command":"ls"}""", 5));
+
+        Assert.Equal(AgentActivity.Working, rollout.Activity(T0.AddSeconds(6)));
+    }
+
+    [Fact]
+    public void Activity_TokenCountDoesNotEndWaiting()
+    {
+        var rollout = Build(Event("task_started", 1), Event("exec_approval_request", 2));
+
+        rollout.Apply(Event("token_count", 3, ",\"info\":null"));
+        Assert.Equal(AgentActivity.Waiting, rollout.Activity(T0.AddSeconds(4)));
+
+        rollout.Apply(Call("shell", """{"command":"ls"}""", 5));
+        Assert.Equal(AgentActivity.Working, rollout.Activity(T0.AddSeconds(6)));
+    }
+
+    [Fact]
+    public void TokenCount_MergesQuotaWindows()
+    {
+        var rollout = Build(
+            Event("token_count", 1, """
+                ,"rate_limits":{"primary":{"used_percent":10,"window_minutes":300},"secondary":{"used_percent":20,"window_minutes":10080}}
+                """),
+            Event("token_count", 2, """
+                ,"rate_limits":{"primary":{"used_percent":15,"window_minutes":300}}
+                """));
+
+        Assert.Equal(15, rollout.Quotas!.FiveHour!.UsedPercent);
+        Assert.Equal(20, rollout.Quotas.Weekly!.UsedPercent);
+        Assert.Equal(T0.AddSeconds(2), rollout.Quotas.CapturedAt);
+
+        rollout.Apply(Event("token_count", 3, """
+            ,"rate_limits":{"primary":{"used_percent":30,"window_minutes":10080}}
+            """));
+
+        Assert.Equal(15, rollout.Quotas.FiveHour!.UsedPercent);
+        Assert.Equal(30, rollout.Quotas.Weekly!.UsedPercent);
+        Assert.Equal(T0.AddSeconds(3), rollout.Quotas.CapturedAt);
+    }
+
+    [Fact]
+    public void Meta_AppliedLate_KeepsNewerLastEventAndWaiting()
+    {
+        var rollout = Build(Event("exec_approval_request", 50));
+
+        rollout.Apply(Meta("late-id", "/w", 0));
+
+        Assert.Equal("late-id", rollout.SessionId);
+        Assert.Equal(T0.AddSeconds(50), rollout.LastEventAt);
+        Assert.Equal(AgentActivity.Waiting, rollout.Activity(T0.AddSeconds(51)));
+    }
+
+    [Fact]
     public void UnknownLines_Ignored()
     {
         var rollout = Build(
