@@ -62,7 +62,7 @@ dotnet test
 dotnet run -c Release --project src/Trofeo.Display
 ```
 
-Le service s'installe dans la zone de notification. La disposition est enregistrée dans `%AppData%	rofeo-HB-dashboard\layout.json`, et le journal dans `%AppData%\trofeo-HB-dashboard\logs\display.log`.
+Le service s'installe dans la zone de notification. La disposition est enregistrée dans `%AppData%\trofeo-HB-dashboard\layout.json`, et le journal dans `%AppData%\trofeo-HB-dashboard\logs\display.log`.
 
 L'outil `tools/Trofeo.HardwareCheck` sert à vérifier un écran :
 
@@ -72,12 +72,18 @@ L'outil `tools/Trofeo.HardwareCheck` sert à vérifier un écran :
 - `--set-secret <portée> <clé>` : enregistre un secret (mot de passe, jeton) dans le coffre du service. La valeur se lit sur l'entrée standard, saisie masquée au clavier, et n'est jamais affichée ;
 - `--city <nom>` : affiche les cinq villes proposées par Open-Meteo, avec leurs coordonnées, pour régler la météo.
 
+En attendant le logiciel de réglage, les modules se règlent à la main dans `layout.json`, service arrêté :
+
+- **Météo** : dans les réglages du module Heure, `"location":{"name":"Lyon","latitude":45.76,"longitude":4.84}`, avec les coordonnées données par `--city`.
+- **Freebox** : dans les réglages du module Réseau, `"source":"freebox"`. Au premier lancement, le module demande d'appuyer sur la flèche de la Freebox pour autoriser le dashboard.
+- **UniFi** : `"source":"unifi","unifi":{"host":"192.168.1.1"}`, puis la clé API de la console avec `--set-secret network unifi.apiKey`.
+
 ## Températures du processeur
 
 Sans réglage, le module Monitoring affiche la ligne « Temp. CPU : installez le pilote ». Windows ne laisse lire ces températures qu'à un programme élevé, grâce à un pilote. Pour les activer :
 
 1. Installer PawnIO : `winget install --id namazso.PawnIO`.
-2. Ouvrir un terminal en administrateur et lancer `Trofeo.SensorHelper.exe install`. Cela crée la tâche planifiée `\trofeo-HB-dashboard\Capteurs`, qui relève les capteurs à chaque ouverture de session et les transmet au service. Le service lui-même reste sans droits d'administrateur.
+2. Ouvrir un terminal en administrateur et lancer `Trofeo.SensorHelper.exe install`. Après `dotnet build -c Release`, l'exécutable se trouve dans `src/Trofeo.SensorHelper/bin/Release/`, sous le dossier de la version de Windows ciblée ; l'option `--pawnio <installateur>` installe PawnIO au passage. Cela crée la tâche planifiée `\trofeo-HB-dashboard\Capteurs`, qui relève les capteurs à chaque ouverture de session et les transmet au service. Le service lui-même reste sans droits d'administrateur.
 
 La ligne d'aide disparaît dès que la température arrive.
 
