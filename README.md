@@ -107,6 +107,9 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
   récupère les derniers extraits du même fichier dans une fenêtre de 16 Mio au plus. Les lignes de plus de 1 Mio,
   les entrées de compression et le raisonnement ne sont pas affichés. Cette récupération unique ne modifie ni
   l'activité, ni la durée, ni les quotas ; les ajouts suivants restent incrémentaux, sans duplication du fil.
+  Le contexte est calculé à partir de `last_token_usage.total_tokens` quand il est disponible (sinon `input_tokens`
+  pour les anciens formats), rapporté à `model_context_window`. Après compression, le total conservé reste exploitable
+  même si `input_tokens` vaut zéro ; le cumul de toute la conversation n'est jamais utilisé pour ce calcul.
   Pour Codex, « Contexte » affiche la part **utilisée** ; seuls les quotas « 5 h » / « Hebdo » affichent la part
   **restante**, barres comprises (30 % consommés donnent 70 % restants). Les heures de remise à zéro ne changent pas ; une valeur inconnue ou
   un quota périmé reste « — ». Le module Claude Code conserve son affichage de la part consommée.

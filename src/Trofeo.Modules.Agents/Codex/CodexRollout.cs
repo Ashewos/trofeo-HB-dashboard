@@ -245,9 +245,15 @@ public sealed class CodexRollout
     {
         // « info » est null avant le premier relevé : on garde alors la valeur précédente.
         if (Obj(payload, "info") is { } info && Obj(info, "last_token_usage") is { } last
-            && Num(last, "input_tokens") is { } input && Num(info, "model_context_window") is { } window && window > 0)
+            && Num(info, "model_context_window") is { } window && window > 0)
         {
-            ContextPercent = Math.Clamp(input * 100.0 / window, 0, 100);
+            // Après compression, input_tokens peut être nul alors que total_tokens estime le contexte conservé.
+            // Ne jamais utiliser info.total_token_usage : c'est le cumul de toute la conversation.
+            var used = Num(last, "total_tokens") is >= 0 and var total ? total : Num(last, "input_tokens");
+            if (used is { } tokens)
+            {
+                ContextPercent = Math.Clamp(tokens * 100.0 / window, 0, 100);
+            }
         }
 
         if (at is { } captured && Obj(payload, "rate_limits") is { } limits)

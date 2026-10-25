@@ -277,7 +277,7 @@ public sealed class CodexSourceTests : IDisposable
             CodexTestLines.Item("""{"type":"message","role":"developer","content":[{"type":"input_text","text":"Instruction privée"}]}""", started.AddSeconds(3)),
             CodexTestLines.Line("compacted", Now.AddSeconds(-4), JsonSerializer.Serialize(new { message = new string('x', 3 * 1024 * 1024) })),
             CodexTestLines.Line("turn_context", Now.AddSeconds(-3), """{"model":"gpt-6.1-sol"}"""),
-            Event("token_count", Now.AddSeconds(-2), ",\"info\":{\"last_token_usage\":{\"input_tokens\":17000},\"model_context_window\":100000},\"rate_limits\":{\"primary\":{\"used_percent\":42}}"),
+            Event("token_count", Now.AddSeconds(-2), ",\"info\":{\"last_token_usage\":{\"input_tokens\":0,\"total_tokens\":57341},\"model_context_window\":475000},\"rate_limits\":{\"primary\":{\"used_percent\":42}}"),
             Event("task_complete", Now.AddSeconds(-1), $",\"started_at\":{Now.AddMinutes(-2).ToUnixTimeSeconds()},\"completed_at\":{Now.AddSeconds(-1).ToUnixTimeSeconds()}"));
         using var source = NewSource();
 
@@ -287,7 +287,7 @@ public sealed class CodexSourceTests : IDisposable
             new FeedEntry("Codex", "Vérification terminée")], detail.Feed);
         Assert.Equal("Vérifie le café ☕", detail.CurrentTask);
         Assert.Equal("gpt-6.1-sol", detail.Model);
-        Assert.Equal(17, detail.ContextPercent);
+        Assert.Equal("12 %", AgentText.Percent(detail.ContextPercent!.Value));
         Assert.Equal(42, snapshot.Quotas!.FiveHour!.UsedPercent);
         Assert.Equal(Now.AddMinutes(-2), detail.TaskStartedAt);
         Assert.Equal(Now.AddSeconds(-1), detail.TaskFinishedAt);
