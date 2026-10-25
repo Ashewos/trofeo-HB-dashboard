@@ -189,6 +189,31 @@ public class ClockModuleTests
         Assert.True(CountPixels(bitmap, theme.TextMuted) > 50);
     }
 
+    [Fact]
+    public async Task Clock_WeatherTemperatureUsesText_NotHighlight()
+    {
+        var time = At(14, 32, 0);
+        var highlight = new SKColor(0xFF, 0x00, 0xFF);
+        var text = new SKColor(0x12, 0xAB, 0x34); // aucune icône météo n'a cette couleur
+        var theme = TestTheme with { Highlight = highlight, Text = text };
+        var context = new ModuleRenderContext(new SKRect(0, 0, 600, 240), new GridSize(4, 2), theme, 1f, time.GetUtcNow());
+
+        using var without = CreateClock(time, new FakeWeatherProvider(), "{}");
+        using var before = new SKBitmap(600, 240);
+        using (var canvas = new SKCanvas(before)) { canvas.Clear(Bg); without.Render(canvas, context); }
+        var timePixels = CountPixels(before, highlight);
+        Assert.True(timePixels > 200);
+        Assert.Equal(0, CountPixels(before, text));
+
+        using var module = CreateClock(time, new FakeWeatherProvider());
+        await module.StartAsync(CancellationToken.None);
+        using var after = new SKBitmap(600, 240);
+        using (var canvas = new SKCanvas(after)) { canvas.Clear(Bg); module.Render(canvas, context); }
+
+        Assert.True(CountPixels(after, text) > 30, "la température doit être dessinée en Text");
+        Assert.Equal(timePixels, CountPixels(after, highlight)); // seule l'heure est en Highlight
+    }
+
     // --- Météo ---
 
     [Fact]

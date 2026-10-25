@@ -110,6 +110,7 @@ public sealed class ClockModule : IModule
         using var dateFont = new SKFont(ctx.Theme.Typeface, DateSize * scale * layout.Fit);
         using var timePaint = new SKPaint { Color = ctx.Theme.Highlight, IsAntialias = true };
         using var datePaint = new SKPaint { Color = ctx.Theme.TextMuted, IsAntialias = true };
+        using var temperaturePaint = new SKPaint { Color = ctx.Theme.Text, IsAntialias = true }; // seule l'heure est en Highlight
         canvas.DrawText(time, layout.Time.Left, layout.TimeBaseline, SKTextAlign.Left, timeFont, timePaint);
         canvas.DrawText(date, layout.Date.Left, layout.DateBaseline, SKTextAlign.Left, dateFont, datePaint);
 
@@ -117,7 +118,7 @@ public sealed class ClockModule : IModule
 
         WeatherIcons.Draw(canvas, icon, layout.Icon);
         using var temperatureFont = new SKFont(ctx.Theme.Typeface, layout.TemperatureSize);
-        DrawInLine(canvas, text.Temperature, layout.TemperatureLine, temperatureFont, timePaint);
+        DrawInLine(canvas, text.Temperature, layout.TemperatureLine, temperatureFont, temperaturePaint);
         if (layout.LabelLine.IsEmpty) return;
         using var labelFont = new SKFont(ctx.Theme.Typeface, BlockLabelSize * scale);
         DrawInLine(canvas, layout.Label, layout.LabelLine, labelFont, datePaint);
