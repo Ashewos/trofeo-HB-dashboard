@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Extensions.Time.Testing;
 using Trofeo.ModuleKit;
 
@@ -187,5 +188,54 @@ public class NicSourceTests
         var counters = NicSource.ReadSystemCounters();
 
         Assert.All(counters, c => Assert.False(string.IsNullOrEmpty(c.Id)));
+    }
+
+    /// <summary>Horloge dont l'heure murale et le chronomètre se règlent séparément.</summary>
+    private sealed class SkewedTime : TimeProvider
+    {
+        public DateTimeOffset Utc { get; set; } = new(2026, 10, 25, 12, 0, 0, TimeSpan.Zero);
+        public long Timestamp { get; set; }
+
+        public override DateTimeOffset GetUtcNow() => Utc;
+        public override long GetTimestamp() => Timestamp;
+        public override long TimestampFrequency => 1_000;
+    }
+
+    [Fact]
+    public async Task NicSource_UsesMonotonicClock_NotWallClock()
+    {
+        var time = new SkewedTime();
+        var counters = new List<InterfaceCounters> { new("eth0", 0, 0) };
+        var source = new NicSource(() => counters.ToArray(), time);
+        await source.ReadAsync(CancellationToken.None);
+
+        // L'heure murale saute d'une heure (changement d'heure, synchronisation) : le chronomètre mesure 1 s.
+        time.Utc += TimeSpan.FromHours(1);
+        time.Timestamp += 1_000;
+        counters[0] = new InterfaceCounters("eth0", 1_000_000, 500_000);
+        var forward = await source.ReadAsync(CancellationToken.None);
+
+        Assert.Equal(1_000_000d, forward.Sample!.DownBytesPerSecond);
+        Assert.Equal(500_000d, forward.Sample.UpBytesPerSecond);
+
+        // Et elle recule : le débit reste calculé sur l'écart du chronomètre.
+        time.Utc -= TimeSpan.FromHours(3);
+        time.Timestamp += 2_000;
+        counters[0] = new InterfaceCounters("eth0", 3_000_000, 500_000);
+        var backward = await source.ReadAsync(CancellationToken.None);
+
+        Assert.Equal(1_000_000d, backward.Sample!.DownBytesPerSecond);
+        Assert.Equal(0d, backward.Sample.UpBytesPerSecond);
+    }
+
+    [Fact]
+    public void HasUsableGateway_IgnoresUnspecifiedAddresses()
+    {
+        Assert.False(NicSource.HasUsableGateway([]));
+        Assert.False(NicSource.HasUsableGateway([IPAddress.Any]));
+        Assert.False(NicSource.HasUsableGateway([IPAddress.IPv6Any]));
+        Assert.False(NicSource.HasUsableGateway([IPAddress.Any, IPAddress.IPv6Any, IPAddress.Any.MapToIPv6()]));
+        Assert.True(NicSource.HasUsableGateway([IPAddress.Any, IPAddress.Parse("192.168.1.254")]));
+        Assert.True(NicSource.HasUsableGateway([IPAddress.Parse("fe80::1")]));
     }
 }

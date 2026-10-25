@@ -15,15 +15,18 @@ public class NetworkModuleTests
         public Func<Task<SourceReading>> OnRead { get; set; } =
             () => Task.FromResult(new SourceReading(new ThroughputSample(1_000_000, 250_000), new ModuleStatus(ModuleHealth.Online)));
 
+        /// <summary>Si renseigné, remplace <see cref="OnRead"/> et reçoit le jeton de la lecture.</summary>
+        public Func<CancellationToken, Task<SourceReading>>? OnReadWithToken { get; set; }
+
         public string Title => "Fake";
-        public TimeSpan Interval { get; init; } = TimeSpan.FromSeconds(1);
+        public TimeSpan Interval { get; set; } = TimeSpan.FromSeconds(1);
         public int Reads { get; private set; }
         public int Disposed { get; private set; }
 
         public Task<SourceReading> ReadAsync(CancellationToken ct)
         {
             Reads++;
-            return OnRead();
+            return OnReadWithToken is { } withToken ? withToken(ct) : OnRead();
         }
 
         public void Dispose() => Disposed++;
@@ -81,18 +84,34 @@ public class NetworkModuleTests
         Assert.Same(context, seenContext);
     }
 
-    [Fact]
-    public async Task CreateDefault_BuildsAWorkingModuleForEverySource()
+    [Theory]
+    [InlineData("pc", ModuleHealth.Online, null)]
+    [InlineData("freebox", ModuleHealth.NotConfigured, "Appuie sur ► sur ta Freebox pour autoriser le dashboard")]
+    [InlineData("unifi", ModuleHealth.NotConfigured, "UniFi n'est pas encore disponible")]
+    public async Task CreateProduction_BuildsAWorkingModuleForEverySource(string source, ModuleHealth health, string? message)
     {
-        foreach (var source in new[] { "pc", "freebox", "unifi" })
+        // Aucun appel réseau : la « box » est un gestionnaire factice.
+        using var http = new HttpClient(new FakeBoxHandler());
+        using var doc = JsonDocument.Parse($$"""{"source":"{{source}}"}""");
+        var context = new ModuleContext(Guid.NewGuid(), doc.RootElement.Clone(), TimeProvider.System, new FakeModuleLog(), new FakeSecretStore());
+
+        using var module = NetworkFactory.CreateProduction(http).Create(context);
+        await module.StartAsync(CancellationToken.None);
+
+        Assert.Equal(health, module.Status.Health);
+        Assert.Equal(message, module.Status.ActionMessage);
+    }
+
+    private sealed class FakeBoxHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
-            using var doc = JsonDocument.Parse($$"""{"source":"{{source}}"}""");
-            var context = new ModuleContext(Guid.NewGuid(), doc.RootElement.Clone(), TimeProvider.System, new FakeModuleLog(), new FakeSecretStore());
-
-            using var module = NetworkFactory.CreateDefault().Create(context);
-            await module.StartAsync(CancellationToken.None);
-
-            Assert.Equal(ModuleHealth.Online, module.Status.Health);
+            var json = request.RequestUri!.AbsolutePath switch
+            {
+                "/api_version" => """{"api_version":"8.2","api_base_url":"/api/"}""",
+                _ => """{"success":true,"result":{"app_token":"t","track_id":1}}""",
+            };
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(json) });
         }
     }
 
@@ -109,8 +128,13 @@ public class NetworkModuleTests
         rig.Time.Advance(TimeSpan.FromSeconds(1));
         Assert.Equal(2, rig.Source.Reads);
 
-        rig.Time.Advance(TimeSpan.FromSeconds(4));
+        // Le minuteur est réarmé après chaque lecture : une lecture par intervalle écoulé, jamais de rattrapage.
+        rig.Time.Advance(TimeSpan.FromSeconds(2));
+        rig.Time.Advance(TimeSpan.FromSeconds(2));
         Assert.Equal(4, rig.Source.Reads);
+
+        rig.Time.Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(5, rig.Source.Reads);
     }
 
     [Fact]
@@ -139,8 +163,112 @@ public class NetworkModuleTests
         gate.SetResult(Reading(5, 5));
         Assert.True(SpinWait.SpinUntil(() => rig.Module.HistorySnapshot().Count == 2, TimeSpan.FromSeconds(5)));
         rig.Source.OnRead = () => Task.FromResult(Reading(6, 6));
+
+        // Le minuteur est réarmé une fois la lecture terminée : on avance jusqu'à la prochaine lecture.
+        var spin = new SpinWait();
+        for (var i = 0; i < 50 && rig.Source.Reads < 3; i++)
+        {
+            rig.Time.Advance(TimeSpan.FromSeconds(1));
+            spin.SpinOnce();
+        }
+        Assert.Equal(3, rig.Source.Reads);
+    }
+
+    [Fact]
+    public async Task Interval_IsReadAgainAfterEveryRead()
+    {
+        var rig = Create(new FakeSource { Interval = TimeSpan.FromSeconds(2) });
+        await rig.Module.StartAsync(CancellationToken.None);
+        rig.Source.Interval = TimeSpan.FromSeconds(1); // la source passe de 2 s à 1 s (autorisation accordée)
+
+        rig.Time.Advance(TimeSpan.FromSeconds(2)); // lecture qui se termine : le minuteur est réarmé à 1 s
+        Assert.Equal(2, rig.Source.Reads);
         rig.Time.Advance(TimeSpan.FromSeconds(1));
         Assert.Equal(3, rig.Source.Reads);
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(4, rig.Source.Reads);
+
+        rig.Source.Interval = TimeSpan.FromSeconds(5); // et inversement
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(5, rig.Source.Reads);
+        rig.Time.Advance(TimeSpan.FromSeconds(4));
+        Assert.Equal(5, rig.Source.Reads);
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(6, rig.Source.Reads);
+    }
+
+    [Theory]
+    [InlineData(1, 10)]  // le plancher de 10 s
+    [InlineData(5, 15)]  // 3 × Interval
+    public async Task Read_NeverCompleting_TimesOutAsOfflineWithWarning(int intervalSeconds, int limitSeconds)
+    {
+        var rig = Create(new FakeSource { Interval = TimeSpan.FromSeconds(intervalSeconds) });
+        await rig.Module.StartAsync(CancellationToken.None);
+        Assert.Equal(ModuleHealth.Online, rig.Module.Status.Health);
+        rig.Source.OnRead = () => new TaskCompletionSource<SourceReading>().Task; // ne rend jamais la main
+
+        rig.Time.Advance(TimeSpan.FromSeconds(intervalSeconds)); // la lecture démarre
+        Assert.Equal(2, rig.Source.Reads);
+        rig.Time.Advance(TimeSpan.FromSeconds(limitSeconds - 1));
+        Assert.Equal(ModuleHealth.Online, rig.Module.Status.Health);
+
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.True(SpinWait.SpinUntil(() => rig.Module.Status.Health == ModuleHealth.Offline, TimeSpan.FromSeconds(5)));
+        Assert.Contains(rig.Log.Entries, e => e.StartsWith("Warning"));
+        Assert.DoesNotContain(rig.Log.Entries, e => e.StartsWith("Error"));
+        Assert.Single(rig.Module.HistorySnapshot()); // l'historique est conservé
+
+        // Le module continue ensuite à lire.
+        rig.Source.OnRead = () => Task.FromResult(Reading(1, 1));
+        var spin = new SpinWait();
+        for (var i = 0; i < 50 && rig.Module.Status.Health != ModuleHealth.Online; i++)
+        {
+            rig.Time.Advance(TimeSpan.FromSeconds(intervalSeconds));
+            spin.SpinOnce();
+        }
+        Assert.Equal(ModuleHealth.Online, rig.Module.Status.Health);
+    }
+
+    [Fact]
+    public async Task Read_TimesOut_CancelsTheTokenGivenToTheSource()
+    {
+        CancellationToken seen = default;
+        var source = new FakeSource
+        {
+            OnReadWithToken = ct =>
+            {
+                seen = ct;
+                return Task.Delay(Timeout.Infinite, ct).ContinueWith<SourceReading>(_ => throw new InvalidOperationException("annulée"));
+            },
+        };
+        var rig = Create(source);
+        var start = rig.Module.StartAsync(CancellationToken.None); // la première lecture ne se termine pas
+
+        rig.Time.Advance(TimeSpan.FromSeconds(10));
+        await start;
+
+        Assert.True(seen.IsCancellationRequested);
+        Assert.Equal(ModuleHealth.Offline, rig.Module.Status.Health);
+        Assert.Contains(rig.Log.Entries, e => e.StartsWith("Warning"));
+        Assert.DoesNotContain(rig.Log.Entries, e => e.StartsWith("Error"));
+    }
+
+    [Fact]
+    public async Task Dispose_WhileReading_LogsNoError()
+    {
+        var rig = Create();
+        await rig.Module.StartAsync(CancellationToken.None);
+        var gate = new TaskCompletionSource<SourceReading>();
+        rig.Source.OnRead = () => gate.Task;
+        rig.Time.Advance(TimeSpan.FromSeconds(1)); // lecture en cours
+
+        rig.Module.Dispose();
+        gate.SetException(new ObjectDisposedException("source")); // la source libérée échoue à sa lecture en cours
+        await Task.Delay(100);
+
+        Assert.DoesNotContain(rig.Log.Entries, e => e.StartsWith("Error"));
+        Assert.DoesNotContain(rig.Log.Entries, e => e.StartsWith("Warning"));
     }
 
     [Fact]
@@ -253,7 +381,7 @@ public class NetworkModuleTests
         await rig.Module.StartAsync(CancellationToken.None);
         Assert.Equal(1, invalidated);
 
-        rig.Time.Advance(TimeSpan.FromSeconds(3));
+        for (var i = 0; i < 3; i++) rig.Time.Advance(TimeSpan.FromSeconds(1));
         Assert.Equal(4, invalidated);
 
         rig.Source.OnRead = () => throw new InvalidOperationException("boom");

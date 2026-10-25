@@ -9,12 +9,12 @@ public static class RateText
 
     /// <summary>
     /// Convertit des octets par seconde en bits par seconde puis choisit l'unité : kb/s entier sous 1 Mb/s,
-    /// Mb/s (une décimale sous 10) sous 1 Gb/s, Gb/s avec une décimale au-delà. Une valeur négative ou NaN
-    /// compte pour 0. La valeur arrondie décide de l'unité (999,7 kb/s s'écrit « 1,0 Mb/s », pas « 1000 kb/s »).
+    /// Mb/s (une décimale sous 10) sous 1 Gb/s, Gb/s avec une décimale au-delà. Une valeur négative ou non finie
+    /// (NaN, ±∞) compte pour 0. La valeur arrondie décide de l'unité (999,7 kb/s s'écrit « 1,0 Mb/s », pas « 1000 kb/s »).
     /// </summary>
     public static (string Value, string Unit) Format(double bytesPerSecond)
     {
-        var bits = double.IsNaN(bytesPerSecond) || bytesPerSecond < 0 ? 0 : bytesPerSecond * 8;
+        var bits = !double.IsFinite(bytesPerSecond) || bytesPerSecond < 0 ? 0 : bytesPerSecond * 8;
 
         var kilo = Math.Round(bits / 1e3, MidpointRounding.AwayFromZero);
         if (kilo < 1000) return (kilo.ToString("0", French), "kb/s");

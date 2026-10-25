@@ -5,8 +5,8 @@ namespace Trofeo.Modules.Network;
 
 /// <summary>
 /// Débit réseau descendant et montant d'une <see cref="IThroughputSource"/>, avec la courbe des trois dernières
-/// minutes. La source est lue à chaque <see cref="IThroughputSource.Interval"/>, sans lectures qui se chevauchent ;
-/// le module la libère avec lui.
+/// minutes. La source est lue puis relue après <see cref="IThroughputSource.Interval"/> (relu à chaque fois, la source
+/// peut le changer), sans lectures qui se chevauchent ; le module la libère avec lui.
 /// </summary>
 public sealed class NetworkModule : IModule
 {
@@ -33,6 +33,9 @@ public sealed class NetworkModule : IModule
     private const float UpStroke = 1.5f;
 
     private const string NoValue = "—";
+
+    /// <summary>Durée minimale accordée à une lecture ; au-delà elle vaut trois fois l'intervalle de la source.</summary>
+    private static readonly TimeSpan MinReadTimeout = TimeSpan.FromSeconds(10);
 
     private readonly IThroughputSource _source;
     private readonly TimeProvider _time;
@@ -73,21 +76,23 @@ public sealed class NetworkModule : IModule
             _started = true;
         }
 
-        // Première lecture tout de suite : l'écran n'attend pas un Interval pour afficher un état.
-        using (var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _stop.Token))
-        {
-            await ReadOnceAsync(linked.Token).ConfigureAwait(false);
-        }
-        if (ct.IsCancellationRequested) return;
-
-        var timer = _time.CreateTimer(_ => OnTick(), null, _source.Interval, _source.Interval);
+        // Minuteur à un coup, réarmé à la fin de chaque lecture avec l'intervalle que la source annonce alors.
+        var timer = _time.CreateTimer(_ => OnTick(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         var disposedMeanwhile = false;
         lock (_gate)
         {
             if (_disposed) disposedMeanwhile = true;
             else _timer = timer;
         }
-        if (disposedMeanwhile) timer.Dispose();
+        if (disposedMeanwhile)
+        {
+            timer.Dispose();
+            return;
+        }
+
+        // Première lecture tout de suite : l'écran n'attend pas un Interval pour afficher un état.
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _stop.Token);
+        await ReadOnceAsync(linked.Token).ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -111,24 +116,42 @@ public sealed class NetworkModule : IModule
 
     private void OnTick() => _ = ReadOnceAsync(_stop.Token);
 
-    /// <summary>Une lecture de la source, ignorée si la précédente n'est pas terminée. Ne lève jamais.</summary>
+    /// <summary>
+    /// Une lecture de la source, ignorée si la précédente n'est pas terminée, puis réarmement du minuteur. Elle est
+    /// limitée à max(10 s, 3 × Interval). Ne lève jamais.
+    /// </summary>
     private async Task ReadOnceAsync(CancellationToken ct)
     {
         if (Interlocked.CompareExchange(ref _reading, 1, 0) != 0) return;
         try
         {
+            var limit = ReadTimeout();
+            using var timeout = new CancellationTokenSource(limit, _time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+            Task<SourceReading>? pending = null;
             SourceReading reading;
             try
             {
-                reading = await _source.ReadAsync(ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                return;
+                pending = _source.ReadAsync(linked.Token);
+                // WaitAsync : une source qui ignore le jeton ne bloque pas le module au-delà du délai.
+                reading = await pending.WaitAsync(linked.Token).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                _log.Error($"Lecture du débit réseau impossible : {ex.Message}");
+                // Une lecture abandonnée peut échouer plus tard : l'exception est consommée pour qu'elle reste muette.
+                _ = pending?.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+
+                // Module arrêté (ou démarrage annulé) : la fin de la lecture n'est pas une erreur.
+                if (ct.IsCancellationRequested) return;
+
+                if (timeout.IsCancellationRequested)
+                {
+                    _log.Warning($"Lecture du débit réseau sans réponse après {limit.TotalSeconds:0} s.");
+                }
+                else
+                {
+                    _log.Error($"Lecture du débit réseau impossible : {ex.Message}");
+                }
                 Publish(null, new ModuleStatus(ModuleHealth.Offline), keepLatest: true);
                 return;
             }
@@ -138,6 +161,36 @@ public sealed class NetworkModule : IModule
         finally
         {
             Volatile.Write(ref _reading, 0);
+            ScheduleNext(ct);
+        }
+    }
+
+    /// <summary>Délai accordé à une lecture : 10 s au moins, ou trois fois l'intervalle de la source.</summary>
+    private TimeSpan ReadTimeout()
+    {
+        var limit = _source.Interval * 3;
+        return limit > MinReadTimeout ? limit : MinReadTimeout;
+    }
+
+    /// <summary>Arme le minuteur pour la prochaine lecture, sauf si le module est arrêté.</summary>
+    private void ScheduleNext(CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested) return;
+
+        ITimer? timer;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            timer = _timer;
+        }
+
+        try
+        {
+            timer?.Change(_source.Interval, Timeout.InfiniteTimeSpan);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Le module a été libéré entre-temps : plus de lecture à programmer.
         }
     }
 

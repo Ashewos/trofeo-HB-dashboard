@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.NetworkInformation;
 using Trofeo.ModuleKit;
 
@@ -8,12 +9,13 @@ public sealed record InterfaceCounters(string Id, long BytesReceived, long Bytes
 
 /// <summary>
 /// Débit des cartes réseau du PC : écart des compteurs cumulés entre deux lectures, divisé par le temps écoulé.
+/// Le temps écoulé vient de l'horloge monotone : l'heure murale peut sauter (changement d'heure, synchronisation).
 /// Appelée par le module sans chevauchement, donc sans verrou.
 /// </summary>
 public sealed class NicSource(Func<IReadOnlyList<InterfaceCounters>> readCounters, TimeProvider time) : IThroughputSource
 {
     private Dictionary<string, InterfaceCounters>? _previous;
-    private DateTimeOffset _previousAt;
+    private long _previousAt;
 
     public string Title => "Ce PC";
 
@@ -24,12 +26,12 @@ public sealed class NicSource(Func<IReadOnlyList<InterfaceCounters>> readCounter
         ct.ThrowIfCancellationRequested();
 
         var counters = readCounters();
-        var now = time.GetUtcNow();
+        var now = time.GetTimestamp();
         var current = new Dictionary<string, InterfaceCounters>(counters.Count);
         foreach (var item in counters) current[item.Id] = item;
 
         ThroughputSample? sample = null;
-        var elapsed = (now - _previousAt).TotalSeconds;
+        var elapsed = time.GetElapsedTime(_previousAt, now).TotalSeconds;
         if (_previous is not null && elapsed > 0)
         {
             long down = 0, up = 0;
@@ -45,7 +47,7 @@ public sealed class NicSource(Func<IReadOnlyList<InterfaceCounters>> readCounter
             sample = new ThroughputSample(down / elapsed, up / elapsed);
         }
 
-        // Sans écart de temps exploitable (horloge arrêtée ou reculée), on garde la référence précédente.
+        // Sans écart de temps exploitable (horloge arrêtée), on garde la référence précédente.
         if (_previous is null || elapsed > 0)
         {
             _previous = current;
@@ -59,9 +61,17 @@ public sealed class NicSource(Func<IReadOnlyList<InterfaceCounters>> readCounter
     {
     }
 
+    /// <summary>Vrai s'il y a au moins une vraie passerelle : 0.0.0.0 et :: (adresse non spécifiée) ne comptent pas.</summary>
+    internal static bool HasUsableGateway(IEnumerable<IPAddress> gateways) =>
+        gateways.Any(g =>
+        {
+            var address = g.IsIPv4MappedToIPv6 ? g.MapToIPv4() : g;
+            return !address.Equals(IPAddress.Any) && !address.Equals(IPAddress.IPv6Any);
+        });
+
     /// <summary>
     /// Compteurs des interfaces actives : en service, ni boucle locale ni tunnel, et avec au moins une passerelle
-    /// (ce qui écarte les cartes virtuelles sans route vers l'extérieur).
+    /// (ce qui écarte les cartes virtuelles sans route vers l'extérieur ; une passerelle 0.0.0.0 ou :: ne compte pas).
     /// </summary>
     public static IReadOnlyList<InterfaceCounters> ReadSystemCounters()
     {
@@ -72,7 +82,7 @@ public sealed class NicSource(Func<IReadOnlyList<InterfaceCounters>> readCounter
             {
                 if (nic.OperationalStatus != OperationalStatus.Up
                     || nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel
-                    || nic.GetIPProperties().GatewayAddresses.Count == 0)
+                    || !HasUsableGateway(nic.GetIPProperties().GatewayAddresses.Select(g => g.Address)))
                 {
                     continue;
                 }

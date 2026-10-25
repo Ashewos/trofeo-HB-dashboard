@@ -15,6 +15,7 @@ public class RateTextTests
     [Theory]
     [InlineData(-5, "0", "kb/s")]
     [InlineData(double.NegativeInfinity, "0", "kb/s")]
+    [InlineData(double.PositiveInfinity, "0", "kb/s")]
     [InlineData(124_900, "999", "kb/s")]            // 999,2 kb/s
     [InlineData(124_970, "1,0", "Mb/s")]            // 999,76 kb/s s'arrondirait à 1000 kb/s
     [InlineData(1_243_000, "9,9", "Mb/s")]
