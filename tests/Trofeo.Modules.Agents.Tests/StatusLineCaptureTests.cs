@@ -49,7 +49,7 @@ public sealed class StatusLineCaptureTests : IDisposable
         Assert.Equal(42.5, record.ContextUsedPercent);
         Assert.NotNull(record.FiveHour);
         Assert.Equal(31, record.FiveHour.UsedPercent);
-        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1792940400), record.FiveHour.ResetsAt);
+        Assert.Equal(new DateTimeOffset(2026, 10, 25, 15, 0, 0, TimeSpan.Zero), record.FiveHour.ResetsAt);
         Assert.NotNull(record.SevenDay);
         Assert.Equal(12, record.SevenDay.UsedPercent);
         Assert.Equal(new DateTimeOffset(2026, 10, 27, 8, 0, 0, TimeSpan.Zero), record.SevenDay.ResetsAt);
@@ -141,6 +141,16 @@ public sealed class StatusLineCaptureTests : IDisposable
         StatusLineFile.Write(_dir, newer);
 
         Assert.Equal([newer], StatusLineFile.ReadAll(_dir, Now, TimeSpan.FromHours(1)));
+    }
+
+    [Fact]
+    public void File_Write_FailedMove_LeavesNoTempFile()
+    {
+        Directory.CreateDirectory(Path.Combine(_dir, "s-1.json")); // un dossier à la place : le déplacement échoue
+
+        Assert.ThrowsAny<IOException>(() => StatusLineFile.Write(_dir, Sample("s-1", Now)));
+
+        Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
     }
 
     [Fact]

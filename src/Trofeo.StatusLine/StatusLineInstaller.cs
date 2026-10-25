@@ -10,12 +10,16 @@ public enum StatusLineInstallResult { Installed, AlreadyInstalled, Uninstalled, 
 
 /// <summary>
 /// Branche (ou débranche) <c>Trofeo.StatusLine.exe</c> dans le <c>settings.json</c> de Claude Code, de façon réversible.
-/// Une commande déjà présente est conservée : la nôtre la précède dans un tube (<c>"exe" --tee | commande</c>).
+/// Une commande déjà présente est conservée : la nôtre la précède dans un tube (<c>"exe" --tee | ( commande )</c>).
 /// Si le fichier n'est pas lisible, rien n'est écrit.
 /// </summary>
 public sealed class StatusLineInstaller(string claudeHome)
 {
     private const string Marker = "Trofeo.StatusLine";
+    private const string ChainSeparator = " --tee | ";
+
+    /// <summary>UTF-8 strict : un octet invalide fait échouer la lecture plutôt que d'être remplacé puis réécrit.</summary>
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     private static readonly JsonDocumentOptions ReadOptions = new()
     {
@@ -60,6 +64,11 @@ public sealed class StatusLineInstaller(string claudeHome)
             if (!TryParseObject(PreviousPath, out var saved)) return StatusLineInstallResult.InvalidSettings;
             previous = saved["previous"]?.DeepClone();
         }
+        else if (CommandOf(root["statusLine"])!.Contains(ChainSeparator, StringComparison.Ordinal))
+        {
+            // Notre commande enveloppe celle d'origine, et sa sauvegarde a disparu : ne pas jeter l'originale.
+            return StatusLineInstallResult.InvalidSettings;
+        }
 
         if (previous is null) root.Remove("statusLine"); else root["statusLine"] = previous;
         WriteAtomic(SettingsPath, root);
@@ -84,18 +93,25 @@ public sealed class StatusLineInstaller(string claudeHome)
     {
         try
         {
-            if (JsonNode.Parse(File.ReadAllText(path), documentOptions: ReadOptions) is JsonObject obj)
+            if (JsonNode.Parse(ReadStrictUtf8(path), documentOptions: ReadOptions) is JsonObject obj)
             {
                 root = obj;
                 return true;
             }
         }
-        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException or DecoderFallbackException)
         {
             // Illisible : traité comme invalide.
         }
         root = new JsonObject();
         return false;
+    }
+
+    private static string ReadStrictUtf8(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        var start = bytes is [0xEF, 0xBB, 0xBF, ..] ? 3 : 0; // BOM éventuel
+        return StrictUtf8.GetString(bytes, start, bytes.Length - start);
     }
 
     private static bool IsOurs(JsonNode? statusLine) =>
@@ -112,7 +128,8 @@ public sealed class StatusLineInstaller(string claudeHome)
             && CommandOf(old) is { } oldCommand && !string.IsNullOrWhiteSpace(oldCommand))
         {
             var chained = (JsonObject)old.DeepClone(); // garde padding, refreshInterval…
-            chained["command"] = $"{ours} --tee | {oldCommand}";
+            // Parenthèses : sans elles, « | » lie plus fort que « && », « || » et « ; » et priverait la fin de l'entrée.
+            chained["command"] = $"{ours}{ChainSeparator}( {oldCommand} )";
             return chained;
         }
         return new JsonObject { ["type"] = "command", ["command"] = ours };

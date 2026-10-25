@@ -54,6 +54,31 @@ public sealed class StatusLineInstallerTests : IDisposable
     }
 
     [Fact]
+    public void Install_InvalidUtf8_ChangesNothing()
+    {
+        Directory.CreateDirectory(_home);
+        byte[] bytes = [.. "{\"note\":\"caf"u8, 0xE9, .. "\"}"u8]; // 0xE9 isolé : Windows-1252, pas de l'UTF-8
+        File.WriteAllBytes(SettingsPath, bytes);
+
+        var result = Installer().Install(Exe);
+
+        Assert.Equal(StatusLineInstallResult.InvalidSettings, result);
+        Assert.Equal(bytes, File.ReadAllBytes(SettingsPath));
+        Assert.False(File.Exists(BackupPath));
+        Assert.False(File.Exists(PreviousPath));
+    }
+
+    [Fact]
+    public void Install_Utf8Bom_IsAccepted()
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllBytes(SettingsPath, [0xEF, 0xBB, 0xBF, .. "{\"model\":\"opus\"}"u8]);
+
+        Assert.Equal(StatusLineInstallResult.Installed, Installer().Install(Exe));
+        Assert.Equal("opus", (string?)ReadSettings()["model"]);
+    }
+
+    [Fact]
     public void Install_BackslashesBecomeSlashes()
     {
         Installer().Install(@"C:\Outils\Trofeo.StatusLine.exe");
@@ -104,9 +129,21 @@ public sealed class StatusLineInstallerTests : IDisposable
 
         Assert.Equal(StatusLineInstallResult.Installed, result);
         var statusLine = ReadSettings()["statusLine"]!;
-        Assert.Equal("\"C:/x/Trofeo.StatusLine.exe\" --tee | bash ~/sl.sh", (string?)statusLine["command"]);
+        Assert.Equal("\"C:/x/Trofeo.StatusLine.exe\" --tee | ( bash ~/sl.sh )", (string?)statusLine["command"]);
         Assert.Equal(1, (int?)statusLine["padding"]);
         Assert.Equal("command", (string?)statusLine["type"]);
+    }
+
+    [Fact]
+    public void Install_ChainsCompoundCommand_InParentheses()
+    {
+        WriteSettings("""{"statusLine":{"type":"command","command":"cd ~/outils && ./sl.sh"}}""");
+
+        Installer().Install(Exe);
+
+        Assert.Equal(
+            "\"C:/x/Trofeo.StatusLine.exe\" --tee | ( cd ~/outils && ./sl.sh )",
+            (string?)ReadSettings()["statusLine"]!["command"]);
     }
 
     [Fact]
@@ -220,6 +257,31 @@ public sealed class StatusLineInstallerTests : IDisposable
 
         Assert.Equal(StatusLineInstallResult.Uninstalled, Installer().Uninstall());
         Assert.False(ReadSettings().ContainsKey("statusLine"));
+    }
+
+    [Fact]
+    public void Uninstall_PreviousFileMissing_ChainedCommand_ChangesNothing()
+    {
+        WriteSettings("""{"statusLine":{"type":"command","command":"bash ~/sl.sh"}}""");
+        Installer().Install(Exe);
+        File.Delete(PreviousPath);
+        var before = File.ReadAllBytes(SettingsPath);
+
+        Assert.Equal(StatusLineInstallResult.InvalidSettings, Installer().Uninstall());
+        Assert.Equal(before, File.ReadAllBytes(SettingsPath)); // la commande d'origine n'est pas jetée
+        Assert.True(Installer().IsInstalled());
+    }
+
+    [Fact]
+    public void Uninstall_CorruptPreviousFile_InvalidUtf8_ChangesNothing()
+    {
+        WriteSettings("""{"statusLine":{"type":"command","command":"bash ~/sl.sh"}}""");
+        Installer().Install(Exe);
+        File.WriteAllBytes(PreviousPath, [.. "{\"previous\":\"caf"u8, 0xE9, .. "\"}"u8]);
+        var before = File.ReadAllBytes(SettingsPath);
+
+        Assert.Equal(StatusLineInstallResult.InvalidSettings, Installer().Uninstall());
+        Assert.Equal(before, File.ReadAllBytes(SettingsPath));
     }
 
     [Fact]

@@ -7,7 +7,7 @@ namespace Trofeo.StatusLine;
 /// <summary>Fichiers de capture : un JSON par session, <c>&lt;dossier&gt;/&lt;sessionId&gt;.json</c>, en camelCase.</summary>
 public static class StatusLineFile
 {
-    /// <summary>Écrit la capture de façon atomique (fichier <c>.json.tmp</c> puis déplacement).</summary>
+    /// <summary>Écrit la capture de façon atomique (fichier temporaire <c>.tmp</c> puis déplacement).</summary>
     public static void Write(string dir, StatusLineRecord record)
     {
         if (!StatusLineCapture.IsValidSessionId(record.SessionId))
@@ -15,9 +15,17 @@ public static class StatusLineFile
 
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, record.SessionId + ".json");
-        var temp = path + ".tmp";
-        File.WriteAllBytes(temp, Serialize(record));
-        File.Move(temp, path, overwrite: true);
+        // Un fichier temporaire par processus : deux lancements simultanés ne s'écrasent pas.
+        var temp = $"{path}.{Environment.ProcessId}.tmp";
+        try
+        {
+            File.WriteAllBytes(temp, Serialize(record));
+            File.Move(temp, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temp)) File.Delete(temp);
+        }
     }
 
     /// <summary>Lit les captures récentes, de la plus récente à la plus ancienne ; ignore les fichiers illisibles et ceux plus vieux que <paramref name="maxAge"/>.</summary>
