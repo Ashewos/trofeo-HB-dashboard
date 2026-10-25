@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Time.Testing;
+using Trofeo.Core.Rendering;
 using Trofeo.Sensors;
 
 namespace Trofeo.Sensors.Tests;
@@ -111,5 +113,41 @@ public class LhmSensorReaderRetryTests
         Assert.True(attempts[0].Disposed);
         Assert.False(reader.IsOpen);
         Assert.Throws<ObjectDisposedException>(() => reader.Read());
+    }
+
+    private sealed class ThrowingSource : IHardwareSource
+    {
+        public void Open()
+        {
+        }
+
+        public IReadOnlyList<RawSensor> ReadRaw() => throw new InvalidOperationException("capteur illisible");
+
+        public void Dispose()
+        {
+        }
+    }
+
+    [Fact]
+    public void Read_FailingSensors_WarnsOncePerMinute()
+    {
+        var time = new FakeTimeProvider();
+        var lines = new List<string>();
+        using var reader = new LhmSensorReader(() => new ThrowingSource(), new RateLimitedErrorLog(time, lines.Add));
+
+        for (var i = 0; i < 10; i++)
+        {
+            var snap = reader.Read(); // la lecture continue : RAM et disque seulement
+            Assert.True(snap.Values[SensorKeys.RamTotal] > 0);
+        }
+
+        Assert.Single(lines);
+        Assert.Contains("capteur illisible", lines[0]);
+
+        time.Advance(TimeSpan.FromSeconds(61));
+        reader.Read();
+
+        Assert.Equal(2, lines.Count);
+        Assert.Contains("répété", lines[1]);
     }
 }

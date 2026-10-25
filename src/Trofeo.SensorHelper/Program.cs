@@ -96,7 +96,7 @@ internal static partial class Program
                 Console.WriteLine("Assistant de capteurs installé et démarré. PawnIO demande un redémarrage de Windows pour être pleinement opérationnel.");
                 return 0;
             case InstallResult.PawnIoMissing:
-                Console.Error.WriteLine("Le pilote PawnIO n'est pas installé. Relancez avec : install --pawnio <chemin de PawnIO_setup.exe>");
+                Console.Error.WriteLine("Le pilote PawnIO n'est pas installé. Relance avec : install --pawnio <chemin de PawnIO_setup.exe>");
                 return 3;
             default:
                 Console.Error.WriteLine("L'installation de PawnIO a échoué : rien d'autre n'a été modifié.");
@@ -139,11 +139,30 @@ internal static partial class Program
                 e.Cancel = true;
                 cts.Cancel();
             };
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => cts.Cancel();
-
-            using var reader = new LhmSensorReader();
-            new SensorPipeServer(SensorPipe.Name, reader, TimeProvider.System).RunAsync(cts.Token).GetAwaiter().GetResult();
-            return 0;
+            // Le gestionnaire est retiré avant la libération du jeton (en sortie du bloc) : un arrêt du processus
+            // tardif n'appelle jamais Cancel sur un jeton libéré.
+            EventHandler onExit = (_, _) =>
+            {
+                try
+                {
+                    cts.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Déjà libéré : l'arrêt est en cours.
+                }
+            };
+            AppDomain.CurrentDomain.ProcessExit += onExit;
+            try
+            {
+                using var reader = new LhmSensorReader();
+                new SensorPipeServer(SensorPipe.Name, reader, TimeProvider.System).RunAsync(cts.Token).GetAwaiter().GetResult();
+                return 0;
+            }
+            finally
+            {
+                AppDomain.CurrentDomain.ProcessExit -= onExit;
+            }
         }
         catch (Exception ex)
         {

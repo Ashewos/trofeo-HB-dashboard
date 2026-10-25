@@ -207,6 +207,28 @@ public class SensorMapperTests
     }
 
     [Fact]
+    public void Map_NoPackage_FallbackIgnoresDistanceToTjMaxSensors()
+    {
+        List<RawSensor> sensors =
+        [
+            Cpu(RawKind.Temperature, "Core #1", 48),
+            Cpu(RawKind.Temperature, "Core #2", 57),
+            Cpu(RawKind.Temperature, "Core #1 Distance to TjMax", 85), // marge restante avant la coupure, pas une température
+            Cpu(RawKind.Temperature, "Core #2 Distance to TjMax", 43),
+        ];
+
+        Assert.Equal(57, SensorMapper.Map(sensors, elevated: false).Values[SensorKeys.CpuTemp]);
+    }
+
+    [Fact]
+    public void Map_OnlyDistanceSensors_HasNoCpuTemperature()
+    {
+        List<RawSensor> sensors = [Cpu(RawKind.Temperature, "Core #1 Distance to TjMax", 52)];
+
+        Assert.False(SensorMapper.Map(sensors, elevated: false).Values.ContainsKey(SensorKeys.CpuTemp));
+    }
+
+    [Fact]
     public void Map_NoPackage_UsesMaxCoreTemperature()
     {
         List<RawSensor> sensors =

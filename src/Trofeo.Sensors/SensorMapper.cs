@@ -73,7 +73,8 @@ public static class SensorMapper
             temp = Find(cpu, RawKind.Temperature, name, IsValidTemperature);
             if (temp is not null) break;
         }
-        temp ??= Max(cpu.Where(s => s.Kind == RawKind.Temperature), IsValidTemperature);
+        // « Distance to TjMax » est la marge restante avant la coupure thermique, pas une température.
+        temp ??= Max(cpu.Where(s => s.Kind == RawKind.Temperature && !s.Name.Contains("Distance", StringComparison.OrdinalIgnoreCase)), IsValidTemperature);
         Set(values, SensorKeys.CpuTemp, temp);
 
         Set(values, SensorKeys.CpuClock,

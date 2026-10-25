@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Trofeo.Core.Rendering;
 
 namespace Trofeo.Sensors;
 
@@ -23,6 +24,7 @@ public sealed class LhmSensorReader : ISensorReader
     internal const int RetryIntervalReads = 30;
 
     private readonly Func<IHardwareSource> _createSource;
+    private readonly RateLimitedErrorLog _errors;
     private IHardwareSource? _source;
     private int _readsBeforeRetry;
     private bool _disposed;
@@ -31,7 +33,11 @@ public sealed class LhmSensorReader : ISensorReader
     {
     }
 
-    internal LhmSensorReader(Func<IHardwareSource> createSource) => _createSource = createSource;
+    internal LhmSensorReader(Func<IHardwareSource> createSource, RateLimitedErrorLog? errors = null)
+    {
+        _createSource = createSource;
+        _errors = errors ?? new RateLimitedErrorLog(TimeProvider.System, m => Trace.TraceWarning(m));
+    }
 
     /// <summary>Vrai tant que LibreHardwareMonitor est ouvert. Faux avant le premier <see cref="Read"/>, après un échec d'ouverture et après <see cref="Dispose"/>.</summary>
     public bool IsOpen => _source is not null;
@@ -73,7 +79,7 @@ public sealed class LhmSensorReader : ISensorReader
             }
             catch (Exception e)
             {
-                Trace.TraceWarning($"Lecture des capteurs impossible : {e.Message}");
+                _errors.Report($"Lecture des capteurs impossible : {e.Message}");
             }
         }
         return new SensorSnapshot(null, null, new Dictionary<string, double>(), elevated);

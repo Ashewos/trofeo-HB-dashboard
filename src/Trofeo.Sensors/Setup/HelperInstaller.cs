@@ -73,7 +73,7 @@ public sealed class HelperInstaller(
     {
         if (SameDirectory(sourceDir, installDir))
             throw new InvalidOperationException(
-                "La désinstallation ne peut pas se lancer depuis la copie installée : lancez-la depuis le dossier de l'application.");
+                "La désinstallation ne peut pas se lancer depuis la copie installée : lance-la depuis le dossier de l'application.");
 
         runner.Run("schtasks", $"/End /TN {QuotedTask}");
         runner.Run("schtasks", $"/Delete /TN {QuotedTask} /F");
