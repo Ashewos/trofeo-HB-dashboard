@@ -44,7 +44,7 @@ public class MonitoringModuleTests
         }
     }
 
-    private static SensorSnapshot Full(bool cpuTemp = true)
+    private static SensorSnapshot Full(bool cpuTemp = true, bool elevated = true)
     {
         var values = new Dictionary<string, double>
         {
@@ -55,7 +55,7 @@ public class MonitoringModuleTests
             [SensorKeys.DiskUsed] = 63, [SensorKeys.DiskTemp] = 38,
         };
         if (cpuTemp) values[SensorKeys.CpuTemp] = 52;
-        return new SensorSnapshot("Intel(R) Core(TM) Ultra 7 265K", "NVIDIA GeForce RTX 5070", values, Elevated: true);
+        return new SensorSnapshot("Intel(R) Core(TM) Ultra 7 265K", "NVIDIA GeForce RTX 5070", values, Elevated: elevated);
     }
 
     private static MonitoringModule Create(FakeFeed feed, TimeProvider time, string json = "{}")
@@ -110,19 +110,29 @@ public class MonitoringModuleTests
     [Fact]
     public void Title_NoCpuTemp_ShowsDriverHint()
     {
-        var feed = new FakeFeed { Latest = Full(cpuTemp: false) };
+        var feed = new FakeFeed { Latest = Full(cpuTemp: false, elevated: false) };
         using var module = Create(feed, Clock());
 
-        Assert.Equal("Temp. CPU : installez le pilote (Paramètres)", module.CurrentTitle());
+        Assert.Equal("Temp. CPU : installe le pilote (voir le README)", module.CurrentTitle());
+    }
+
+    [Fact]
+    public void Title_NoCpuTemp_NoHintWhenTheHelperIsRunning()
+    {
+        // L'assistant élevé tourne mais le processeur ne donne pas de température : installer le pilote n'y changerait rien.
+        var feed = new FakeFeed { Latest = Full(cpuTemp: false, elevated: true) };
+        using var module = Create(feed, Clock());
+
+        Assert.Equal("Core Ultra 7 265K · RTX 5070", module.CurrentTitle());
     }
 
     [Fact]
     public void Title_NoCpuTemp_HintReplacesCustomTitleToo()
     {
-        var feed = new FakeFeed { Latest = Full(cpuTemp: false) };
+        var feed = new FakeFeed { Latest = Full(cpuTemp: false, elevated: false) };
         using var module = Create(feed, Clock(), """{"title":"Mon PC"}""");
 
-        Assert.Equal("Temp. CPU : installez le pilote (Paramètres)", module.CurrentTitle());
+        Assert.Equal("Temp. CPU : installe le pilote (voir le README)", module.CurrentTitle());
     }
 
     [Fact]
@@ -131,7 +141,7 @@ public class MonitoringModuleTests
         using var noSnapshot = Create(new FakeFeed(), Clock());
         Assert.Equal("Monitoring", noSnapshot.CurrentTitle());
 
-        var feed = new FakeFeed { Latest = Full(cpuTemp: false) };
+        var feed = new FakeFeed { Latest = Full(cpuTemp: false, elevated: false) };
         using var noCpuRow = Create(feed, Clock(), """{"rows":["gpu","ram"]}""");
         Assert.Equal("Core Ultra 7 265K · RTX 5070", noCpuRow.CurrentTitle());
     }
@@ -139,11 +149,11 @@ public class MonitoringModuleTests
     [Fact]
     public void Title_NoCpuTemp_NoHintWhenCpuRowIsBeyondCapacity()
     {
-        var feed = new FakeFeed { Latest = Full(cpuTemp: false) };
+        var feed = new FakeFeed { Latest = Full(cpuTemp: false, elevated: false) };
         using var module = Create(feed, Clock(), """{"rows":["gpu","ram","vram","cpu"]}""");
 
         Assert.Equal("Core Ultra 7 265K · RTX 5070", module.CurrentTitle(drawnRows: 3));
-        Assert.Equal("Temp. CPU : installez le pilote (Paramètres)", module.CurrentTitle(drawnRows: 4));
+        Assert.Equal("Temp. CPU : installe le pilote (voir le README)", module.CurrentTitle(drawnRows: 4));
     }
 
     [Fact]
@@ -336,7 +346,7 @@ public class MonitoringModuleTests
     [MemberData(nameof(Layouts))]
     public async Task Render_WithDriverHintAndMissingValues_StaysInsideBounds(int col, int row, int cols, int rows, float scale)
     {
-        var feed = new FakeFeed { Latest = Full(cpuTemp: false) };
+        var feed = new FakeFeed { Latest = Full(cpuTemp: false, elevated: false) };
         using var module = Create(feed, Clock(), """{"rows":["cpu","fan","clock","power","disk","vram","ram","gpu"]}""");
         await module.StartAsync(CancellationToken.None);
         var empty = new SensorSnapshot(null, null, new Dictionary<string, double>(), Elevated: false);

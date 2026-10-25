@@ -14,7 +14,7 @@ public sealed class MonitoringModule : IModule
     private static readonly TimeSpan OfflineAfter = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan HealthPeriod = TimeSpan.FromSeconds(1);
 
-    internal const string DriverHint = "Temp. CPU : installez le pilote (Paramètres)";
+    internal const string DriverHint = "Temp. CPU : installe le pilote (voir le README)";
 
     // Dimensions des colonnes d'une ligne, avant multiplication par l'échelle de texte.
     private const float LabelSize = 22f;
@@ -191,8 +191,10 @@ public sealed class MonitoringModule : IModule
     private (string Text, bool IsWarning) TitleLine(SensorSnapshot? snapshot, int drawnRows)
     {
         // Sans relevé on ne sait rien des capteurs : pas d'indice. Il ne concerne que la ligne CPU, donc seulement
-        // si elle est affichée.
+        // si elle est affichée. Il disparaît si l'assistant élevé tourne (Elevated) : le pilote est déjà là, et
+        // l'indice ne ferait que répéter ce que l'utilisateur a déjà fait.
         if (snapshot is not null
+            && !snapshot.Elevated
             && !snapshot.Values.ContainsKey(SensorKeys.CpuTemp)
             && _settings.Rows.Take(Math.Max(0, drawnRows)).Contains("cpu"))
         {
