@@ -918,7 +918,7 @@ public ICommandableModule? FindCommandTarget(Guid? instanceId);
 - **Valeurs par défaut** :
   - `Ctrl+Alt+Left` → `PreviousTab` ;
   - `Ctrl+Alt+Right` → `NextTab` ;
-  - `Ctrl+Alt+1` à `Ctrl+Alt+9` → `SelectTab` 0 à 8 ;
+  - `Ctrl+Alt+Maj+1` à `Ctrl+Alt+Maj+9` (Maj : AltGr = Ctrl+Alt sur AZERTY) → `SelectTab` 0 à 8 ;
   - sans `Target`.
 - **Routeur** :
   - identifiants 1 à N dans l'ordre des liaisons, enregistrés avec `MOD_NOREPEAT` (0x4000) ;

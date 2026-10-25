@@ -22,8 +22,8 @@ On place des modules sur un damier de 16 × 4 cases : heure et météo, monitori
   - **En écoute** : titre, pochette et progression du média en cours dans Windows ;
   - **Réseau** : débit instantané de la carte réseau du PC, d'une Freebox ou d'une console UniFi ;
   - **Claude Code** : un onglet par session ouverte (appli desktop ou terminal), au nom du projet, avec un point orange, jaune ou gris selon ce que fait la session, le flux de son activité, une mascotte animée, des confettis à la fin d'une réponse et un drapeau quand Claude te pose une question ;
-  - **Codex** : le même module pour Codex, avec sa mascotte en pixel art. Il n'est pas dans la disposition par défaut : ajoute-le à la main dans `layout.json` (type `"codex"`, 8 × 4 cases conseillées).
-- Raccourcis clavier globaux pour changer d'onglet : `Ctrl+Alt+←` et `Ctrl+Alt+→` pour l'onglet précédent ou suivant, `Ctrl+Alt+1` à `Ctrl+Alt+9` pour aller directement à un onglet. Une combinaison déjà prise par une autre application est simplement laissée de côté (elle est notée dans le journal).
+  - **Codex** : le même module pour Codex, avec sa mascotte en pixel art. Il n'est pas dans la disposition par défaut, qui remplit déjà les 16 colonnes : pour l'avoir, remplace Claude Code (colonnes 0 à 7) par Codex dans `layout.json`, service arrêté (voir plus bas).
+- Raccourcis clavier globaux pour changer d'onglet : `Ctrl+Alt+←` et `Ctrl+Alt+→` pour l'onglet précédent ou suivant, `Ctrl+Alt+Maj+1` à `Ctrl+Alt+Maj+9` pour aller directement à un onglet (avec Maj : `Ctrl+Alt+chiffre` est `AltGr+chiffre` sur un clavier AZERTY et empêcherait de taper `~`, `#`, `{`, `[`, `|`, `` ` ``, `\` et `^`). Une combinaison déjà prise par une autre application est simplement laissée de côté (elle est notée dans le journal).
 - Icône dans la zone de notification, qui indique l'état de l'écran.
 
 ## Ce qui arrive
@@ -71,6 +71,20 @@ L'outil `tools/Trofeo.HardwareCheck` sert à vérifier un écran :
 En attendant le logiciel de réglage, les modules se règlent à la main dans `layout.json`, service arrêté :
 
 - **Météo** : dans les réglages du module Heure, `"location":{"name":"Lyon","latitude":45.76,"longitude":4.84}`, avec les coordonnées données par `--city`.
+- **Codex à la place de Claude Code** : dans `Placements`, supprime l'objet dont `TypeId` vaut `"claudecode"` et ajoute celui-ci (sépare-le des autres objets par une virgule ; `InstanceId` est un GUID quelconque, par exemple celui que donne `[guid]::NewGuid()` dans PowerShell). Sans cette suppression, les deux modules se chevauchent et le service retombe sur la disposition par défaut, en gardant une copie `layout.json.bad`.
+
+  ```json
+  {
+    "InstanceId": "7e0b1c52-3d4a-4f6e-8a19-5c2d9b3e6f40",
+    "TypeId": "codex",
+    "Column": 0,
+    "Row": 0,
+    "Columns": 8,
+    "Rows": 4,
+    "TextSize": "Normal",
+    "Settings": { "view": "feed", "autoFollow": true }
+  }
+  ```
 - **Freebox** : dans les réglages du module Réseau, `"source":"freebox"`. Au premier lancement, le module demande d'appuyer sur la flèche de la Freebox pour autoriser le dashboard.
 - **UniFi** : `"source":"unifi","unifi":{"host":"192.168.1.1"}`, puis la clé API de la console avec `--set-secret network unifi.apiKey`.
 
@@ -78,7 +92,7 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
 
 Le module lit les sessions Claude Code sans rien installer. Pour afficher en plus les quotas (fenêtre de 5 h et hebdomadaire), il faut brancher `Trofeo.StatusLine.exe` comme barre d'état de Claude Code : Claude lui envoie ses chiffres à chaque mise à jour de la barre, il les garde dans `~/.claude/trofeo-HB-dashboard/statusline`, et le module les relit. Tant qu'aucune session ne fait tourner la barre d'état, le module affiche « Quotas indisponibles ».
 
-Lance ces commandes **dans ton propre terminal**, pas dans un terminal de l'appli Claude : l'appli Claude empaquetée redirige les écritures vers une copie privée du dossier de réglages, et le `settings.json` modifié ne serait pas le vrai. Après `dotnet build -c Release`, depuis la racine du dépôt :
+Lance ces commandes **toi-même, dans ton propre terminal** : elles modifient les réglages de Claude Code, ce n'est pas à un assistant de le faire à ta place. Après `dotnet build -c Release`, depuis la racine du dépôt :
 
 ```powershell
 tools\Trofeo.HardwareCheck\bin\Release\net10.0-windows10.0.19041.0\Trofeo.HardwareCheck.exe --claude-statusline install "$PWD\src\Trofeo.StatusLine\bin\Release\net10.0\Trofeo.StatusLine.exe"

@@ -12,6 +12,7 @@ public sealed class ShortcutKeysTests
     [InlineData("Win+Shift+a", 12u, 0x41u)]
     [InlineData("Ctrl+F24", 2u, 0x87u)]
     [InlineData("Ctrl+Alt+Left", 3u, 0x25u)]
+    [InlineData("Ctrl+Alt+Shift+1", 7u, 0x31u)]
     [InlineData("Ctrl+Up", 2u, 0x26u)]
     [InlineData("Ctrl+Down", 2u, 0x28u)]
     public void TryParse_Table(string keys, uint modifiers, uint virtualKey)
@@ -45,7 +46,7 @@ public sealed class ShortcutKeysTests
         Assert.Equal(new ShortcutBinding("Ctrl+Alt+Left", ModuleCommandKind.PreviousTab), all[0]);
         Assert.Equal(new ShortcutBinding("Ctrl+Alt+Right", ModuleCommandKind.NextTab), all[1]);
         for (var n = 1; n <= 9; n++)
-            Assert.Equal(new ShortcutBinding($"Ctrl+Alt+{n}", ModuleCommandKind.SelectTab, n - 1), all[n + 1]);
+            Assert.Equal(new ShortcutBinding($"Ctrl+Alt+Shift+{n}", ModuleCommandKind.SelectTab, n - 1), all[n + 1]);
         Assert.All(all, b => Assert.Null(b.Target));
         Assert.All(all, b => Assert.True(ShortcutKeys.TryParse(b.Keys, out _, out _)));
     }

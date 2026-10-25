@@ -134,7 +134,7 @@ C'est le module le plus important. Il affiche **les infos du harness** de Claude
 - **Onglets ancrés à gauche**, un par session Claude Code. Chaque onglet montre :
   - le **nom du projet** (le nom du dossier de travail), tronqué avec « … » s'il est trop long pour ne pas prendre de place ;
   - un **point d'état** : orange = travaille, jaune = attend l'utilisateur, gris = inactif.
-- **Raccourcis clavier globaux et personnalisables** pour changer d'onglet. Par défaut : Ctrl+Alt+← / → et Ctrl+Alt+1…9 **(choix de Claude)**. L'onglet affiché n'a pas d'effet sur l'appli Claude Code elle-même.
+- **Raccourcis clavier globaux et personnalisables** pour changer d'onglet. Par défaut : Ctrl+Alt+← / → et Ctrl+Alt+Maj+1…9 **(choix de Claude ; Ctrl+Alt+chiffre est AltGr+chiffre sur un clavier AZERTY, il volerait ~ # { [ | ` \ ^)**. L'onglet affiché n'a pas d'effet sur l'appli Claude Code elle-même.
 - **Flux en direct** (mode par défaut) : en haut, une ligne de titre avec la tâche en cours, puis les dernières actions (outil + cible : Read, Edit avec lignes ajoutées/retirées, Bash, Grep…). Les plus anciennes s'estompent progressivement.
 - **Barre du bas** : la **mascotte en petit**, **sans texte d'état à côté** (Alex l'a demandé ; l'état se lit à son animation et au point de l'onglet). Puis Contexte (%), Durée, Modèle, et à droite les quotas **5 h** et **hebdo**, chacun avec une barre et l'heure du prochain reset. Les quotas sont liés au compte, ils ne changent pas d'un onglet à l'autre.
 - **Option « Vue d'ensemble »** dans les réglages du module : à la place du flux, l'action en cours sur une ligne, la liste de tâches avec la progression, puis la même barre du bas.

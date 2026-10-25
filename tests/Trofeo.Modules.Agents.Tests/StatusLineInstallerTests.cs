@@ -223,6 +223,39 @@ public sealed class StatusLineInstallerTests : IDisposable
     }
 
     [Fact]
+    public void Install_MovedExe_PathsWithSpaces_RewritesPathKeepsChain()
+    {
+        const string old = "C:/dev/Thermalright custom dashboard/src/Trofeo.StatusLine/bin/Release/net10.0/Trofeo.StatusLine.exe";
+        const string moved = "D:/mes outils/Trofeo dashboard/Trofeo.StatusLine.exe";
+        WriteSettings("""{"statusLine":{"type":"command","command":"bash ~/sl.sh"}}""");
+        Installer().Install(old);
+        var previousBefore = File.ReadAllBytes(PreviousPath);
+
+        var result = Installer().Install(moved);
+
+        Assert.Equal(StatusLineInstallResult.Updated, result);
+        Assert.Equal($"\"{moved}\" --tee | ( bash ~/sl.sh )", (string?)ReadSettings()["statusLine"]!["command"]);
+        Assert.Equal(previousBefore, File.ReadAllBytes(PreviousPath));
+
+        Assert.Equal(StatusLineInstallResult.Uninstalled, Installer().Uninstall());
+        Assert.Equal("{\"statusLine\":{\"type\":\"command\",\"command\":\"bash ~/sl.sh\"}}", JsonNode.Parse(File.ReadAllText(SettingsPath))!.ToJsonString());
+    }
+
+    [Fact]
+    public void Install_MarkerOnlyInLaterSegment_AlreadyInstalledNoWrite()
+    {
+        // Le premier segment entre guillemets n'est pas le nôtre : une commande d'Alex qui cite seulement Trofeo.StatusLine.
+        const string edited = """{"statusLine":{"type":"command","command":"\"C:/tools/other.exe\" --x Trofeo.StatusLine"}}""";
+        WriteSettings(edited);
+        var before = File.ReadAllBytes(SettingsPath);
+
+        Assert.Equal(StatusLineInstallResult.AlreadyInstalled, Installer().Install("D:/ailleurs/Trofeo.StatusLine.exe"));
+
+        Assert.Equal(before, File.ReadAllBytes(SettingsPath));
+        Assert.False(File.Exists(PreviousPath));
+    }
+
+    [Fact]
     public void Install_MovedExe_WithoutChain_RewritesPath()
     {
         Installer().Install(Exe);

@@ -127,10 +127,19 @@ static class Program
 
     /// <summary>
     /// Crée la fenêtre des raccourcis et enregistre ceux de la disposition. Une panne ici n'arrête pas le service :
-    /// il tourne sans raccourcis (<c>null</c>). Libérer le résultat retire les raccourcis puis détruit la fenêtre.
+    /// il tourne sans raccourcis (<c>null</c>), de même quand aucun module n'accepte les commandes. Libérer le résultat
+    /// retire les raccourcis puis détruit la fenêtre.
     /// </summary>
     private static IDisposable? StartHotkeys(DashboardLayout layout, DisplayLoop loop)
     {
+        // Les modules ne changent pas en cours de route : sans module commandable au départ, un raccourci ne servirait
+        // à rien et prendrait une combinaison à d'autres applications.
+        if (loop.FindCommandTarget(null) is null)
+        {
+            Trace.TraceInformation("Aucun module de la disposition n'accepte les commandes : pas de raccourcis clavier.");
+            return null;
+        }
+
         HotkeyWindow? window = null;
         HotkeyRouter? router = null;
         try

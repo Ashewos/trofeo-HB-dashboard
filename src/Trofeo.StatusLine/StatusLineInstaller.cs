@@ -68,7 +68,8 @@ public sealed class StatusLineInstaller(string claudeHome)
         var statusLine = (JsonObject)root["statusLine"]!; // IsOurs a vérifié qu'il porte une commande
         var command = CommandOf(statusLine)!;
         var end = command.StartsWith('"') ? command.IndexOf('"', 1) : -1;
-        if (end < 0) return StatusLineInstallResult.AlreadyInstalled;
+        // Notre marque doit être dans ce premier segment lui-même : une commande qui la cite plus loin n'est pas la nôtre.
+        if (end < 0 || !command[1..end].Contains(Marker, StringComparison.OrdinalIgnoreCase)) return StatusLineInstallResult.AlreadyInstalled;
         if (string.Equals(command[1..end], exe, StringComparison.OrdinalIgnoreCase)) return StatusLineInstallResult.AlreadyInstalled;
 
         statusLine["command"] = $"\"{exe}\"" + command[(end + 1)..];
