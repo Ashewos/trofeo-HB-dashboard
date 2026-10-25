@@ -204,7 +204,7 @@ public sealed class NowPlayingModule : IModule
     private static void DrawNothing(SKCanvas canvas, ModuleRenderContext ctx)
     {
         var scale = ctx.TextScale;
-        using var font = new SKFont(ctx.Theme.Typeface, EmptySize * scale);
+        using var font = ModuleDrawing.Font(ctx.Theme, EmptySize * scale);
         using var paint = new SKPaint { Color = ctx.Theme.TextMuted, IsAntialias = true };
         var maxWidth = ctx.Bounds.Width - 2 * Padding * scale;
         DrawLine(canvas, NothingPlaying, ctx.Bounds.MidX, ctx.Bounds.MidY, SKTextAlign.Center, font, paint, maxWidth);
@@ -223,8 +223,8 @@ public sealed class NowPlayingModule : IModule
         var artistHeight = CompactArtistSize * scale;
         var top = ctx.Bounds.MidY - (titleHeight + CompactGap * scale + artistHeight) / 2f;
 
-        using var titleFont = new SKFont(theme.Typeface, titleHeight);
-        using var artistFont = new SKFont(theme.Typeface, artistHeight);
+        using var titleFont = ModuleDrawing.Font(theme, titleHeight);
+        using var artistFont = ModuleDrawing.Font(theme, artistHeight);
         using var textPaint = new SKPaint { Color = theme.Text, IsAntialias = true };
         using var mutedPaint = new SKPaint { Color = theme.TextMuted, IsAntialias = true };
 
@@ -259,10 +259,10 @@ public sealed class NowPlayingModule : IModule
         var total = appHeight + titleHeight + artistHeight + barHeight + timeHeight + 4 * gap;
         var y = content.MidY - total / 2f;
 
-        using var appFont = new SKFont(theme.Typeface, appHeight);
-        using var titleFont = new SKFont(theme.Typeface, titleHeight);
-        using var artistFont = new SKFont(theme.Typeface, artistHeight);
-        using var timeFont = new SKFont(theme.Typeface, timeHeight);
+        using var appFont = ModuleDrawing.Font(theme, appHeight);
+        using var titleFont = ModuleDrawing.Font(theme, titleHeight);
+        using var artistFont = ModuleDrawing.Font(theme, artistHeight);
+        using var timeFont = ModuleDrawing.Font(theme, timeHeight);
         using var textPaint = new SKPaint { Color = theme.Text, IsAntialias = true };
         using var mutedPaint = new SKPaint { Color = theme.TextMuted, IsAntialias = true };
 

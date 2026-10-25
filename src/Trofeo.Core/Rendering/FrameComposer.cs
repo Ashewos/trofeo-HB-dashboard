@@ -131,12 +131,12 @@ public sealed class FrameComposer : IDisposable
         DrawBackground(canvas, background);
         PaintPanel(canvas, rect, theme, background);
 
-        using var font = new SKFont(theme.Theme.Typeface, 24f);
+        using var font = ModuleDrawing.Font(theme.Theme, 24f);
         float maxWidth = rect.Width - 16f;
         float width = font.MeasureText(ErrorText);
         if (width > maxWidth && maxWidth > 0)
         {
-            font.Size = 24f * maxWidth / width;
+            font.Size = font.Size * maxWidth / width;
         }
 
         using var paint = new SKPaint { IsAntialias = true, Color = theme.Theme.Warning };

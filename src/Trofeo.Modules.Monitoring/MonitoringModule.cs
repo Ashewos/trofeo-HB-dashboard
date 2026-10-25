@@ -106,9 +106,9 @@ public sealed class MonitoringModule : IModule
         DrawTitle(canvas, ctx, snapshot, rowIds.Count, left, width);
         if (rowIds.Count == 0) return;
 
-        using var labelFont = new SKFont(theme.Typeface, LabelSize * scale);
-        using var valueFont = new SKFont(theme.Typeface, ValueSize * scale);
-        using var unitFont = new SKFont(theme.Typeface, UnitSize * scale);
+        using var labelFont = ModuleDrawing.Font(theme, LabelSize * scale);
+        using var valueFont = ModuleDrawing.Font(theme, ValueSize * scale);
+        using var unitFont = ModuleDrawing.Font(theme, UnitSize * scale);
         using var mutedPaint = new SKPaint { Color = theme.TextMuted, IsAntialias = true };
         using var textPaint = new SKPaint { Color = theme.Text, IsAntialias = true };
 
@@ -205,7 +205,7 @@ public sealed class MonitoringModule : IModule
     {
         var scale = ctx.TextScale;
         var (text, isWarning) = TitleLine(snapshot, drawnRows);
-        using var font = new SKFont(ctx.Theme.Typeface, MonitoringRows.TitleSize * scale);
+        using var font = ModuleDrawing.Font(ctx.Theme, MonitoringRows.TitleSize * scale);
         using var paint = new SKPaint { Color = isWarning ? ctx.Theme.Warning : ctx.Theme.TextMuted, IsAntialias = true };
         var mid = ctx.Bounds.Top + (MonitoringRows.PaddingY + MonitoringRows.TitleSize / 2f) * scale;
         DrawCentered(canvas, text, left, mid, SKTextAlign.Left, font, paint, width);

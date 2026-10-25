@@ -95,7 +95,7 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
 
 ## Apparence
 
-Trois thèmes sont fournis : `classique` (le thème par défaut), `liquid-glass` (panneaux de verre dépoli sur un fond « Aurore », un dégradé de halos colorés) et `pixel` (panneaux en pixel art). Les réglages se font avec `Trofeo.HardwareCheck.exe --appearance`, que tu peux relancer autant de fois que tu veux : un réglage que tu ne cites pas reste comme il était. Après `dotnet build -c Release`, depuis la racine du dépôt, l'outil se trouve ici : `tools\Trofeo.HardwareCheck\bin\Release\net10.0-windows10.0.19041.0\Trofeo.HardwareCheck.exe`.
+Trois thèmes sont fournis : `classique` (le thème par défaut), `liquid-glass` (panneaux de verre dépoli sur un fond « Aurore », un dégradé de halos colorés) et `pixel` (panneaux en pixel art, avec VT323, une police pixel lisible ; l'ancienne, Pixelify Sans, se choisit avec `font=Pixelify Sans`). Les réglages se font avec `Trofeo.HardwareCheck.exe --appearance`, que tu peux relancer autant de fois que tu veux : un réglage que tu ne cites pas reste comme il était. Après `dotnet build -c Release`, depuis la racine du dépôt, l'outil se trouve ici : `tools\Trofeo.HardwareCheck\bin\Release\net10.0-windows10.0.19041.0\Trofeo.HardwareCheck.exe`.
 
 ```powershell
 Trofeo.HardwareCheck.exe --appearance theme=liquid-glass opacity=0,3 font="Segoe UI"

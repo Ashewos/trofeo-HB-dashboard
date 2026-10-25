@@ -9,6 +9,30 @@ public class ModuleDrawingTests
     private static SKFont NewFont(float size = 24f) => new(Themes.Classique.Typeface, size);
 
     [Fact]
+    public void Font_MultipliesSizeByTypefaceScale()
+    {
+        using var font = ModuleDrawing.Font(Themes.Classique with { TypefaceScale = 1.24f }, 20f);
+
+        Assert.Equal(24.8f, font.Size, 0.001f);
+        Assert.Same(Themes.Classique.Typeface, font.Typeface);
+        Assert.False(font.Subpixel);
+        using var subpixel = ModuleDrawing.Font(Themes.Classique, 20f, subpixel: true);
+        Assert.True(subpixel.Subpixel);
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    public void Font_TypefaceScaleNotUsable_FallsBackToOne(float scale)
+    {
+        using var font = ModuleDrawing.Font(Themes.Classique with { TypefaceScale = scale }, 20f);
+
+        Assert.Equal(20f, font.Size);
+    }
+
+    [Fact]
     public void Ellipsize_ShortText_Unchanged()
     {
         using var font = NewFont();

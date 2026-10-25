@@ -1434,7 +1434,8 @@ public sealed class AgentModuleTests
     [Fact]
     public async Task Agents_FeedUsesFeedTypeface()
     {
-        var theme = Themes.Pixel.Theme;
+        // Pixel porte désormais VT323 aux deux endroits : on remet Pixelify Sans au thème pour que les deux polices diffèrent.
+        var theme = Themes.Pixel.Theme with { Typeface = EmbeddedFonts.Find("Pixelify Sans")!, TypefaceScale = 1f };
         Assert.NotSame(theme.Typeface, theme.FeedTypeface);
         using var rig = await StartedWithFeed(new AgentSettings(), [new FeedEntry("Edit", "dernier.cs", 12, 3)]);
 
@@ -1451,6 +1452,22 @@ public sealed class AgentModuleTests
         Assert.Same(theme.Typeface, Run(runs, "Faire le truc").Typeface);
         Assert.Same(theme.Typeface, Run(runs, "+12").Typeface);
         Assert.Same(theme.Typeface, Run(runs, "projet-a").Typeface);
+    }
+
+    [Fact]
+    public async Task Agents_TypefaceScale_EnlargesTextButNotTheFeed()
+    {
+        var plain = Themes.Pixel.Theme with { TypefaceScale = 1f, FeedScale = 1f };
+        var enlarged = plain with { TypefaceScale = 1.5f };
+        using var rig = await StartedWithFeed(new AgentSettings(), [new FeedEntry("Edit", "dernier.cs", 12, 3)]);
+
+        var before = DrawnRuns(rig.Module, 8, 4, plain);
+        var after = DrawnRuns(rig.Module, 8, 4, enlarged);
+
+        // Titre et compteurs grossissent ; le fil suit FeedScale seul (TypefaceScale ne s'y ajoute pas).
+        Assert.Equal(Run(before, "Faire le truc").Size * 1.5f, Run(after, "Faire le truc").Size, 0.01f);
+        Assert.Equal(Run(before, "+12").Size * 1.5f, Run(after, "+12").Size, 0.01f);
+        Assert.Equal(Run(before, "Edit").Size, Run(after, "Edit").Size, 0.01f);
     }
 
     [Theory]

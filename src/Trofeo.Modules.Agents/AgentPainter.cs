@@ -112,7 +112,7 @@ internal sealed class AgentPainter
         {
             if (!_fonts.TryGetValue(size, out var font))
             {
-                font = new SKFont(_theme.Typeface, size * _scale) { Subpixel = true };
+                font = ModuleDrawing.Font(_theme, size * _scale, subpixel: true);
                 _fonts[size] = font;
             }
 

@@ -5,8 +5,9 @@ public static class AppearanceResolver
 {
     /// <summary>
     /// Thème inconnu : Classique, avec un avertissement. Opacité bornée à [0, 1] ; NaN : celle du thème, avec un avertissement.
-    /// Police : <see cref="FontResolver"/> ; si elle est trouvée, <c>Typeface</c> et <c>FeedTypeface</c> la prennent et
-    /// <c>FeedScale</c> revient à 1. Si elle est introuvable, le thème reste tel quel ; si c'est la police du thème elle-même, le fil la prend aussi.
+    /// Police : <see cref="FontResolver"/> ; si elle est trouvée, <c>Typeface</c> et <c>FeedTypeface</c> la prennent, et
+    /// <c>TypefaceScale</c> comme <c>FeedScale</c> prennent l'agrandissement de cette police
+    /// (<see cref="EmbeddedFonts.ScaleOf"/> : 1,24 pour VT323, même en Classique ; 1 pour toute autre police, du système comprise). Si elle est introuvable, le thème reste tel quel ; si c'est la police du thème elle-même, le fil la prend aussi.
     /// </summary>
     public static ThemeDefinition Resolve(AppearanceSettings settings, ISystemFonts fonts, Action<string>? warn = null)
     {
@@ -36,7 +37,13 @@ public static class AppearanceResolver
                 warn?.Invoke(message);
             });
             if (!notFound)
-                definition = definition with { Theme = definition.Theme with { Typeface = face, FeedTypeface = face, FeedScale = 1f } };
+            {
+                var scale = EmbeddedFonts.ScaleOf(settings.Font);
+                definition = definition with
+                {
+                    Theme = definition.Theme with { Typeface = face, TypefaceScale = scale, FeedTypeface = face, FeedScale = scale },
+                };
+            }
         }
 
         return definition;

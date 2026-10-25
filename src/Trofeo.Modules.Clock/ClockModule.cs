@@ -104,10 +104,10 @@ public sealed class ClockModule : IModule
             weatherText = new WeatherText(FormatTemperature(weather.Temperature), label);
         }
 
-        var layout = Layout(ctx.Bounds, ctx.Size, ctx.Theme.Typeface, scale, time, date, weatherText);
+        var layout = Layout(ctx.Bounds, ctx.Size, ctx.Theme.Typeface, scale, time, date, weatherText, ModuleDrawing.TypefaceScale(ctx.Theme));
 
-        using var timeFont = new SKFont(ctx.Theme.Typeface, TimeSize * scale * layout.Fit);
-        using var dateFont = new SKFont(ctx.Theme.Typeface, DateSize * scale * layout.Fit);
+        using var timeFont = ModuleDrawing.Font(ctx.Theme, TimeSize * scale * layout.Fit);
+        using var dateFont = ModuleDrawing.Font(ctx.Theme, DateSize * scale * layout.Fit);
         using var timePaint = new SKPaint { Color = ctx.Theme.Highlight, IsAntialias = true };
         using var datePaint = new SKPaint { Color = ctx.Theme.TextMuted, IsAntialias = true };
         using var temperaturePaint = new SKPaint { Color = ctx.Theme.Text, IsAntialias = true }; // seule l'heure est en Highlight
@@ -117,10 +117,10 @@ public sealed class ClockModule : IModule
         if (layout.Weather.IsEmpty || weatherText is not { } text) return;
 
         WeatherIcons.Draw(canvas, icon, layout.Icon);
-        using var temperatureFont = new SKFont(ctx.Theme.Typeface, layout.TemperatureSize);
+        using var temperatureFont = ModuleDrawing.Font(ctx.Theme, layout.TemperatureSize);
         DrawInLine(canvas, text.Temperature, layout.TemperatureLine, temperatureFont, temperaturePaint);
         if (layout.LabelLine.IsEmpty) return;
-        using var labelFont = new SKFont(ctx.Theme.Typeface, BlockLabelSize * scale);
+        using var labelFont = ModuleDrawing.Font(ctx.Theme, BlockLabelSize * scale);
         DrawInLine(canvas, layout.Label, layout.LabelLine, labelFont, datePaint);
     }
 
@@ -175,16 +175,18 @@ public sealed class ClockModule : IModule
     /// <summary>
     /// Dispose l'heure, la date et la météo. Avec 2 rangées ou plus la météo est un bloc en haut à droite ; sur
     /// une rangée elle tient en « 12° » et une petite icône au bord droit, à partir de 4 colonnes. L'heure et
-    /// la date se réduisent pour rester à 24 px au moins de la météo.
+    /// la date se réduisent pour rester à 24 px au moins de la météo. <paramref name="typefaceScale"/> grossit les
+    /// caractères mesurés (<see cref="Theme.TypefaceScale"/>), pas les tailles de mise en page.
     /// </summary>
     internal static ClockLayout Layout(
-        SKRect bounds, GridSize size, SKTypeface typeface, float scale, string time, string date, WeatherText? weather)
+        SKRect bounds, GridSize size, SKTypeface typeface, float scale, string time, string date, WeatherText? weather,
+        float typefaceScale = 1f)
     {
         var availableWidth = bounds.Width - 2 * Padding;
         var availableHeight = bounds.Height - 2 * Padding;
 
-        using var timeFont = new SKFont(typeface, TimeSize * scale);
-        using var dateFont = new SKFont(typeface, DateSize * scale);
+        using var timeFont = new SKFont(typeface, TimeSize * scale * typefaceScale);
+        using var dateFont = new SKFont(typeface, DateSize * scale * typefaceScale);
         var timeWidth = timeFont.MeasureText(time);
         var dateWidth = dateFont.MeasureText(date);
         var timeMetrics = timeFont.Metrics;
@@ -196,7 +198,7 @@ public sealed class ClockModule : IModule
             var fit = 1f;
             if (timeWidth > timeLimit) fit = Math.Min(fit, timeLimit / timeWidth);
             if (dateWidth > dateLimit) fit = Math.Min(fit, dateLimit / dateWidth);
-            var blockHeight = (TimeSize + Gap + DateSize) * scale;
+            var blockHeight = ((TimeSize + DateSize) * typefaceScale + Gap) * scale; // les caractères grossis, l'écart non
             if (blockHeight > availableHeight && availableHeight > 0) fit = Math.Min(fit, availableHeight / blockHeight);
 
             var left = bounds.Left + Padding;
@@ -212,7 +214,7 @@ public sealed class ClockModule : IModule
             };
         }
 
-        var block = weather is { } text ? PlaceWeather(bounds, size, typeface, scale, text, availableWidth) : default;
+        var block = weather is { } text ? PlaceWeather(bounds, size, typeface, scale, text, availableWidth, typefaceScale) : default;
         var textWidth = availableWidth - (block.Weather.Width + WeatherClearance);
         if (block.Weather.IsEmpty || textWidth <= 0f)
         {
@@ -225,7 +227,7 @@ public sealed class ClockModule : IModule
     }
 
     private static ClockLayout PlaceWeather(
-        SKRect bounds, GridSize size, SKTypeface typeface, float scale, WeatherText text, float availableWidth)
+        SKRect bounds, GridSize size, SKTypeface typeface, float scale, WeatherText text, float availableWidth, float typefaceScale)
     {
         var right = bounds.Right - Padding;
 
@@ -235,8 +237,8 @@ public sealed class ClockModule : IModule
             var iconWidth = cell * WeatherIcons.Columns;
             var iconHeight = cell * WeatherIcons.Rows;
 
-            using var temperatureFont = new SKFont(typeface, BlockTemperatureSize * scale);
-            using var labelFont = new SKFont(typeface, BlockLabelSize * scale);
+            using var temperatureFont = new SKFont(typeface, BlockTemperatureSize * scale * typefaceScale);
+            using var labelFont = new SKFont(typeface, BlockLabelSize * scale * typefaceScale);
             var label = ModuleDrawing.Ellipsize(text.Label, labelFont, Math.Max(iconWidth, availableWidth * BlockMaxLabelFraction));
             var temperatureWidth = ModuleDrawing.MeasureText(text.Temperature, temperatureFont);
             var labelWidth = ModuleDrawing.MeasureText(label, labelFont);
@@ -257,7 +259,7 @@ public sealed class ClockModule : IModule
             var iconWidth = cell * WeatherIcons.Columns;
             var iconHeight = cell * WeatherIcons.Rows;
 
-            using var temperatureFont = new SKFont(typeface, CompactTemperatureSize * scale);
+            using var temperatureFont = new SKFont(typeface, CompactTemperatureSize * scale * typefaceScale);
             var temperatureWidth = ModuleDrawing.MeasureText(text.Temperature, temperatureFont);
 
             var icon = new SKRect(right - iconWidth, bounds.MidY - iconHeight / 2f, right, bounds.MidY + iconHeight / 2f);

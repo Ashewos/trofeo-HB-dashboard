@@ -439,6 +439,19 @@ public class ClockModuleTests
     }
 
     [Fact]
+    public void Layout_TypefaceScale_EnlargesCharactersAndKeepsBlockInside()
+    {
+        var bounds = new SKRect(0, 0, 900, 300);
+
+        var plain = ClockModule.Layout(bounds, new GridSize(6, 2), SKTypeface.Default, 1f, "14:32", "Samedi 24 octobre", null);
+        var enlarged = ClockModule.Layout(bounds, new GridSize(6, 2), SKTypeface.Default, 1f, "14:32", "Samedi 24 octobre", null, 1.24f);
+
+        // Même mise en page (rien ne se déplace), caractères mesurés plus larges, bloc toujours dans le module.
+        Assert.True(enlarged.Time.Width > plain.Time.Width * 1.1f);
+        Assert.True(enlarged.Time.Top >= bounds.Top && enlarged.Date.Bottom <= bounds.Bottom && enlarged.Time.Right <= bounds.Right);
+    }
+
+    [Fact]
     public void Layout_WithoutWeather_UsesFullWidth()
     {
         var bounds = new SKRect(0, 0, 600, 240);

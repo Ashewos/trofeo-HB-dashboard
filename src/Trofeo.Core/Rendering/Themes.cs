@@ -76,14 +76,16 @@ public static class Themes
             TextMuted: SKColor.Parse("#8F86B8"),
             Accent: SKColor.Parse("#7CE0A3"),
             Warning: SKColor.Parse("#FFD27A"),
-            Typeface: EmbeddedFonts.Find(EmbeddedFonts.Pixelify)!)
+            Typeface: EmbeddedFonts.Find(EmbeddedFonts.Vt323)!)
         {
             Shape = ThemeShape.Pixel,
             Highlight = SKColor.Parse("#FFD27A"),
             Surface = SKColor.Parse("#2E2850"),
             Track = SKColor.Parse("#2E2850"),
+            // VT323 dessine petit dans son carré : on agrandit les caractères (pas la mise en page), au même facteur partout.
+            TypefaceScale = EmbeddedFonts.ScaleOf(EmbeddedFonts.Vt323),
             FeedTypeface = EmbeddedFonts.Find(EmbeddedFonts.Vt323)!,
-            FeedScale = 1.24f,
+            FeedScale = EmbeddedFonts.ScaleOf(EmbeddedFonts.Vt323),
         },
         new GridSpacing(18, 20),
         new PanelLook(PanelKind.Pixel)

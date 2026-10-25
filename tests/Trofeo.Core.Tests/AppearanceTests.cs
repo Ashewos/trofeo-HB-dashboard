@@ -12,6 +12,13 @@ public sealed class AppearanceTests
         public SKTypeface? Match(string family) => null;
     }
 
+    /// <summary>Une seule police installée, « Arial ».</summary>
+    private sealed class ArialOnly : ISystemFonts
+    {
+        public IReadOnlyList<string> Families => new[] { "Arial" };
+        public SKTypeface? Match(string family) => family == "Arial" ? SKTypeface.Default : null;
+    }
+
     private static ThemeDefinition Resolve(AppearanceSettings settings, List<string>? warnings = null) =>
         AppearanceResolver.Resolve(settings, new NoSystemFonts(), warnings is null ? null : warnings.Add);
 
@@ -83,6 +90,33 @@ public sealed class AppearanceTests
         Assert.Same(manrope, def.Theme.FeedTypeface);
         Assert.Equal(1f, def.Theme.FeedScale);
         Assert.Equal("pixel", def.Theme.Id);
+    }
+
+    [Fact]
+    public void Resolve_FontVt323_ScalesTypefaceAndFeed()
+    {
+        var vt323 = EmbeddedFonts.Find("VT323")!;
+
+        // Même en Classique : l'agrandissement suit la police choisie, pas le thème.
+        var def = Resolve(new AppearanceSettings("classique", Font: "VT323"));
+
+        Assert.Same(vt323, def.Theme.Typeface);
+        Assert.Same(vt323, def.Theme.FeedTypeface);
+        Assert.Equal(1.24f, def.Theme.TypefaceScale);
+        Assert.Equal(1.24f, def.Theme.FeedScale);
+    }
+
+    [Fact]
+    public void Resolve_SystemFont_ResetsScalesToOne()
+    {
+        // Pixel porte 1,24 : une police du système, ou une autre embarquée, ramène tout à 1.
+        var def = AppearanceResolver.Resolve(new AppearanceSettings("pixel", Font: "Arial"), new ArialOnly());
+        var embedded = Resolve(new AppearanceSettings("pixel", Font: "Manrope"));
+
+        Assert.Equal(1f, def.Theme.TypefaceScale);
+        Assert.Equal(1f, def.Theme.FeedScale);
+        Assert.Equal(1f, embedded.Theme.TypefaceScale);
+        Assert.Equal(1f, embedded.Theme.FeedScale);
     }
 
     [Fact]

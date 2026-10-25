@@ -311,7 +311,7 @@ public sealed class NetworkModule : IModule
     private void DrawTitle(SKCanvas canvas, SKRect content, float height, ModuleStatus status, Theme theme, float scale)
     {
         var online = status.Health == ModuleHealth.Online;
-        using var font = new SKFont(theme.Typeface, height);
+        using var font = ModuleDrawing.Font(theme, height);
         using var mutedPaint = new SKPaint { Color = theme.TextMuted, IsAntialias = true };
         using var statePaint = new SKPaint { Color = online ? theme.TextMuted : theme.Warning, IsAntialias = true };
         var mid = content.Top + height / 2f;
@@ -334,8 +334,8 @@ public sealed class NetworkModule : IModule
         var columnWidth = (area.Width - ColumnGap * scale) / 2f;
         if (columnWidth <= 0f) return;
 
-        using var valueFont = new SKFont(theme.Typeface, ValueSize * scale);
-        using var unitFont = new SKFont(theme.Typeface, UnitSize * scale);
+        using var valueFont = ModuleDrawing.Font(theme, ValueSize * scale);
+        using var unitFont = ModuleDrawing.Font(theme, UnitSize * scale);
 
         // Même réduction pour les deux colonnes si l'une ne tient pas, en largeur comme en hauteur.
         var natural = Math.Max(NaturalWidth(down, valueFont, unitFont, scale), NaturalWidth(up, valueFont, unitFont, scale));
@@ -358,8 +358,8 @@ public sealed class NetworkModule : IModule
         SKColor arrowColor, Theme theme, float scale, float fit)
     {
         var size = scale * fit;
-        using var valueFont = new SKFont(theme.Typeface, ValueSize * size);
-        using var unitFont = new SKFont(theme.Typeface, UnitSize * size);
+        using var valueFont = ModuleDrawing.Font(theme, ValueSize * size);
+        using var unitFont = ModuleDrawing.Font(theme, UnitSize * size);
         using var textPaint = new SKPaint { Color = theme.Text, IsAntialias = true };
         using var mutedPaint = new SKPaint { Color = theme.TextMuted, IsAntialias = true };
 

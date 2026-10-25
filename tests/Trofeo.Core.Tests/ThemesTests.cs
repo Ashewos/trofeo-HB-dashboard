@@ -65,7 +65,7 @@ public class ThemesTests
     {
         { "classique", "#7FD1C7", "#F2B84B", 14f, 14, 12, ThemeShape.Rounded, "Barlow Semi Condensed", "Barlow Semi Condensed", 1f },
         { "liquid-glass", "#FFFFFF", "#FFD56B", 30f, 14, 12, ThemeShape.Rounded, "Manrope", "Manrope", 1f },
-        { "pixel", "#7CE0A3", "#FFD27A", 0f, 18, 20, ThemeShape.Pixel, "Pixelify Sans", "VT323", 1.24f },
+        { "pixel", "#7CE0A3", "#FFD27A", 0f, 18, 20, ThemeShape.Pixel, "VT323", "VT323", 1.24f },
     };
 
     [Theory]
@@ -83,6 +83,17 @@ public class ThemesTests
         Assert.Same(EmbeddedFonts.Find(typeface), def.Theme.Typeface);
         Assert.Same(EmbeddedFonts.Find(feedTypeface), def.Theme.FeedTypeface);
         Assert.Equal(feedScale, def.Theme.FeedScale);
+    }
+
+    [Fact]
+    public void Pixel_UsesVt323WithScale()
+    {
+        var t = Themes.Pixel.Theme;
+
+        Assert.Same(EmbeddedFonts.Find("VT323"), t.Typeface);
+        Assert.Equal(1.24f, t.TypefaceScale);
+        Assert.Same(EmbeddedFonts.Find("VT323"), t.FeedTypeface);
+        Assert.Equal(1.24f, t.FeedScale);
     }
 
     [Fact]

@@ -23,6 +23,20 @@ public class ThemeTests
     }
 
     [Fact]
+    public void Theme_TypefaceScale_DefaultsToOne()
+    {
+        var classique = Themes.Classique;
+        var theme = new Theme(
+            classique.Id, classique.Background, classique.Panel, classique.PanelOpacity, classique.CornerRadius,
+            classique.Text, classique.TextMuted, classique.Accent, classique.Warning, classique.Typeface);
+
+        Assert.Equal(1f, theme.TypefaceScale);
+        Assert.Equal(1f, Themes.Classique.TypefaceScale);
+        Assert.Equal(1f, Themes.LiquidGlass.Theme.TypefaceScale);
+        Assert.Equal(1.3f, (theme with { TypefaceScale = 1.3f } with { Text = new SKColor(1, 2, 3) }).TypefaceScale);
+    }
+
+    [Fact]
     public void Theme_Classique_KeepsDefaults()
     {
         var theme = Themes.Classique;

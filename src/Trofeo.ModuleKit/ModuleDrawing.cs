@@ -13,6 +13,18 @@ public static class ModuleDrawing
 {
     private const string Ellipsis = "…";
 
+    /// <summary><see cref="Theme.TypefaceScale"/>, ou 1 s'il n'est pas un nombre fini positif.</summary>
+    public static float TypefaceScale(Theme theme) =>
+        float.IsFinite(theme.TypefaceScale) && theme.TypefaceScale > 0f ? theme.TypefaceScale : 1f;
+
+    /// <summary>
+    /// Police du thème (<see cref="Theme.Typeface"/>) à <paramref name="size"/> × <see cref="Theme.TypefaceScale"/> : seuls
+    /// les caractères grandissent, la mise en page (calculée d'après <paramref name="size"/>) ne bouge pas.
+    /// Toute police de texte d'un module passe par ici ; le fil d'activité garde <see cref="Theme.FeedTypeface"/> et <see cref="Theme.FeedScale"/>.
+    /// </summary>
+    public static SKFont Font(Theme theme, float size, bool subpixel = false) =>
+        new(theme.Typeface, size * TypefaceScale(theme)) { Subpixel = subpixel };
+
     /// <summary>Polices de secours déjà résolues, par (famille de la police principale, point de code). <c>null</c> = aucune trouvée.</summary>
     private static readonly ConcurrentDictionary<(string Family, int CodePoint), SKTypeface?> FallbackCache = new();
 
@@ -187,7 +199,7 @@ public static class ModuleDrawing
         if (string.IsNullOrWhiteSpace(message) || area.Width <= 0f || area.Height <= 0f) return;
 
         var (size, lines) = LayoutActionMessage(theme, textScale, area.Width, message);
-        using var font = new SKFont(theme.Typeface, size) { Subpixel = true };
+        using var font = Font(theme, size, subpixel: true);
         DrawCentered(canvas, area, theme, font, lines);
     }
 
@@ -204,7 +216,7 @@ public static class ModuleDrawing
 
         while (true)
         {
-            using var font = new SKFont(theme.Typeface, size) { Subpixel = true };
+            using var font = Font(theme, size, subpixel: true);
             var (lines, truncated) = WrapCore(message, font, width, maxLines);
             if (!truncated || size <= minSize) return (size, lines);
             size = Math.Max(size - 2f, minSize);

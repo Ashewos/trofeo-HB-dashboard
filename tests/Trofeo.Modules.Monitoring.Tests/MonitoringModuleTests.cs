@@ -375,6 +375,54 @@ public class MonitoringModuleTests
         Assert.Equal(new[] { "cpu", "gpu", "ram" }, module.VisibleRows(bounds, 1f));
     }
 
+    // --- Thème : police agrandie ---
+
+    /// <summary>Rectangle englobant et nombre des pixels de la couleur du texte (les barres, d'autres couleurs, ne comptent pas).</summary>
+    private static (SKRectI Box, int Ink) InkOf(SKBitmap bitmap, SKColor textColor)
+    {
+        int left = int.MaxValue, top = int.MaxValue, right = -1, bottom = -1, ink = 0;
+        for (var y = 0; y < bitmap.Height; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                if (bitmap.GetPixel(x, y) != textColor) continue;
+                ink++;
+                left = Math.Min(left, x); top = Math.Min(top, y);
+                right = Math.Max(right, x + 1); bottom = Math.Max(bottom, y + 1);
+            }
+        }
+        return (new SKRectI(left, top, right, bottom), ink);
+    }
+
+    [Fact]
+    public async Task Monitoring_PixelTypefaceScale_EnlargesTextWithoutChangingRows()
+    {
+        var bounds = new SKRect(10, 10, 890, 490);
+        var feed = new FakeFeed { Latest = Full() };
+        using var module = Create(feed, Clock(), """{"rows":["cpu","gpu","ram"]}""");
+        await module.StartAsync(CancellationToken.None);
+
+        (SKRectI Box, int Ink) Draw(Theme theme)
+        {
+            using var bitmap = new SKBitmap(900, 500);
+            using var canvas = new SKCanvas(bitmap);
+            canvas.Clear(theme.Background);
+            module.Render(canvas, new ModuleRenderContext(bounds, new GridSize(6, 4), theme, 1f, Clock().GetUtcNow()));
+            return InkOf(bitmap, theme.Text);
+        }
+
+        var pixel = Themes.Pixel.Theme;
+        var plain = Draw(pixel with { TypefaceScale = 1f });
+        var enlarged = Draw(pixel);
+
+        // La mise en page ne dépend pas de TypefaceScale : les trois lignes restent.
+        Assert.Equal(new[] { "cpu", "gpu", "ram" }, module.VisibleRows(bounds, 1f));
+        // Le texte est plus grand : plus d'encre, et jamais hors du module.
+        Assert.True(enlarged.Ink > plain.Ink * 1.2, $"encre {enlarged.Ink} contre {plain.Ink}");
+        Assert.True(enlarged.Box.Width > plain.Box.Width, "le texte n'est pas plus large");
+        Assert.True(enlarged.Box.Left >= 10 && enlarged.Box.Right <= 890 && enlarged.Box.Top >= 10 && enlarged.Box.Bottom <= 490);
+    }
+
     // --- Thème : barres ---
 
     private static readonly SKColor TestTrack = new(0x00, 0x80, 0x00);

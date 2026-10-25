@@ -16,6 +16,9 @@ public static class EmbeddedFonts
         (Vt323, "VT323-Regular.ttf"),
     };
 
+    // Agrandissement propre à chaque famille : VT323 dessine ses glyphes petits dans son carré de police.
+    private const float Vt323Scale = 1.24f;
+
     private static readonly Dictionary<string, Lazy<SKTypeface>> Cache = Sources.ToDictionary(
         s => s.Family,
         s => new Lazy<SKTypeface>(() => FontLoader.Load(s.Resource)),
@@ -23,6 +26,10 @@ public static class EmbeddedFonts
 
     /// <summary>Les quatre familles, dans cet ordre.</summary>
     public static IReadOnlyList<string> Families { get; } = Sources.Select(s => s.Family).ToArray();
+
+    /// <summary>Agrandissement des caractères d'une famille embarquée (casse ignorée) : 1,24 pour VT323, 1 pour toutes les autres, et pour un nom inconnu.</summary>
+    public static float ScaleOf(string? family) =>
+        string.Equals(family?.Trim(), Vt323, StringComparison.OrdinalIgnoreCase) ? Vt323Scale : 1f;
 
     /// <summary>Police embarquée par nom de famille (casse ignorée) ; null si ce n'en est pas une, ou si sa ressource manque ou est illisible. Chargée une fois, gardée.</summary>
     public static SKTypeface? Find(string family)

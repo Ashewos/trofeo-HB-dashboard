@@ -29,6 +29,7 @@ public sealed record Theme(
     private SKColor? _track;
     private SKTypeface? _feedTypeface;
     private float? _feedScale;
+    private float? _typefaceScale;
 
     /// <summary>Forme du thème ; défaut <see cref="ThemeShape.Rounded"/>.</summary>
     public ThemeShape Shape { get; init; }
@@ -47,4 +48,11 @@ public sealed record Theme(
 
     /// <summary>Agrandissement du fil d'activité ; défaut 1.</summary>
     public float FeedScale { get => _feedScale ?? 1f; init => _feedScale = value; }
+
+    /// <summary>
+    /// Agrandissement des caractères dessinés avec <see cref="Typeface"/> ; défaut 1. Il multiplie la taille de la police
+    /// (voir <c>ModuleDrawing.Font</c>), jamais la mise en page : les modules choisissent leurs lignes d'après
+    /// <c>TextScale</c>, qui reste inchangé. Une police qui dessine petit dans son carré (VT323) y gagne en lisibilité.
+    /// </summary>
+    public float TypefaceScale { get => _typefaceScale ?? 1f; init => _typefaceScale = value; }
 }
