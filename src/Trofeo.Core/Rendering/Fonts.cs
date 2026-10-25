@@ -66,12 +66,22 @@ public sealed class SkiaSystemFonts : ISystemFonts
         var face = SKFontManager.Default.MatchFamily(family);
         if (face is null)
             return null;
-        if (string.Equals(face.FamilyName, family, StringComparison.OrdinalIgnoreCase))
+        if (IsSameFamily(family, face.FamilyName))
             return face;
 
         face.Dispose();
         return null;
     }
+
+    /// <summary>
+    /// Vrai si <paramref name="actual"/> (le nom rendu par Skia) désigne la famille demandée. DirectWrite retire de la
+    /// famille les mots de largeur ou de graisse : « Barlow Semi Condensed » devient « Barlow », « Arial Narrow »
+    /// devient « Arial ». On accepte donc aussi une famille demandée qui commence par ce nom suivi d'un espace ;
+    /// le repli silencieux de Skia (« Segoe UI » pour une famille inconnue) reste refusé.
+    /// </summary>
+    internal static bool IsSameFamily(string requested, string actual) =>
+        string.Equals(requested, actual, StringComparison.OrdinalIgnoreCase)
+        || (actual.Length > 0 && requested.StartsWith(actual + " ", StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>Trouve la police demandée par l'utilisateur, ou à défaut celle du thème.</summary>

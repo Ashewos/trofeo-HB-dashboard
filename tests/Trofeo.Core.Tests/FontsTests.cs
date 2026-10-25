@@ -37,11 +37,22 @@ public class FontsTests
         {
             var face = EmbeddedFonts.Find(name);
             Assert.NotNull(face);
-            Assert.Equal(name, face!.FamilyName);
+            // DirectWrite (Windows) nomme « Barlow » la famille « Barlow Semi Condensed » : voir IsSameFamily.
+            Assert.True(SkiaSystemFonts.IsSameFamily(name, face!.FamilyName), $"{name} ≠ {face.FamilyName}");
         }
 
         Assert.Equal(500, EmbeddedFonts.Find(EmbeddedFonts.Manrope)!.FontWeight);
     }
+
+    [Theory]
+    [InlineData("Barlow Semi Condensed", "Barlow Semi Condensed", true)]
+    [InlineData("Barlow Semi Condensed", "Barlow", true)]
+    [InlineData("arial narrow", "Arial", true)]
+    [InlineData("Barlowe", "Barlow", false)]
+    [InlineData("Police Inconnue", "Segoe UI", false)]
+    [InlineData("Manrope", "", false)]
+    public void IsSameFamily_AcceptsDirectWriteNames(string requested, string actual, bool expected) =>
+        Assert.Equal(expected, SkiaSystemFonts.IsSameFamily(requested, actual));
 
     [Fact]
     public void Embedded_Find_IgnoresCase()

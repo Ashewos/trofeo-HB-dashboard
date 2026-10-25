@@ -80,8 +80,8 @@ public class ThemesTests
         Assert.Equal(radius, def.Theme.CornerRadius);
         Assert.Equal(new GridSpacing(inset, gap), def.Grid);
         Assert.Equal(shape, def.Theme.Shape);
-        Assert.Equal(typeface, def.Theme.Typeface.FamilyName);
-        Assert.Equal(feedTypeface, def.Theme.FeedTypeface.FamilyName);
+        Assert.Same(EmbeddedFonts.Find(typeface), def.Theme.Typeface);
+        Assert.Same(EmbeddedFonts.Find(feedTypeface), def.Theme.FeedTypeface);
         Assert.Equal(feedScale, def.Theme.FeedScale);
     }
 

@@ -63,7 +63,7 @@ Chaque décision est suivie de son coût si elle est fausse.
    - Il doit aussi libérer le fond, appeler `Advance` à chaque `Tick`, et tenir compte de `UntilNextFrame` dans le délai.
    - `HardwareCheck --appearance` et le README, comme dans le plan.
 3. **À vérifier sous Windows**, avant ou pendant la séance sur l'écran :
-   - `FontsTests` : DirectWrite doit donner les noms « Manrope », « Pixelify Sans » et « VT323 ».
+   - `FontsTests` : vérifié par Alex le 26/10. DirectWrite nomme « Barlow » la famille « Barlow Semi Condensed » (il retire les mots de largeur). `SkiaSystemFonts.IsSameFamily` accepte désormais ce nom raccourci, et les tests aussi. Manrope, Pixelify Sans et VT323 passent.
    - Une police listée par `SkiaSystemFonts.Families` doit être acceptée par `Match` (les noms traduits par DirectWrite peuvent différer).
    - Les fichiers `OFL-*.txt` sont à côté de `Trofeo.Display.exe` en Release.
    - Remplacer ou supprimer le GIF pendant qu'il joue (partage en suppression de Windows).
