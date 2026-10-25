@@ -120,7 +120,7 @@ public sealed class FrameComposer : IDisposable
     private void PaintPanel(SKCanvas canvas, SKRect rect, ThemeDefinition theme, IBackground background)
     {
         var blurred = theme.Panel.Kind == PanelKind.Glass ? _backdrop.Get(background, theme.Panel) : null;
-        PanelPainter.Paint(canvas, rect, theme, blurred, background.Current, _backdrop.MeanLuminance(background, rect));
+        PanelPainter.Paint(canvas, rect, theme, blurred, background.Current, _backdrop.BrightestLuminance(background, rect));
     }
 
     /// <summary>Efface ce que le module a pu peindre avant d'échouer, puis affiche le message d'erreur.</summary>

@@ -458,6 +458,27 @@ public class FrameComposerTests
     }
 
     [Fact]
+    public void Panel_MostlyDarkBackdropWithOneBrightCell_IsDarkenedUnderTheBrightCell()
+    {
+        // La moyenne du panneau est basse (un carré blanc sur du noir) : l'ancienne garde ne faisait rien.
+        var def = Themes.ClassiqueDefinition with { Theme = Themes.Classique with { PanelOpacity = 0f } };
+        var layout = new DashboardLayout(0, [Place(Guid.NewGuid(), 4, 1, 4, 2)]);
+        var rect = GridGeometry.ModuleRect(4, 1, 4, 2);
+        int cx = (rect.Left + rect.Right) / 2, cy = (rect.Top + rect.Bottom) / 2;
+        using var bright = new StubBackground(StubBackground.Make(canvas =>
+        {
+            canvas.Clear(SKColors.Black);
+            using var paint = new SKPaint { Color = SKColors.White };
+            canvas.DrawRect(SKRect.Create(cx - 120, cy - 100, 240, 200), paint); // plus large que deux cellules de mesure
+        }));
+
+        using var frame = new FrameComposer().Compose(
+            layout, new Dictionary<Guid, IModule>(), def, bright, DateTimeOffset.UnixEpoch);
+
+        Assert.InRange(Luminance(frame.GetPixel(cx, cy)), 0.0, 0.36);
+    }
+
+    [Fact]
     public void Panel_DarkBackdrop_KeepsUserOpacity()
     {
         var def = Themes.ClassiqueDefinition with { Theme = Themes.Classique with { PanelOpacity = 0.3f } };

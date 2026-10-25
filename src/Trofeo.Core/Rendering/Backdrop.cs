@@ -92,10 +92,11 @@ internal sealed class Backdrop : IDisposable
     }
 
     /// <summary>
-    /// Luminance relative moyenne (WCAG, 0 à 1) du fond sous <paramref name="rect"/> (pixels de l'écran). Calculée sur la
-    /// copie réduite, une fois par version du fond et par rectangle.
+    /// Luminance relative (WCAG, 0 à 1) de la zone la plus claire du fond sous <paramref name="rect"/> (pixels de
+    /// l'écran) : le maximum des moyennes de cellules d'environ <see cref="CellSize"/> px de la copie réduite. Le texte
+    /// se pose sur une partie du panneau, pas sur sa moyenne. Calculée une fois par version du fond et par rectangle.
     /// </summary>
-    public float MeanLuminance(IBackground background, SKRect rect)
+    public float BrightestLuminance(IBackground background, SKRect rect)
     {
         EnsureSmall(background);
         if (_luminances.TryGetValue(rect, out float cached))
@@ -103,32 +104,51 @@ internal sealed class Backdrop : IDisposable
             return cached;
         }
 
-        float value = MeanLuminance(_small, rect);
+        float value = BrightestLuminance(_small, rect);
         _luminances[rect] = value;
         return value;
     }
 
-    /// <summary>Luminance relative moyenne sous <paramref name="rect"/> d'une copie réduite à 480 × 116.</summary>
-    internal static float MeanLuminance(SKBitmap small, SKRect rect)
+    /// <summary>Côté d'une cellule de mesure, en pixels de la copie réduite (24 × 4 = 96 px de l'écran).</summary>
+    internal const int CellSize = 24;
+
+    /// <summary>
+    /// Plus grande luminance relative moyenne d'une cellule (environ <see cref="CellSize"/> × <see cref="CellSize"/>
+    /// px, au moins une) sous <paramref name="rect"/>, sur une copie réduite à 480 × 116.
+    /// </summary>
+    internal static float BrightestLuminance(SKBitmap small, SKRect rect)
     {
         int x0 = Math.Clamp((int)Math.Floor(rect.Left * ScaleX), 0, Width - 1);
         int x1 = Math.Clamp((int)Math.Ceiling(rect.Right * ScaleX), x0 + 1, Width);
         int y0 = Math.Clamp((int)Math.Floor(rect.Top * ScaleY), 0, Height - 1);
         int y1 = Math.Clamp((int)Math.Ceiling(rect.Bottom * ScaleY), y0 + 1, Height);
 
+        int columns = Math.Max(1, (int)Math.Round((x1 - x0) / (double)CellSize));
+        int rows = Math.Max(1, (int)Math.Round((y1 - y0) / (double)CellSize));
+
         var pixels = small.GetPixelSpan();
         int stride = small.RowBytes;
-        double sum = 0;
-        for (int y = y0; y < y1; y++)
+        float brightest = 0f;
+        for (int row = 0; row < rows; row++)
         {
-            int index = y * stride + x0 * 4;
-            for (int x = x0; x < x1; x++, index += 4)
+            int cy0 = y0 + (y1 - y0) * row / rows, cy1 = y0 + (y1 - y0) * (row + 1) / rows;
+            for (int column = 0; column < columns; column++)
             {
-                // Bgra8888 : B, G, R, A. Le fond est opaque.
-                sum += 0.0722f * Linear[pixels[index]] + 0.7152f * Linear[pixels[index + 1]] + 0.2126f * Linear[pixels[index + 2]];
+                int cx0 = x0 + (x1 - x0) * column / columns, cx1 = x0 + (x1 - x0) * (column + 1) / columns;
+                double sum = 0;
+                for (int y = cy0; y < cy1; y++)
+                {
+                    int index = y * stride + cx0 * 4;
+                    for (int x = cx0; x < cx1; x++, index += 4)
+                    {
+                        // Bgra8888 : B, G, R, A. Le fond est opaque.
+                        sum += 0.0722f * Linear[pixels[index]] + 0.7152f * Linear[pixels[index + 1]] + 0.2126f * Linear[pixels[index + 2]];
+                    }
+                }
+                brightest = Math.Max(brightest, (float)(sum / ((cx1 - cx0) * (cy1 - cy0))));
             }
         }
-        return (float)(sum / ((x1 - x0) * (y1 - y0)));
+        return brightest;
     }
 
     /// <summary>Réduit au quart l'image de <paramref name="background"/> dans <paramref name="target"/> (480 × 116, Bgra).</summary>

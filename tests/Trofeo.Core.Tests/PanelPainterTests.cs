@@ -371,32 +371,49 @@ public class BackdropTests
     }
 
     [Fact]
-    public void MeanLuminance_MeasuresTheRectOnly()
+    public void BrightestLuminance_MeasuresTheRectOnly()
     {
         using var backdrop = new Backdrop();
         using var background = new StubBackground(Halves(SKColors.White, SKColors.Black));
 
-        float left = backdrop.MeanLuminance(background, SKRect.Create(100, 100, 400, 200));
-        float right = backdrop.MeanLuminance(background, SKRect.Create(1300, 100, 400, 200));
-        float both = backdrop.MeanLuminance(background, SKRect.Create(560, 100, 800, 200));
+        float left = backdrop.BrightestLuminance(background, SKRect.Create(100, 100, 400, 200));
+        float right = backdrop.BrightestLuminance(background, SKRect.Create(1300, 100, 400, 200));
+        float both = backdrop.BrightestLuminance(background, SKRect.Create(560, 100, 800, 200));
 
         Assert.Equal(1f, left, 2);
         Assert.Equal(0f, right, 2);
-        Assert.InRange(both, 0.4f, 0.6f);
+        Assert.Equal(1f, both, 2); // la zone la plus claire, pas la moyenne
     }
 
     [Fact]
-    public void MeanLuminance_IsCachedPerVersionAndRect()
+    public void BrightestLuminance_OneBrightCellInADarkPanel_IsFound()
+    {
+        using var backdrop = new Backdrop();
+        // Panneau de 960 × 300 px (10 × 3 cellules) presque noir, avec un carré blanc de 120 px (une cellule).
+        using var background = new StubBackground(StubBackground.Make(canvas =>
+        {
+            canvas.Clear(SKColors.Black);
+            using var paint = new SKPaint { Color = SKColors.White };
+            canvas.DrawRect(SKRect.Create(480, 96, 120, 96), paint);
+        }));
+
+        float value = backdrop.BrightestLuminance(background, SKRect.Create(100, 80, 960, 300));
+
+        Assert.True(value > 0.5f, $"la cellule claire doit compter, pas la moyenne : {value}");
+    }
+
+    [Fact]
+    public void BrightestLuminance_IsCachedPerVersionAndRect()
     {
         using var backdrop = new Backdrop();
         using var background = new StubBackground(SKColors.White);
         var rect = SKRect.Create(100, 100, 400, 200);
-        float first = backdrop.MeanLuminance(background, rect);
+        float first = backdrop.BrightestLuminance(background, rect);
 
         background.ReplaceSilently(StubBackground.Make(c => c.Clear(SKColors.Black))); // même version : valeur gardée
-        Assert.Equal(first, backdrop.MeanLuminance(background, rect));
+        Assert.Equal(first, backdrop.BrightestLuminance(background, rect));
 
         background.Replace(StubBackground.Make(c => c.Clear(SKColors.Black)));          // nouvelle version : recalculée
-        Assert.Equal(0f, backdrop.MeanLuminance(background, rect), 2);
+        Assert.Equal(0f, backdrop.BrightestLuminance(background, rect), 2);
     }
 }

@@ -19,7 +19,7 @@ internal static class PanelPainter
     /// </summary>
     /// <param name="backdrop">Le fond flouté de <see cref="Backdrop.Get"/> ; null hors verre.</param>
     /// <param name="background">Le fond net de l'écran ; sert à mesurer la luminance quand elle n'est pas donnée.</param>
-    /// <param name="backdropLuminance">Luminance moyenne du fond sous <paramref name="rect"/> (<see cref="Backdrop.MeanLuminance(IBackground, SKRect)"/>) ; sinon mesurée sur <paramref name="background"/>.</param>
+    /// <param name="backdropLuminance">Luminance de la zone la plus claire du fond sous <paramref name="rect"/> (<see cref="Backdrop.BrightestLuminance(IBackground, SKRect)"/>) ; sinon mesurée sur <paramref name="background"/>.</param>
     public static void Paint(
         SKCanvas canvas, SKRect rect, ThemeDefinition theme, SKImage? backdrop, SKImage background, float? backdropLuminance = null)
     {
@@ -180,11 +180,11 @@ internal static class PanelPainter
     {
         using var small = new SKBitmap(new SKImageInfo(Backdrop.Width, Backdrop.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
         Backdrop.Shrunk(background, small);
-        return Backdrop.MeanLuminance(small, rect);
+        return Backdrop.BrightestLuminance(small, rect);
     }
 
     /// <summary>
-    /// Garde de lisibilité : si <c>L_fond × (1 − a) + L_panneau × a + reflet</c> dépasse <see cref="MaxLuminance"/>, la
+    /// Garde de lisibilité (<c>L_fond</c> = la zone la plus claire sous le panneau, pas sa moyenne) : si <c>L_fond × (1 − a) + L_panneau × a + reflet</c> dépasse <see cref="MaxLuminance"/>, la
     /// plus petite opacité qui ramène ce total à la limite ; sinon <paramref name="alpha"/>, inchangée.
     /// </summary>
     public static float LegibleAlpha(float backdropLuminance, float panelLuminance, float alpha, float sheen)
