@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Trofeo.Modules.Agents.Tests" />
+    <InternalsVisibleTo Include="Trofeo.AgentPreview" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Trofeo.ModuleKit\Trofeo.ModuleKit.csproj" />
+    <ProjectReference Include="..\Trofeo.StatusLine\Trofeo.StatusLine.csproj" />
+  </ItemGroup>
+
+</Project>
