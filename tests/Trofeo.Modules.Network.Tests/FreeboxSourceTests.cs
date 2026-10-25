@@ -501,13 +501,149 @@ public class FreeboxSourceTests
 
         await rig.Read(); // demande d'autorisation
         await rig.Read(); // accordée, puis connexion refusée deux fois : Offline
-        rig.Secrets.Set("freebox.app_token", "OTHER-TOKEN-5555");
         rig.Handler.Clear(OpenSession);
         rig.Handler.On(OpenSession, Err("invalid_token"), HttpStatusCode.Forbidden);
-        await rig.Read(); // jeton rejeté : nouvelle demande
+        rig.Handler.Clear(Connection);
+        rig.Handler.On(Connection, Err("auth_required"), HttpStatusCode.Forbidden);
+        await rig.Read(); // session perdue, jeton rejeté : nouvelle demande
 
         Assert.NotEmpty(rig.Log.Entries);
-        Assert.DoesNotContain(rig.Log.Entries, e => e.Contains(AppToken) || e.Contains(Session)
-            || e.Contains(Challenge) || e.Contains("OTHER-TOKEN-5555"));
+        Assert.DoesNotContain(rig.Log.Entries, e => e.Contains(AppToken) || e.Contains(Session) || e.Contains(Challenge));
+    }
+
+    [Theory]
+    [InlineData("transport")]
+    [InlineData("unparseable")]
+    [InlineData("refused")]
+    public async Task Module_ReadThrowingAfterTheTokenExists_LeavesNoTokenInTheLog(string failure)
+    {
+        var rig = new Rig();
+        rig.Secrets.Set("freebox.app_token", AppToken);
+        rig.LoginAndConnection();
+        rig.Handler.Clear(Connection);
+        switch (failure)
+        {
+            case "transport": rig.Handler.OnFail(Connection, new HttpRequestException("coupé")); break;
+            case "unparseable": rig.Handler.On(Connection, "<html>502</html>", HttpStatusCode.BadGateway); break;
+            default: rig.Handler.On(Connection, Err("internal_error"), HttpStatusCode.InternalServerError); break;
+        }
+        var descriptor = new NetworkFactory((_, _) => rig.Source).Descriptor;
+        using var module = new NetworkModule(descriptor, rig.Source, rig.Time, rig.Log);
+
+        await module.StartAsync(CancellationToken.None);
+
+        Assert.Equal(ModuleHealth.Offline, module.Status.Health);
+        Assert.Contains(rig.Log.Entries, e => e.StartsWith("Error"));
+        Assert.DoesNotContain(rig.Log.Entries, e => e.Contains(AppToken) || e.Contains(Session) || e.Contains(Challenge));
+    }
+
+    // --- Durcissement de la tâche 12 ---
+
+    /// <summary>Coffre qui compte les lectures de chaque clé.</summary>
+    private sealed class CountingSecretStore : ISecretStore
+    {
+        private readonly FakeSecretStore _inner = new();
+        public Dictionary<string, int> Gets { get; } = [];
+
+        public string? Get(string key)
+        {
+            Gets[key] = Gets.GetValueOrDefault(key) + 1;
+            return _inner.Get(key);
+        }
+
+        public void Set(string key, string? value) => _inner.Set(key, value);
+    }
+
+    [Fact]
+    public async Task Token_IsReadOnceAndKeptInSyncWithEverySet()
+    {
+        var secrets = new CountingSecretStore();
+        var handler = new ScriptedHandler();
+        handler.On(Discovery, ApiVersion("8.2"));
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 25, 12, 0, 0, TimeSpan.Zero));
+        var source = new FreeboxSource(new HttpClient(handler), secrets, new FakeModuleLog(), null, time);
+        handler.On(Authorize, Ok($$"""{"app_token":"{{AppToken}}","track_id":42}"""));
+        handler.On(Track, TrackStatus("granted"));
+        handler.On(Login, Ok($$"""{"logged_in":false,"challenge":"{{Challenge}}"}"""));
+        handler.On(OpenSession, Ok($$"""{"session_token":"{{Session}}"}"""));
+        handler.On(Connection, Ok("""{"state":"up","rate_down":1,"rate_up":2}"""));
+
+        await source.ReadAsync(default); // pas de jeton : demande
+        await source.ReadAsync(default); // accordé : enregistré puis lecture
+        await source.ReadAsync(default);
+        await source.ReadAsync(default);
+
+        Assert.Equal(1, secrets.Gets["freebox.app_token"]); // une seule lecture du coffre, malgré quatre lectures du débit
+
+        // Le jeton rejeté est effacé du coffre et du cache : la lecture suivante redemande l'autorisation, sans relire le coffre.
+        handler.Clear(Connection);
+        handler.On(Connection, Err("auth_required"), HttpStatusCode.Forbidden);
+        handler.Clear(OpenSession);
+        handler.On(OpenSession, Err("invalid_token"), HttpStatusCode.Forbidden);
+        await source.ReadAsync(default);
+        Assert.Null(secrets.Get("freebox.app_token"));
+        secrets.Gets.Clear();
+        var next = await source.ReadAsync(default);
+        Assert.Equal(new ModuleStatus(ModuleHealth.NotConfigured, ButtonMessage), next.Status);
+        Assert.Empty(secrets.Gets);
+    }
+
+    [Fact]
+    public void FreeboxResponse_ToString_NeverPrintsTheResult()
+    {
+        using var doc = JsonDocument.Parse($$"""{"app_token":"{{AppToken}}","session_token":"{{Session}}"}""");
+        var response = new FreeboxResponse(true, "some_code", doc.RootElement.Clone());
+
+        var text = response.ToString();
+
+        Assert.DoesNotContain(AppToken, text);
+        Assert.DoesNotContain(Session, text);
+        Assert.Contains("some_code", text);
+    }
+
+    [Fact]
+    public void FreeboxException_IsNotPartOfThePublicApi() =>
+        Assert.False(typeof(FreeboxException).IsVisible);
+
+    [Fact]
+    public async Task Interval_IsOneSecondOnlyOnceRatesAreValidated_AndResetsOnFailure()
+    {
+        var rig = new Rig();
+        rig.Secrets.Set("freebox.app_token", AppToken);
+        rig.LoginAndConnection();
+        rig.Handler.Clear(Connection);
+        rig.Handler.On(Connection, Ok("""{"state":"up","rate_down":"beaucoup","rate_up":2}"""));
+        rig.Handler.On(Connection, Ok("""{"state":"up","rate_down":3,"rate_up":4}"""));
+        rig.Handler.On(Connection, Ok("""{"state":"up"}"""));
+        rig.Handler.On(Connection, Ok("""{"state":"up","rate_down":5,"rate_up":6}"""));
+
+        await Assert.ThrowsAsync<FreeboxException>(() => rig.Read()); // débit illisible : pas connecté
+        Assert.Equal(TimeSpan.FromSeconds(2), rig.Source.Interval);
+
+        await rig.Read();
+        Assert.Equal(TimeSpan.FromSeconds(1), rig.Source.Interval);
+
+        await Assert.ThrowsAsync<FreeboxException>(() => rig.Read()); // la lecture lève : retour à 2 s
+        Assert.Equal(TimeSpan.FromSeconds(2), rig.Source.Interval);
+
+        await rig.Read();
+        Assert.Equal(TimeSpan.FromSeconds(1), rig.Source.Interval);
+    }
+
+    [Fact]
+    public async Task Interval_IsTwoSecondsWhenTheReadEndsOffline()
+    {
+        var rig = new Rig();
+        rig.Secrets.Set("freebox.app_token", AppToken);
+        rig.LoginAndConnection();
+        await rig.Read();
+        Assert.Equal(TimeSpan.FromSeconds(1), rig.Source.Interval);
+
+        rig.Handler.Clear(Connection);
+        rig.Handler.On(Connection, Err("auth_required"), HttpStatusCode.Forbidden);
+        var reading = await rig.Read();
+
+        Assert.Equal(ModuleHealth.Offline, reading.Status.Health);
+        Assert.Equal(TimeSpan.FromSeconds(2), rig.Source.Interval);
     }
 }

@@ -87,7 +87,7 @@ public class NetworkModuleTests
     [Theory]
     [InlineData("pc", ModuleHealth.Online, null)]
     [InlineData("freebox", ModuleHealth.NotConfigured, "Appuie sur ► sur ta Freebox pour autoriser le dashboard")]
-    [InlineData("unifi", ModuleHealth.NotConfigured, "UniFi n'est pas encore disponible")]
+    [InlineData("unifi", ModuleHealth.NotConfigured, "Indique l'adresse de la console UniFi dans le logiciel de réglage")]
     public async Task CreateProduction_BuildsAWorkingModuleForEverySource(string source, ModuleHealth health, string? message)
     {
         // Aucun appel réseau : la « box » est un gestionnaire factice.
@@ -100,6 +100,20 @@ public class NetworkModuleTests
 
         Assert.Equal(health, module.Status.Health);
         Assert.Equal(message, module.Status.ActionMessage);
+    }
+
+    [Fact]
+    public async Task CreateProduction_UniFiWithHost_WaitsForTheKey()
+    {
+        using var http = new HttpClient(new FakeBoxHandler());
+        using var doc = JsonDocument.Parse("""{"source":"unifi","unifi":{"host":"192.168.1.1"}}""");
+        var context = new ModuleContext(Guid.NewGuid(), doc.RootElement.Clone(), TimeProvider.System, new FakeModuleLog(), new FakeSecretStore());
+
+        using var module = NetworkFactory.CreateProduction(http).Create(context);
+        await module.StartAsync(CancellationToken.None); // pas de clé : aucun appel réseau
+
+        Assert.Equal(ModuleHealth.NotConfigured, module.Status.Health);
+        Assert.Equal("Ajoute la clé API UniFi dans le logiciel de réglage", module.Status.ActionMessage);
     }
 
     private sealed class FakeBoxHandler : HttpMessageHandler
@@ -205,7 +219,8 @@ public class NetworkModuleTests
         var rig = Create(new FakeSource { Interval = TimeSpan.FromSeconds(intervalSeconds) });
         await rig.Module.StartAsync(CancellationToken.None);
         Assert.Equal(ModuleHealth.Online, rig.Module.Status.Health);
-        rig.Source.OnRead = () => new TaskCompletionSource<SourceReading>().Task; // ne rend jamais la main
+        var stuck = new TaskCompletionSource<SourceReading>(); // ignore le jeton : ne rend la main que quand le test le décide
+        rig.Source.OnRead = () => stuck.Task;
 
         rig.Time.Advance(TimeSpan.FromSeconds(intervalSeconds)); // la lecture démarre
         Assert.Equal(2, rig.Source.Reads);
@@ -219,7 +234,8 @@ public class NetworkModuleTests
         Assert.DoesNotContain(rig.Log.Entries, e => e.StartsWith("Error"));
         Assert.Single(rig.Module.HistorySnapshot()); // l'historique est conservé
 
-        // Le module continue ensuite à lire.
+        // Le module continue ensuite à lire, une fois la lecture abandonnée réellement terminée.
+        stuck.SetResult(Reading(99, 99));
         rig.Source.OnRead = () => Task.FromResult(Reading(1, 1));
         var spin = new SpinWait();
         for (var i = 0; i < 50 && rig.Module.Status.Health != ModuleHealth.Online; i++)
@@ -228,6 +244,40 @@ public class NetworkModuleTests
             spin.SpinOnce();
         }
         Assert.Equal(ModuleHealth.Online, rig.Module.Status.Health);
+    }
+
+    [Fact]
+    public async Task AbandonedRead_BlocksNewReadsUntilItReallyEnds()
+    {
+        var rig = Create();
+        await rig.Module.StartAsync(CancellationToken.None);
+        var stuck = new TaskCompletionSource<SourceReading>(); // source qui ignore le jeton
+        rig.Source.OnRead = () => stuck.Task;
+        rig.Time.Advance(TimeSpan.FromSeconds(1)); // lecture 2 : ne se termine pas
+        Assert.Equal(2, rig.Source.Reads);
+        rig.Time.Advance(TimeSpan.FromSeconds(10)); // délai écoulé
+        Assert.True(SpinWait.SpinUntil(() => rig.Module.Status.Health == ModuleHealth.Offline, TimeSpan.FromSeconds(5)));
+        Assert.Contains(rig.Log.Entries, e => e.StartsWith("Warning"));
+        rig.Source.OnRead = () => Task.FromResult(Reading(1, 1));
+
+        // La lecture abandonnée court encore : aucune autre n'est lancée, quel que soit le temps écoulé.
+        for (var i = 0; i < 30; i++) rig.Time.Advance(TimeSpan.FromSeconds(1));
+        await Task.Delay(50);
+        for (var i = 0; i < 30; i++) rig.Time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(2, rig.Source.Reads);
+        Assert.Equal(ModuleHealth.Offline, rig.Module.Status.Health);
+
+        // Elle se termine (son résultat tardif est ignoré) : le module relit à l'intervalle suivant.
+        stuck.SetResult(Reading(99, 99));
+        var spin = new SpinWait();
+        for (var i = 0; i < 50 && rig.Source.Reads < 3; i++)
+        {
+            rig.Time.Advance(TimeSpan.FromSeconds(1));
+            spin.SpinOnce();
+        }
+        Assert.Equal(3, rig.Source.Reads);
+        Assert.True(SpinWait.SpinUntil(() => rig.Module.Status.Health == ModuleHealth.Online, TimeSpan.FromSeconds(5)));
+        Assert.DoesNotContain(rig.Module.HistorySnapshot(), h => h.Sample.DownBytesPerSecond == 99);
     }
 
     [Fact]

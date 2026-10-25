@@ -25,7 +25,9 @@ public interface IThroughputSource : IDisposable
 
     /// <summary>
     /// Lit le débit courant. Une exception est traitée par le module comme « hors ligne » ; les états attendus
-    /// (non configuré, action à faire sur la box…) se rendent par <see cref="SourceReading.Status"/>.
+    /// (non configuré, action à faire sur la box…) se rendent par <see cref="SourceReading.Status"/>. La source doit
+    /// honorer le jeton : le module n'en relance pas de lecture tant que la précédente, même abandonnée sur délai,
+    /// n'est pas terminée.
     /// </summary>
     Task<SourceReading> ReadAsync(CancellationToken ct);
 }

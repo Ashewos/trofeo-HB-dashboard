@@ -61,12 +61,15 @@ public sealed class NicSource(Func<IReadOnlyList<InterfaceCounters>> readCounter
     {
     }
 
-    /// <summary>Vrai s'il y a au moins une vraie passerelle : 0.0.0.0 et :: (adresse non spécifiée) ne comptent pas.</summary>
+    /// <summary>
+    /// Vrai s'il y a au moins une vraie passerelle : une adresse nulle (0.0.0.0, ::, ou ::ffff:0.0.0.0), quel que soit
+    /// son identifiant de portée IPv6, ne compte pas.
+    /// </summary>
     internal static bool HasUsableGateway(IEnumerable<IPAddress> gateways) =>
         gateways.Any(g =>
         {
             var address = g.IsIPv4MappedToIPv6 ? g.MapToIPv4() : g;
-            return !address.Equals(IPAddress.Any) && !address.Equals(IPAddress.IPv6Any);
+            return address.GetAddressBytes().Any(b => b != 0);
         });
 
     /// <summary>

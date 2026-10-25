@@ -238,4 +238,12 @@ public class NicSourceTests
         Assert.True(NicSource.HasUsableGateway([IPAddress.Any, IPAddress.Parse("192.168.1.254")]));
         Assert.True(NicSource.HasUsableGateway([IPAddress.Parse("fe80::1")]));
     }
+
+    [Fact]
+    public void HasUsableGateway_IgnoresAllZeroAddresses_WhateverTheirScope()
+    {
+        Assert.False(NicSource.HasUsableGateway([new IPAddress(new byte[16], 7)])); // :: avec un identifiant de portée
+        Assert.False(NicSource.HasUsableGateway([new IPAddress(new byte[16], 7), IPAddress.Any]));
+        Assert.True(NicSource.HasUsableGateway([new IPAddress(new byte[16], 7), IPAddress.Parse("192.168.1.254")]));
+    }
 }

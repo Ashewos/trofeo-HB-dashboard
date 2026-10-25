@@ -33,6 +33,8 @@ public sealed class FreeboxSource : IThroughputSource
     private readonly FreeboxApi _api;
 
     private string? _prefix;
+    private string? _appToken;
+    private bool _appTokenLoaded;
     private string? _pendingToken;
     private long? _trackId;
     private string? _session;
@@ -52,10 +54,26 @@ public sealed class FreeboxSource : IThroughputSource
 
     public string Title => "Freebox";
 
-    /// <summary>1 s une fois connecté, 2 s tant que l'autorisation, le refus ou une panne durent.</summary>
+    /// <summary>
+    /// 1 s une fois que la dernière lecture a donné un état de connexion validé, 2 s tant que l'autorisation, le refus
+    /// ou une panne (lecture qui lève, session refusée) durent.
+    /// </summary>
     public TimeSpan Interval => _connected ? ConnectedInterval : AuthorizingInterval;
 
     public async Task<SourceReading> ReadAsync(CancellationToken ct)
+    {
+        try
+        {
+            return await ReadCoreAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            _connected = false;
+            throw;
+        }
+    }
+
+    private async Task<SourceReading> ReadCoreAsync(CancellationToken ct)
     {
         if (_deniedAt is { } deniedAt)
         {
@@ -75,7 +93,7 @@ public sealed class FreeboxSource : IThroughputSource
             _prefix = $"{info.BaseUrl}v{info.Major}/";
         }
 
-        var token = _secrets.Get(TokenKey);
+        var token = GetToken();
         if (token is null)
         {
             // 2. Sans jeton : demande d'autorisation, puis suivi à chaque lecture.
@@ -83,7 +101,7 @@ public sealed class FreeboxSource : IThroughputSource
 
             // 3. Suivi de l'autorisation.
             if (await FollowAuthorizationAsync(ct).ConfigureAwait(false) is { } waiting) return waiting;
-            token = _secrets.Get(TokenKey);
+            token = GetToken();
             if (token is null) throw new FreeboxException("Jeton Freebox introuvable après l'autorisation.");
         }
         else
@@ -99,6 +117,25 @@ public sealed class FreeboxSource : IThroughputSource
     }
 
     // --- Autorisation ---
+
+    /// <summary>Jeton d'application : lu une fois dans le coffre, puis gardé en mémoire (voir <see cref="SetToken"/>).</summary>
+    private string? GetToken()
+    {
+        if (!_appTokenLoaded)
+        {
+            _appToken = _secrets.Get(TokenKey);
+            _appTokenLoaded = true;
+        }
+        return _appToken;
+    }
+
+    /// <summary>Enregistre (ou efface, avec <c>null</c>) le jeton dans le coffre et dans la copie en mémoire.</summary>
+    private void SetToken(string? token)
+    {
+        _secrets.Set(TokenKey, token);
+        _appToken = token;
+        _appTokenLoaded = true;
+    }
 
     private async Task<SourceReading> RequestAuthorizationAsync(CancellationToken ct)
     {
@@ -130,7 +167,7 @@ public sealed class FreeboxSource : IThroughputSource
         switch (response.GetString("status"))
         {
             case "granted":
-                _secrets.Set(TokenKey, _pendingToken);
+                SetToken(_pendingToken);
                 ForgetAuthorizationRequest();
                 _log.Info("Autorisation accordée par la Freebox.");
                 return null;
@@ -181,6 +218,7 @@ public sealed class FreeboxSource : IThroughputSource
             if (!response.Success)
             {
                 _session = null;
+                _connected = false;
                 _log.Warning($"Lecture du débit refusée par la Freebox malgré une nouvelle session ({response.ErrorCode ?? "erreur inconnue"}).");
                 return new SourceReading(null, new ModuleStatus(ModuleHealth.Offline));
             }
@@ -190,14 +228,19 @@ public sealed class FreeboxSource : IThroughputSource
             throw Refused("lecture du débit", response);
         }
 
-        _connected = true;
         if (response.GetString("state") is not { } state) throw new FreeboxException("État de la connexion Freebox illisible.");
-        if (state != "up") return new SourceReading(new ThroughputSample(0, 0), new ModuleStatus(ModuleHealth.Offline));
+        if (state != "up")
+        {
+            // La box répond et son état est lisible : la connexion est établie avec elle, seule la ligne est coupée.
+            _connected = true;
+            return new SourceReading(new ThroughputSample(0, 0), new ModuleStatus(ModuleHealth.Offline));
+        }
 
         if (response.GetNumber("rate_down") is not { } down || response.GetNumber("rate_up") is not { } up)
         {
             throw new FreeboxException("Débit de la Freebox illisible.");
         }
+        _connected = true;
         return new SourceReading(new ThroughputSample(down, up), new ModuleStatus(ModuleHealth.Online));
     }
 
@@ -218,7 +261,7 @@ public sealed class FreeboxSource : IThroughputSource
 
         if (response.ErrorCode is "invalid_token" or "pending_token")
         {
-            _secrets.Set(TokenKey, null);
+            SetToken(null);
             _session = null;
             ForgetAuthorizationRequest();
             _connected = false;

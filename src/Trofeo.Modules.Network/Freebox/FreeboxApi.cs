@@ -5,14 +5,22 @@ using System.Text.Json;
 namespace Trofeo.Modules.Network;
 
 /// <summary>Échec d'un appel à la Freebox : box injoignable, trop lente ou réponse illisible.</summary>
-public sealed class FreeboxException(string message, Exception? inner = null) : Exception(message, inner);
+internal sealed class FreeboxException(string message, Exception? inner = null) : Exception(message, inner);
 
 /// <summary>
 /// Enveloppe des réponses de l'API : <c>{success, result, error_code, msg}</c>. La box répond parfois les erreurs
 /// d'authentification en HTTP 403 avec cette même enveloppe : le statut HTTP n'est donc pas pris en compte.
+/// <c>Result</c> peut porter des jetons : <see cref="ToString"/> ne l'imprime pas.
 /// </summary>
 internal sealed record FreeboxResponse(bool Success, string? ErrorCode, JsonElement Result)
 {
+    /// <summary>Ni le résultat ni les jetons qu'il peut contenir ne sortent par <c>ToString</c> (journaux, messages de test).</summary>
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append("Success = ").Append(Success).Append(", ErrorCode = ").Append(ErrorCode);
+        return true;
+    }
+
     public bool IsError(string code) => !Success && ErrorCode == code;
 
     public string? GetString(string name) =>

@@ -6,7 +6,8 @@ namespace Trofeo.Modules.Network;
 /// <summary>
 /// Débit réseau descendant et montant d'une <see cref="IThroughputSource"/>, avec la courbe des trois dernières
 /// minutes. La source est lue puis relue après <see cref="IThroughputSource.Interval"/> (relu à chaque fois, la source
-/// peut le changer), sans lectures qui se chevauchent ; le module la libère avec lui.
+/// peut le changer), sans lectures qui se chevauchent, y compris avec une lecture abandonnée sur délai qui court
+/// encore ; le module la libère avec lui.
 /// </summary>
 public sealed class NetworkModule : IModule
 {
@@ -118,11 +119,13 @@ public sealed class NetworkModule : IModule
 
     /// <summary>
     /// Une lecture de la source, ignorée si la précédente n'est pas terminée, puis réarmement du minuteur. Elle est
-    /// limitée à max(10 s, 3 × Interval). Ne lève jamais.
+    /// limitée à max(10 s, 3 × Interval). Ne lève jamais. Sur délai (ou arrêt), l'état est publié tout de suite mais la
+    /// lecture abandonnée garde la place : elle la libère, et réarme le minuteur, quand elle se termine vraiment.
     /// </summary>
     private async Task ReadOnceAsync(CancellationToken ct)
     {
         if (Interlocked.CompareExchange(ref _reading, 1, 0) != 0) return;
+        var abandoned = false;
         try
         {
             var limit = ReadTimeout();
@@ -138,8 +141,23 @@ public sealed class NetworkModule : IModule
             }
             catch (Exception ex)
             {
-                // Une lecture abandonnée peut échouer plus tard : l'exception est consommée pour qu'elle reste muette.
-                _ = pending?.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                if (pending is { IsCompleted: false })
+                {
+                    // Lecture abandonnée mais encore en cours : pas de nouvelle lecture avant sa fin réelle. Son éventuelle
+                    // exception est consommée pour qu'elle reste muette.
+                    abandoned = true;
+                    _ = pending.ContinueWith(
+                        t =>
+                        {
+                            _ = t.Exception;
+                            EndRead(ct);
+                        },
+                        CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                }
+                else
+                {
+                    _ = pending?.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                }
 
                 // Module arrêté (ou démarrage annulé) : la fin de la lecture n'est pas une erreur.
                 if (ct.IsCancellationRequested) return;
@@ -160,9 +178,15 @@ public sealed class NetworkModule : IModule
         }
         finally
         {
-            Volatile.Write(ref _reading, 0);
-            ScheduleNext(ct);
+            if (!abandoned) EndRead(ct);
         }
+    }
+
+    /// <summary>Libère la place de lecture, puis réarme le minuteur.</summary>
+    private void EndRead(CancellationToken ct)
+    {
+        Volatile.Write(ref _reading, 0);
+        ScheduleNext(ct);
     }
 
     /// <summary>Délai accordé à une lecture : 10 s au moins, ou trois fois l'intervalle de la source.</summary>
