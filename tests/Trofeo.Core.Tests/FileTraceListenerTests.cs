@@ -83,4 +83,29 @@ public sealed class FileTraceListenerTests : IDisposable
         Assert.DoesNotContain("perdue", text);
         Assert.True(File.Exists(LogPath + ".1"));
     }
+
+    [Fact]
+    public void Constructor_OpenFails_DoesNotThrow_AndRecoversLater()
+    {
+        var time = new FakeTimeProvider();
+        var opens = 0;
+        Stream Open(string path)
+        {
+            // Au démarrage de session, le fichier peut être pris un instant (antivirus, ancienne instance qui se ferme).
+            if (++opens == 1) throw new IOException("journal occupé");
+            return new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+        }
+
+        using (var listener = new FileTraceListener(LogPath, maxBytes: 1000, time, Open))
+        {
+            listener.WriteLine("perdue");
+            time.Advance(TimeSpan.FromSeconds(60));
+            listener.WriteLine("revenue");
+        }
+
+        Assert.Equal(2, opens);
+        var text = File.ReadAllText(LogPath);
+        Assert.Contains("revenue", text);
+        Assert.DoesNotContain("perdue", text);
+    }
 }

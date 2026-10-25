@@ -63,10 +63,11 @@ public sealed class FileTraceListener : TraceListener
     private static FileStream OpenAppend(string path) =>
         new(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
 
+    /// <summary>Un fichier pris au démarrage ne doit pas priver le service de journal : on réessaie plus tard.</summary>
     private void Open()
     {
-        Attach(_open(_path));
-        if (_stream!.Length > _maxBytes) Rotate();
+        TryReopen();
+        if (_stream is { } stream && stream.Length > _maxBytes) Rotate();
     }
 
     private void Attach(Stream stream)
