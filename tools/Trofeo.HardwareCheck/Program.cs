@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using SkiaSharp;
 using Trofeo.Core;
+using Trofeo.Core.Layout;
 using Trofeo.Core.Rendering;
 using Trofeo.Core.Secrets;
 using Trofeo.Device;
@@ -19,6 +20,7 @@ string? secretScope = null;
 string? secretKey = null;
 string? cityName = null;
 string[] statusLineArgs = [];
+string[] appearanceArgs = [];
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -57,11 +59,18 @@ for (var i = 0; i < args.Length; i++)
             i = args.Length;
             mode = "claude-statusline";
             break;
+        case "--appearance":
+            appearanceArgs = args.Skip(i + 1).ToArray(); // la commande lit elle-même ses réglages
+            i = args.Length;
+            mode = "appearance";
+            break;
         default:
             Console.Error.WriteLine(
                 "Usage : Trofeo.HardwareCheck [--orientation <0|180>] [--fps] [--recovery]"
                 + " | --set-secret <portée> <clé> (valeur sur l'entrée standard) | --clear-secret <portée> <clé> | --city <nom>"
-                + " | --claude-statusline install <chemin de Trofeo.StatusLine.exe> | uninstall | status");
+                + " | --claude-statusline install <chemin de Trofeo.StatusLine.exe> | uninstall | status"
+                + " | --appearance [theme=<id>] [opacity=<0..1|theme>] [font=<famille|theme>]"
+                + " [background=theme|color:#hex|image:<chemin>|gif:<chemin>|video:<chemin>]");
             return 2;
     }
 }
@@ -75,6 +84,8 @@ return mode switch
     "clear-secret" => RunClearSecret(secretScope!, secretKey!),
     "city" => RunCity(cityName!),
     "claude-statusline" => StatusLineCommand.Run(statusLineArgs, ClaudeHome.Resolve(), Console.Out, Console.Error),
+    "appearance" => AppearanceCommand.Run(
+        Path.Combine(AppPaths.SettingsDir, "layout.json"), appearanceArgs, new SkiaSystemFonts(), Console.Out, Console.Error),
     _ => RunOrientation(rotation),
 };
 

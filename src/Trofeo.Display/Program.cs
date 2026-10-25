@@ -7,6 +7,7 @@ using Trofeo.Core.Rendering;
 using Trofeo.Core.Secrets;
 using Trofeo.Core.Shortcuts;
 using Trofeo.Device;
+using Trofeo.Display.Video;
 using Trofeo.Modules.Agents;
 using Trofeo.Modules.Clock;
 using Trofeo.Modules.Monitoring;
@@ -82,7 +83,14 @@ static class Program
         };
 
         using var scheduler = new FrameScheduler(TimeProvider.System); // déclaré avant la boucle : libéré après elle
-        using var loop = new DisplayLoop(layout, registry, screen, scheduler, TimeProvider.System);
+        // Apparence lue une fois au démarrage : un changement de réglage demande de relancer le service.
+        var theme = AppearanceResolver.Resolve(layout.Appearance ?? AppearanceSettings.Default, new SkiaSystemFonts(), Warn);
+        var background = BackgroundFactory.Create(
+            layout.Appearance?.Background, theme, path => MediaFoundationBackground.TryOpen(path, Warn), Warn);
+        Trace.TraceInformation($"Apparence : thème « {theme.Theme.Id} », fond {(layout.Appearance?.Background?.Kind ?? BackgroundKind.Theme)}.");
+
+        // La boucle devient propriétaire du fond et le libère après elle.
+        using var loop = new DisplayLoop(layout, registry, screen, scheduler, TimeProvider.System, theme, background);
         using var cts = new CancellationTokenSource();
         loop.Start(cts.Token);
 
@@ -205,10 +213,13 @@ static class Program
         }
     }
 
+    // Trace.TraceWarning est conditionnelle (TRACE) : elle ne peut pas servir de délégué, d'où ce relais.
+    private static void Warn(string message) => Trace.TraceWarning(message);
+
     private static DashboardLayout LoadLayout()
     {
         var path = Path.Combine(AppPaths.SettingsDir, "layout.json");
-        var store = new LayoutStore(path);
+        var store = new LayoutStore(path, Warn);
         if (!File.Exists(path))
         {
             try

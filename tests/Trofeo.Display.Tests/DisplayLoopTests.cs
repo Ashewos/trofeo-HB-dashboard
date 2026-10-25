@@ -40,6 +40,37 @@ public sealed class DisplayLoopTests
         public void Dispose() => Disposed++;
     }
 
+    /// <summary>Un fond animé : une nouvelle image tous les <paramref name="frame"/>, comme un GIF à cadence fixe.</summary>
+    private sealed class FakeAnimatedBackground(TimeSpan frame) : IBackground
+    {
+        private readonly ColorBackground _inner = new(SkiaSharp.SKColors.DarkSlateBlue);
+        private long _index = -1;
+        private TimeSpan _until = TimeSpan.Zero;
+
+        public List<TimeSpan> AdvanceTimes { get; } = [];
+        public bool Disposed { get; private set; }
+        public bool IsAnimated => true;
+        public SkiaSharp.SKImage Current => _inner.Current;
+        public int Version => (int)_index;
+        public TimeSpan? UntilNextFrame => _until;
+
+        public bool Advance(TimeSpan elapsed)
+        {
+            AdvanceTimes.Add(elapsed);
+            var index = elapsed.Ticks / frame.Ticks;
+            _until = TimeSpan.FromTicks(frame.Ticks - elapsed.Ticks % frame.Ticks);
+            if (index == _index) return false;
+            _index = index;
+            return true;
+        }
+
+        public void Dispose()
+        {
+            Disposed = true;
+            _inner.Dispose();
+        }
+    }
+
     private sealed class Rig : IDisposable
     {
         public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 10, 24, 12, 0, 0, TimeSpan.Zero));
@@ -50,7 +81,8 @@ public sealed class DisplayLoopTests
         public FrameScheduler Scheduler { get; }
 
         public Rig(FakeModule? module = null, int cols = 4, int rows = 2, string typeId = "fake",
-            IEnumerable<IModuleFactory>? extraFactories = null, IEnumerable<ModulePlacement>? extraPlacements = null)
+            IEnumerable<IModuleFactory>? extraFactories = null, IEnumerable<ModulePlacement>? extraPlacements = null,
+            IBackground? background = null)
         {
             Module = module ?? new FakeModule();
             Screen = new ScreenDevice(Usb, Time);
@@ -64,7 +96,7 @@ public sealed class DisplayLoopTests
             };
             placements.AddRange(extraPlacements ?? []);
             var layout = new DashboardLayout(180, placements);
-            Loop = new DisplayLoop(layout, registry, Screen, Scheduler, Time);
+            Loop = new DisplayLoop(layout, registry, Screen, Scheduler, Time, background: background);
         }
 
         /// <summary>Un écran sain, prêt à valider <paramref name="acks"/> images.</summary>
@@ -167,6 +199,92 @@ public sealed class DisplayLoopTests
         }
 
         Assert.InRange(rig.Loop.FramesSent, 11, 13);
+    }
+
+    [Fact]
+    public void Loop_StaticBackground_KeepsOneFramePerSecond()
+    {
+        // Fond fixe (le fond du thème), aucun module animé : une image au départ, puis le renvoi de la dernière chaque seconde.
+        using var rig = new Rig();
+        rig.AddHealthyScreen(acks: 100);
+
+        for (var i = 0; i < 1000; i++) // 10 s simulées à 10 ms
+        {
+            rig.Loop.Tick();
+            rig.Time.Advance(TimeSpan.FromMilliseconds(10));
+        }
+
+        var sent = rig.Loop.FramesSent + rig.Loop.KeepAlivesSent;
+        Assert.InRange(sent, 1, 10);
+        Assert.Equal(1, rig.Loop.FramesSent);
+    }
+
+    [Fact]
+    public void Loop_AnimatedBackground_FollowsFrames()
+    {
+        using var rig = new Rig(background: new FakeAnimatedBackground(TimeSpan.FromMilliseconds(100)));
+        rig.AddHealthyScreen(acks: 200);
+
+        for (var i = 0; i < 300; i++) // 3 s simulées à 10 ms
+        {
+            rig.Loop.Tick();
+            rig.Time.Advance(TimeSpan.FromMilliseconds(10));
+        }
+
+        // Une image par changement du fond (toutes les 100 ms), jamais plus de 12 par seconde.
+        Assert.InRange(rig.Loop.FramesSent, 28, 31);
+        Assert.True(rig.Loop.FramesSent <= 12 * 3);
+    }
+
+    [Fact]
+    public void Loop_AnimatedBackground_FasterThanCap_IsCappedAt12Fps()
+    {
+        using var rig = new Rig(background: new FakeAnimatedBackground(TimeSpan.FromMilliseconds(20)));
+        rig.AddHealthyScreen(acks: 200);
+
+        for (var i = 0; i < 200; i++) // 2 s simulées à 10 ms
+        {
+            rig.Loop.Tick();
+            rig.Time.Advance(TimeSpan.FromMilliseconds(10));
+        }
+
+        Assert.InRange(rig.Loop.FramesSent, 22, 26);
+    }
+
+    [Fact]
+    public void Loop_AnimatedBackground_DelayFollowsNextFrame()
+    {
+        using var rig = new Rig(background: new FakeAnimatedBackground(TimeSpan.FromMilliseconds(250)));
+        rig.AddHealthyScreen(acks: 20);
+
+        var delay = rig.Loop.Tick(); // image à 0 ms ; la suivante dans 250 ms, bien avant le renvoi d'1 s
+
+        Assert.Equal(TimeSpan.FromMilliseconds(250), delay);
+    }
+
+    [Fact]
+    public void Loop_AnimatedBackground_AdvancesWithTimeSinceStart()
+    {
+        var background = new FakeAnimatedBackground(TimeSpan.FromMilliseconds(100));
+        using var rig = new Rig(background: background);
+        rig.AddHealthyScreen(acks: 20);
+
+        rig.Loop.Tick();
+        rig.Time.Advance(TimeSpan.FromMilliseconds(350));
+        rig.Loop.Tick();
+
+        Assert.Equal([TimeSpan.Zero, TimeSpan.FromMilliseconds(350)], background.AdvanceTimes);
+    }
+
+    [Fact]
+    public void Dispose_DisposesTheBackground()
+    {
+        var background = new FakeAnimatedBackground(TimeSpan.FromMilliseconds(100));
+        var rig = new Rig(background: background);
+
+        rig.Dispose();
+
+        Assert.True(background.Disposed);
     }
 
     [Fact]

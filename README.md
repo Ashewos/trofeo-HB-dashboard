@@ -4,7 +4,7 @@ Un tableau de bord modulaire pour l'écran LCD USB **Thermalright Trofeo Vision 
 
 On place des modules sur un damier de 16 × 4 cases : heure et météo, monitoring du PC, réseau, musique en cours, sessions Claude Code ou Codex… Chacun choisit les modules qu'il garde, leur taille, le thème et le fond d'écran.
 
-> 🚧 **Projet en construction.** Les fondations et six modules sont faits : Heure et météo, Monitoring PC, En écoute, Réseau, Claude Code et Codex. Le logiciel de réglage, les thèmes et le fond d'écran arrivent dans les prochaines versions.
+> 🚧 **Projet en construction.** Les fondations et six modules sont faits : Heure et météo, Monitoring PC, En écoute, Réseau, Claude Code et Codex. Le logiciel de réglage arrive dans une prochaine version ; en attendant, les thèmes et le fond d'écran se choisissent en ligne de commande (voir « Apparence »).
 
 ## Ce qui marche aujourd'hui
 
@@ -24,14 +24,12 @@ On place des modules sur un damier de 16 × 4 cases : heure et météo, monitori
   - **Claude Code** : un onglet par session ouverte (appli desktop ou terminal), au nom du projet, avec un point orange, jaune ou gris selon ce que fait la session, le flux de son activité, une mascotte animée, des confettis à la fin d'une réponse et un drapeau quand Claude te pose une question ;
   - **Codex** : le même module pour Codex, avec sa mascotte en pixel art. Il n'est pas dans la disposition par défaut, qui remplit déjà les 16 colonnes : pour l'avoir, remplace Claude Code (colonnes 0 à 7) par Codex dans `layout.json`, service arrêté (voir plus bas).
 - Raccourcis clavier globaux pour changer d'onglet : `Ctrl+Alt+←` et `Ctrl+Alt+→` pour l'onglet précédent ou suivant, `Ctrl+Alt+Maj+1` à `Ctrl+Alt+Maj+9` pour aller directement à un onglet (avec Maj : `Ctrl+Alt+chiffre` est `AltGr+chiffre` sur un clavier AZERTY et empêcherait de taper `~`, `#`, `{`, `[`, `|`, `` ` ``, `\` et `^`). Une combinaison déjà prise par une autre application est simplement laissée de côté (elle est notée dans le journal).
+- Trois thèmes (Classique, Liquid Glass, Pixel), la transparence des modules, le choix de la police et un fond d'écran en couleur, image, GIF ou vidéo, réglés avec `HardwareCheck --appearance` (voir « Apparence »).
 - Icône dans la zone de notification, qui indique l'état de l'écran.
 
 ## Ce qui arrive
 
-- un logiciel de réglage en `.exe`, avec un mode « émuler » pour voir l'affichage sans l'écran ;
-- les thèmes Classique, Liquid Glass et Pixel ;
-- un fond d'écran en image, GIF ou vidéo ;
-- la transparence des modules, le choix de la police et de la taille du texte ;
+- un logiciel de réglage en `.exe`, avec un mode « émuler » pour voir l'affichage sans l'écran, pour choisir le thème, le fond et la taille du texte sans ligne de commande ;
 - la mise à jour en un clic depuis les releases GitHub.
 
 ## Prérequis
@@ -66,7 +64,8 @@ L'outil `tools/Trofeo.HardwareCheck` sert à vérifier un écran :
 - `--set-secret <portée> <clé>` : enregistre un secret (mot de passe, jeton) dans le coffre du service. La valeur se lit sur l'entrée standard, saisie masquée au clavier, et n'est jamais affichée. Une valeur vide ou faite d'espaces est refusée (code de sortie 1) ;
 - `--clear-secret <portée> <clé>` : efface un secret du coffre et affiche le nom de la clé effacée, jamais une valeur. Pour faire de nouveau confiance à une console UniFi dont le certificat a été renouvelé, efface son empreinte mémorisée avec `--clear-secret network unifi.certSha256.<hôte en minuscules>` (l'hôte de `layout.json` écrit en minuscules, avec son port s'il y en a un), puis relance le service : la prochaine connexion mémorise le nouveau certificat ;
 - `--city <nom>` : affiche les cinq villes proposées par Open-Meteo, avec leurs coordonnées, pour régler la météo ;
-- `--claude-statusline install <chemin de Trofeo.StatusLine.exe>`, `uninstall` ou `status` : branche, débranche ou décrit la barre d'état de Claude Code (voir plus bas).
+- `--claude-statusline install <chemin de Trofeo.StatusLine.exe>`, `uninstall` ou `status` : branche, débranche ou décrit la barre d'état de Claude Code (voir plus bas) ;
+- `--appearance [theme=<id>] [opacity=<0..1|theme>] [font=<famille|theme>] [background=theme|color:#hex|image:<chemin>|gif:<chemin>|video:<chemin>]` : choisit le thème, la transparence, la police et le fond d'écran (voir « Apparence »).
 
 En attendant le logiciel de réglage, les modules se règlent à la main dans `layout.json`, service arrêté :
 
@@ -93,6 +92,37 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
   - `feedNewest` : `top` (par défaut) pour que la ligne la plus récente soit en haut et que le fil descende, `bottom` pour qu'elle soit en bas et que le fil monte, comme un terminal.
 - **Freebox** : dans les réglages du module Réseau, `"source":"freebox"`. Au premier lancement, le module demande d'appuyer sur la flèche de la Freebox pour autoriser le dashboard.
 - **UniFi** : `"source":"unifi","unifi":{"host":"192.168.1.1"}`, puis la clé API de la console avec `--set-secret network unifi.apiKey`.
+
+## Apparence
+
+Trois thèmes sont fournis : `classique` (le thème par défaut), `liquid-glass` (panneaux de verre dépoli sur un fond « Aurore », un dégradé de halos colorés) et `pixel` (panneaux en pixel art). Les réglages se font avec `Trofeo.HardwareCheck.exe --appearance`, que tu peux relancer autant de fois que tu veux : un réglage que tu ne cites pas reste comme il était. Après `dotnet build -c Release`, depuis la racine du dépôt, l'outil se trouve ici : `tools\Trofeo.HardwareCheck\bin\Release\net10.0-windows10.0.19041.0\Trofeo.HardwareCheck.exe`.
+
+```powershell
+Trofeo.HardwareCheck.exe --appearance theme=liquid-glass opacity=0,3 font="Segoe UI"
+Trofeo.HardwareCheck.exe --appearance background=video:C:\Videos\fond.mp4
+Trofeo.HardwareCheck.exe --appearance
+```
+
+- `theme=<id>` : `classique`, `liquid-glass` ou `pixel` ;
+- `opacity=<0 à 1>` : l'opacité du fond des modules (0 : transparent, 1 : plein ; la virgule est acceptée), ou `opacity=theme` pour celle du thème ;
+- `font=<famille>` : une police installée sur ton PC (par exemple `Segoe UI`), ou `font=theme` pour celle du thème. Si la police n'est pas installée, la commande te prévient et le service garde la police du thème, jusqu'à ce que tu l'installes ;
+- `background=` : `theme` (le fond du thème), `color:#1A2B3C` (une couleur), `image:<chemin>` (une photo), `gif:<chemin>` (un GIF animé) ou `video:<chemin>` (une vidéo). Le fichier doit exister, son chemin est enregistré en entier ;
+- sans réglage, la commande affiche les réglages actuels, puis les polices installées.
+
+Les réglages sont écrits dans `layout.json` (clé `Appearance`), sans toucher aux modules ni aux raccourcis. Une valeur refusée (thème inconnu, opacité hors de 0 à 1, fond inconnu…) donne un message et un code de sortie 2, sans rien écrire.
+
+Deux choses à savoir :
+
+- **Relance le service** après un changement : les réglages ne sont lus qu'au démarrage.
+- **Lance la commande dans ton propre terminal**, pas dans celui d'un assistant : l'appli Claude installée depuis le Microsoft Store écrit `%AppData%` dans une copie privée, et le service ne verrait jamais tes réglages.
+
+Un réglage faux ne bloque jamais le service : il retombe sur le thème Classique, la police ou le fond du thème, et le dit dans le journal.
+
+### Fonds animés
+
+- **Vidéo** : préfère du 1080p, 30 images par seconde au plus. Le décodeur lit chaque image de la vidéo, sans carte graphique (décodage logiciel) : plus la vidéo est lourde, plus le processeur travaille. La lecture boucle et n'a pas de son.
+- **GIF** : il boucle aussi. L'écran ne reçoit jamais plus de 12 images par seconde, quel que soit le fond.
+- **Remplacer un fichier pendant que le service le joue** : le copier par-dessus ou le supprimer marche. Le déplacer ou le renommer par-dessus est refusé par Windows tant que le service tourne. Le nouveau fichier n'est repris qu'au prochain démarrage.
 
 ## Quotas de Claude Code
 
@@ -170,7 +200,7 @@ Données météo : [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0).
 
 Mascottes : redessins de fan de Clawd (Anthropic) et du pet Codex (OpenAI). Projet non affilié à Anthropic, OpenAI ni Thermalright.
 
-Polices embarquées, toutes sous licence SIL Open Font License 1.1 (le texte de chaque licence est dans `src/Trofeo.Core/Assets/Fonts/` et copié à côté du programme) :
+Polices embarquées, les quatre familles des thèmes (Barlow Semi Condensed, Manrope, Pixelify Sans et VT323), toutes sous licence SIL Open Font License 1.1 (OFL) : le texte de chaque licence est dans `src/Trofeo.Core/Assets/Fonts/` (dossier `Assets/Fonts`) et copié à côté du programme :
 
 - Barlow Semi Condensed : `OFL-BarlowSemiCondensed.txt` ;
 - Manrope : `OFL-Manrope.txt` ;

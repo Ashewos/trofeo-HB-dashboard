@@ -8,8 +8,8 @@ namespace Trofeo.Display;
 
 /// <summary>
 /// La boucle d'affichage : reconnecte l'écran quand il est absent, puis rend et envoie une image
-/// quand un module en a demandé une. Possède les modules qu'elle crée ; <see cref="Tick"/> s'appelle
-/// depuis un seul thread.
+/// quand un module en a demandé une. Possède les modules qu'elle crée, ainsi que le fond et le compositeur d'images ;
+/// <see cref="Tick"/> s'appelle depuis un seul thread.
 /// </summary>
 public sealed class DisplayLoop : IDisposable
 {
@@ -31,6 +31,9 @@ public sealed class DisplayLoop : IDisposable
     private readonly FrameScheduler _scheduler;
     private readonly TimeProvider _time;
     private readonly FrameComposer _composer;
+    private readonly ThemeDefinition _theme;
+    private readonly IBackground _background;
+    private readonly long _backgroundStart;
     private readonly RateLimitedErrorLog _renderErrors;
     private readonly Dictionary<Guid, IModule> _modules = [];
     private readonly IModule[] _moduleList;
@@ -47,8 +50,13 @@ public sealed class DisplayLoop : IDisposable
     private int _reconnectRequested;
     private bool _disposed;
 
+    /// <param name="theme">Le thème complet ; Classique si absent.</param>
+    /// <param name="background">
+    /// Le fond de l'écran ; la boucle en devient propriétaire et le libère à son arrêt. Absent : fond uni de la couleur du thème.
+    /// </param>
     public DisplayLoop(
-        DashboardLayout layout, ModuleRegistry registry, ScreenDevice screen, FrameScheduler scheduler, TimeProvider time)
+        DashboardLayout layout, ModuleRegistry registry, ScreenDevice screen, FrameScheduler scheduler, TimeProvider time,
+        ThemeDefinition? theme = null, IBackground? background = null)
     {
         _layout = layout;
         _screen = screen;
@@ -58,6 +66,9 @@ public sealed class DisplayLoop : IDisposable
         _onStatusChanged = OnStatusChanged;
         _renderErrors = new RateLimitedErrorLog(time);
         _composer = new FrameComposer(_renderErrors);
+        _theme = theme ?? Themes.ClassiqueDefinition;
+        _background = background ?? new ColorBackground(_theme.DefaultBackground.Color);
+        _backgroundStart = time.GetTimestamp(); // la lecture d'un fond animé part du démarrage de la boucle
 
         foreach (var placement in layout.Placements)
         {
@@ -207,6 +218,7 @@ public sealed class DisplayLoop : IDisposable
             return NextDelay();
         }
 
+        AdvanceBackground();
         RenderAndSend();
         KeepAlive();
         return NextDelay();
@@ -232,6 +244,10 @@ public sealed class DisplayLoop : IDisposable
         }
 
         _modules.Clear();
+
+        // Le compositeur garde une copie floutée du fond : on le libère avant le fond.
+        _composer.Dispose();
+        _background.Dispose();
     }
 
     /// <summary>
@@ -265,12 +281,38 @@ public sealed class DisplayLoop : IDisposable
             {
                 delay = Min(delay, _scheduler.UntilNextSlot());
             }
+
+            // Un fond animé réveille la boucle à sa prochaine image, jamais plus vite que le plafond d'images par seconde.
+            if (_background.IsAnimated && _background.UntilNextFrame is { } untilFrame)
+            {
+                delay = Min(delay, Max(untilFrame, _scheduler.UntilNextSlot()));
+            }
         }
 
         return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
     }
 
     private static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
+
+    private static TimeSpan Max(TimeSpan a, TimeSpan b) => a > b ? a : b;
+
+    /// <summary>
+    /// Avance le fond animé au temps écoulé depuis le démarrage (horloge monotone : un changement d'heure ne bloque pas la
+    /// vidéo) et demande une image s'il a changé. Rien tant que l'écran n'est pas prêt : personne ne verrait le résultat.
+    /// </summary>
+    private void AdvanceBackground()
+    {
+        if (!_background.IsAnimated || _screen.State != ScreenState.Ready) return;
+
+        try
+        {
+            if (_background.Advance(_time.GetElapsedTime(_backgroundStart))) _scheduler.MarkDirty();
+        }
+        catch (Exception ex)
+        {
+            _renderErrors.Report($"Échec de l'avance du fond d'écran : {ex}");
+        }
+    }
 
     private bool TryReconnect()
     {
@@ -302,7 +344,7 @@ public sealed class DisplayLoop : IDisposable
             byte[] jpeg;
             try
             {
-                using var bitmap = _composer.Compose(_layout, _modules, Themes.Classique, _time.GetLocalNow());
+                using var bitmap = _composer.Compose(_layout, _modules, _theme, _background, _time.GetLocalNow());
                 jpeg = JpegEncoder.Encode(bitmap, _layout.Rotation);
             }
             catch (Exception ex)
