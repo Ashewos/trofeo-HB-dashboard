@@ -229,6 +229,120 @@ public sealed partial class ClaudeSourceTests : IDisposable
     }
 
     [Fact]
+    public void Source_Poll_TaskFailure_DoesNotBreakPoll_OtherSessionStaysCorrect()
+    {
+        var cwdA = AddSession(10, "sess-a", "projet-a", "busy", StartMs);
+        var cwdB = AddSession(11, "sess-b", "projet-b", "busy", StartMs + 1);
+        File.WriteAllLines(TranscriptPath(cwdA, "sess-a"), [Prompt("Demande A")]);
+        File.WriteAllLines(TranscriptPath(cwdB, "sess-b"), [Prompt("Demande B")]);
+        Directory.CreateDirectory(Path.Combine(_home, "tasks", "sess-a"));
+        Directory.CreateDirectory(Path.Combine(_home, "tasks", "sess-b"));
+        StatusLineFile.Write(ClaudeHome.StatusLineDir(_home),
+            new StatusLineRecord(Now.AddMinutes(-5), "sess-a", "claude-sonnet-5-5", null, null, null, null));
+        using var source = new ClaudeSource(_home, _alive.Contains)
+        {
+            TaskListReader = dir => dir.EndsWith("sess-a", StringComparison.Ordinal)
+                ? throw new InvalidOperationException("boum")
+                : [new AgentTask("Tâche B", AgentTaskState.Pending)],
+        };
+
+        var failing = source.Poll("sess-a", Now);
+        var healthy = source.Poll("sess-b", Now);
+
+        Assert.Equal(["sess-a", "sess-b"], failing.Sessions.Select(s => s.Id));
+        Assert.Equal("sess-a", failing.Selected!.Id);
+        Assert.Null(failing.Selected.CurrentTask);
+        Assert.Equal("claude-sonnet-5-5", failing.Selected.Model);
+        Assert.Equal("Demande B", healthy.Selected!.CurrentTask);
+        Assert.Equal([new AgentTask("Tâche B", AgentTaskState.Pending)], healthy.Selected.Tasks);
+    }
+
+    [Fact]
+    public void Source_Poll_LateTranscript_FoundOnlyAfterFiveSeconds()
+    {
+        var cwd = AddSession(10, "sess-a", "projet-a", "busy", StartMs);
+        using var source = NewSource();
+        Assert.Null(source.Poll("sess-a", Now).Selected!.CurrentTask);
+
+        File.WriteAllLines(TranscriptPath(cwd, "sess-a"), [Prompt("Arrivée tardive")]);
+
+        Assert.Null(source.Poll("sess-a", Now.AddSeconds(4)).Selected!.CurrentTask);
+        Assert.Equal("Arrivée tardive", source.Poll("sess-a", Now.AddSeconds(5)).Selected!.CurrentTask);
+    }
+
+    [Fact]
+    public void Source_Poll_UnchangedTaskFolder_NotReread_ChangedOneIs()
+    {
+        AddSession(10, "sess-a", "projet-a", "busy", StartMs);
+        var tasks = Path.Combine(_home, "tasks", "sess-a");
+        Directory.CreateDirectory(tasks);
+        var file = Path.Combine(tasks, "1.json");
+        File.WriteAllText(file, """{"id":"1","subject":"Premier","status":"pending"}""");
+        var reads = 0;
+        using var source = new ClaudeSource(_home, _alive.Contains)
+        {
+            TaskListReader = dir => { reads++; return ClaudeTaskList.Read(dir); },
+        };
+
+        Assert.Equal("Premier", Assert.Single(source.Poll("sess-a", Now).Selected!.Tasks).Text);
+        source.Poll("sess-a", Now.AddSeconds(1));
+        source.Poll("sess-a", Now.AddSeconds(2));
+        Assert.Equal(1, reads);
+
+        File.WriteAllText(file, """{"id":"1","subject":"Second!","status":"pending"}""");
+        File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(1));
+        Assert.Equal("Second!", Assert.Single(source.Poll("sess-a", Now.AddSeconds(3)).Selected!.Tasks).Text);
+        Assert.Equal(2, reads);
+
+        File.WriteAllText(Path.Combine(tasks, "2.json"), """{"id":"2","subject":"Nouvelle","status":"pending"}""");
+        Assert.Equal(2, source.Poll("sess-a", Now.AddSeconds(4)).Selected!.Tasks.Count);
+        Assert.Equal(3, reads);
+    }
+
+    [Fact]
+    public void Source_Poll_UnchangedCapture_NotReread_ChangedOneIs()
+    {
+        WriteQuotaCapture("sess-x", Now.AddMinutes(-1), 31, 12);
+        var path = Path.Combine(ClaudeHome.StatusLineDir(_home), "sess-x.json");
+        var written = File.GetLastWriteTimeUtc(path);
+        using var source = NewSource();
+        Assert.Equal(31, source.Poll(null, Now).Quotas!.FiveHour!.UsedPercent);
+
+        // Même taille, même date d'écriture, mais contenu invalide : si le fichier était relu, la capture disparaîtrait.
+        var bytes = File.ReadAllBytes(path);
+        bytes[0] = (byte)'X';
+        File.WriteAllBytes(path, bytes);
+        File.SetLastWriteTimeUtc(path, written);
+        Assert.Equal(31, source.Poll(null, Now.AddSeconds(1)).Quotas!.FiveHour!.UsedPercent);
+
+        // Fichier modifié (nouvelle taille) : relu.
+        WriteQuotaCapture("sess-x", Now.AddSeconds(-5), 7.25, 12);
+        Assert.Equal(7.25, source.Poll(null, Now.AddSeconds(2)).Quotas!.FiveHour!.UsedPercent);
+    }
+
+    [Fact]
+    public void Source_Poll_CaptureAges_JudgedAtEachPoll()
+    {
+        WriteQuotaCapture("sess-x", Now.AddDays(-7), 31, 12);
+        using var source = NewSource();
+        Assert.NotNull(source.Poll(null, Now).Quotas);
+
+        Assert.Null(source.Poll(null, Now.AddDays(2)).Quotas);
+    }
+
+    [Fact]
+    public void Source_Poll_DeletedCapture_Forgotten()
+    {
+        WriteQuotaCapture("sess-x", Now.AddMinutes(-1), 31, 12);
+        using var source = NewSource();
+        Assert.NotNull(source.Poll(null, Now).Quotas);
+
+        File.Delete(Path.Combine(ClaudeHome.StatusLineDir(_home), "sess-x.json"));
+
+        Assert.Null(source.Poll(null, Now.AddSeconds(1)).Quotas);
+    }
+
+    [Fact]
     public void Source_QuotasFromAnySession()
     {
         var cwd = AddSession(10, "sess-a", "projet-a", "busy", StartMs);

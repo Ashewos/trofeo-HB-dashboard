@@ -36,7 +36,7 @@ public static class StatusLineFile
 
         foreach (var path in EnumerateCaptures(dir))
         {
-            var record = TryRead(path);
+            var record = Read(path);
             if (record is not null && now - record.CapturedAt <= maxAge) records.Add(record);
         }
         records.Sort((a, b) => b.CapturedAt.CompareTo(a.CapturedAt));
@@ -52,7 +52,7 @@ public static class StatusLineFile
         {
             try
             {
-                var when = TryRead(path)?.CapturedAt ?? new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
+                var when = Read(path)?.CapturedAt ?? new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
                 if (now - when > age) File.Delete(path);
             }
             catch (IOException)
@@ -100,7 +100,8 @@ public static class StatusLineFile
         w.WriteEndObject();
     }
 
-    private static StatusLineRecord? TryRead(string path)
+    /// <summary>Lit une capture ; <c>null</c> si le fichier est absent, illisible ou n'est pas une capture valide.</summary>
+    public static StatusLineRecord? Read(string path)
     {
         try
         {

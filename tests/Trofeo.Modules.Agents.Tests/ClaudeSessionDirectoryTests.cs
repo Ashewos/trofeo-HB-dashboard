@@ -70,6 +70,54 @@ public sealed class ClaudeSessionDirectoryTests : IDisposable
     }
 
     [Fact]
+    public void Directory_DeadProcess_NotRecheckedUntilFileChanges()
+    {
+        var calls = new List<int>();
+        var directory = new ClaudeSessionDirectory(_root, pid => { calls.Add(pid); return false; });
+        Write("5.json", Session(5, "orpheline"));
+
+        directory.Read();
+        directory.Read();
+        Assert.Equal([5], calls);
+
+        // Le fichier change (le numéro de processus a pu être réattribué) : on revérifie.
+        Write("5.json", Session(5, "orpheline", statusUpdatedAt: 1792922999999));
+        directory.Read();
+        Assert.Equal([5, 5], calls);
+    }
+
+    [Fact]
+    public void Directory_LiveProcess_CheckedEveryRead_ThenHiddenOnceDead()
+    {
+        var calls = 0;
+        var alive = true;
+        var directory = new ClaudeSessionDirectory(_root, _ => { calls++; return alive; });
+        Write("5.json", Session(5, "vivante"));
+
+        Assert.Single(directory.Read());
+        Assert.Single(directory.Read());
+        Assert.Equal(2, calls);
+
+        alive = false;
+        Assert.Empty(directory.Read());
+    }
+
+    [Fact]
+    public void Directory_ProcessCheckThatThrows_HidesSessionButIsRetried()
+    {
+        var fail = true;
+        var calls = 0;
+        var directory = new ClaudeSessionDirectory(_root, _ => { calls++; return fail ? throw new InvalidOperationException() : true; });
+        Write("5.json", Session(5, "capricieuse"));
+
+        Assert.Empty(directory.Read());
+        fail = false;
+
+        Assert.Single(directory.Read());
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
     public void Directory_BackgroundKind_IsHidden()
     {
         _alive.UnionWith([1, 2, 3]);

@@ -21,7 +21,12 @@ public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> i
     // Dernière lecture réussie par fichier, avec la date d'écriture et la taille au moment où on l'a faite.
     private readonly Dictionary<string, CachedFile> _cache = new(StringComparer.Ordinal);
 
-    private sealed record CachedFile(DateTime WriteTimeUtc, long Length, ClaudeSessionFile? Session);
+    // DeadPid : le numéro de processus qu'on a vu mort pour ce contenu de fichier. On ne revérifie pas tant que le fichier
+    // ne change pas (un fichier orphelin ferait sinon lever Process.GetProcessById à chaque relevé).
+    private sealed record CachedFile(DateTime WriteTimeUtc, long Length, ClaudeSessionFile? Session)
+    {
+        public int? DeadPid { get; set; }
+    }
 
     /// <summary>Les sessions interactives vivantes, une seule par identifiant (la plus récemment active), sans ordre garanti.</summary>
     public IReadOnlyList<ClaudeSessionFile> Read()
@@ -45,10 +50,18 @@ public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> i
         var live = new List<ClaudeSessionFile>();
         foreach (var path in files)
         {
-            var session = ReadFile(path);
-            if (session is not null && (session.Kind is null || session.Kind == "interactive") && IsAlive(session.Pid))
+            var entry = ReadFile(path);
+            if (entry?.Session is { } session && (session.Kind is null || session.Kind == "interactive")
+                && entry.DeadPid != session.Pid && CheckAlive(session.Pid) is { } alive)
             {
-                live.Add(session);
+                if (alive)
+                {
+                    live.Add(session);
+                }
+                else
+                {
+                    entry.DeadPid = session.Pid;
+                }
             }
         }
 
@@ -69,7 +82,8 @@ public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> i
         return id.All(ch => char.IsAsciiLetterOrDigit(ch) || ch == '-');
     }
 
-    private bool IsAlive(int pid)
+    /// <summary>Vivant ou mort ; <c>null</c> si la vérification échoue (la session est alors écartée cette fois-ci, sans verdict gardé).</summary>
+    private bool? CheckAlive(int pid)
     {
         try
         {
@@ -77,13 +91,13 @@ public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> i
         }
         catch (Exception)
         {
-            // Une vérification qui échoue ne doit pas faire perdre les autres sessions : celle-ci est tenue pour morte.
-            return false;
+            // Une vérification qui échoue ne doit pas faire perdre les autres sessions.
+            return null;
         }
     }
 
-    /// <summary>La session du fichier ; si le fichier change et qu'on n'arrive pas à le lire, l'ancienne lecture reste.</summary>
-    private ClaudeSessionFile? ReadFile(string path)
+    /// <summary>La lecture du fichier ; s'il change et qu'on n'arrive pas à le lire, l'ancienne lecture reste.</summary>
+    private CachedFile? ReadFile(string path)
     {
         _cache.TryGetValue(path, out var cached);
         try
@@ -91,22 +105,27 @@ public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> i
             var info = new FileInfo(path);
             if (!info.Exists)
             {
-                return cached?.Session;
+                return cached;
             }
 
             if (cached is not null && cached.WriteTimeUtc == info.LastWriteTimeUtc && cached.Length == info.Length)
             {
-                return cached.Session;
+                return cached;
             }
 
-            var session = TryParse(path) ?? cached?.Session;
-            _cache[path] = new CachedFile(info.LastWriteTimeUtc, info.Length, session);
-            return session;
+            var session = TryParse(path);
+            // Illisible : on garde l'ancienne session, avec son verdict éventuel si c'est la même.
+            var entry = new CachedFile(info.LastWriteTimeUtc, info.Length, session ?? cached?.Session)
+            {
+                DeadPid = session is null ? cached?.DeadPid : null,
+            };
+            _cache[path] = entry;
+            return entry;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // Verrouillé ou disparu à l'instant : on réessaiera au prochain relevé.
-            return cached?.Session;
+            return cached;
         }
     }
 

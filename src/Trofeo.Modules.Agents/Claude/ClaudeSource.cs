@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
 using Trofeo.StatusLine;
 
 namespace Trofeo.Modules.Agents;
@@ -29,8 +30,14 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
     // Transcription trouvée par session ; une absence n'est cherchée à nouveau que toutes les quelques secondes.
     private readonly Dictionary<string, (string? Path, DateTimeOffset CheckedAt)> _transcripts = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DetailState> _details = new(StringComparer.Ordinal);
+    // Captures de la barre d'état déjà lues, par chemin : seuls les fichiers nouveaux ou modifiés sont relus.
+    private readonly Dictionary<string, CachedCapture> _captures = new(StringComparer.Ordinal);
+    // Liste de tâches par session, avec la signature du dossier (noms, dates, tailles) au moment de la lecture.
+    private readonly Dictionary<string, (string Signature, IReadOnlyList<AgentTask> Tasks)> _taskLists = new(StringComparer.Ordinal);
     private DateTimeOffset _lastCleanup = DateTimeOffset.MinValue;
     private long _tick;
+
+    private sealed record CachedCapture(DateTime WriteTimeUtc, long Length, StatusLineRecord Record);
 
     private sealed class DetailState(string path)
     {
@@ -42,6 +49,9 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
 
         public long LastUsed { get; set; }
     }
+
+    /// <summary>Lecteur d'un dossier de tâches (remplaçable par les tests).</summary>
+    internal Func<string, IReadOnlyList<AgentTask>?> TaskListReader { get; init; } = ClaudeTaskList.Read;
 
     /// <summary>Le processus de ce numéro tourne-t-il ? Ne lève jamais d'exception.</summary>
     public static bool IsProcessAlive(int pid)
@@ -101,6 +111,8 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
         _projectNames.Clear();
         _transcripts.Clear();
         _details.Clear();
+        _captures.Clear();
+        _taskLists.Clear();
     }
 
     private static AgentActivity ActivityOf(string status) => status switch
@@ -142,8 +154,7 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
         {
             var transcript = UpdateTranscript(file, now);
             var model = transcript?.Model ?? capture?.ModelId;
-            IReadOnlyList<AgentTask> tasks =
-                ClaudeTaskList.Read(Path.Combine(claudeHome, "tasks", file.SessionId)) ?? transcript?.Todos ?? [];
+            IReadOnlyList<AgentTask> tasks = ReadTasks(file.SessionId) ?? transcript?.Todos ?? [];
 
             return new AgentSessionDetail(
                 file.SessionId,
@@ -185,7 +196,14 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
 
         foreach (var line in lines)
         {
-            state.Transcript.Apply(line);
+            try
+            {
+                state.Transcript.Apply(line);
+            }
+            catch (Exception)
+            {
+                // Une ligne inutilisable ne doit pas faire perdre celles qui suivent.
+            }
         }
 
         while (_details.Count > MaxDetails)
@@ -209,6 +227,62 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
         return path;
     }
 
+    /// <summary>
+    /// Les tâches de la session (<c>null</c> sans dossier de tâches). Le dossier n'est relu que si sa signature change.
+    /// </summary>
+    private IReadOnlyList<AgentTask>? ReadTasks(string sessionId)
+    {
+        var dir = Path.Combine(claudeHome, "tasks", sessionId);
+        var signature = TaskSignature(dir);
+        if (signature is null)
+        {
+            _taskLists.Remove(sessionId);
+            return null;
+        }
+
+        if (_taskLists.TryGetValue(sessionId, out var cached) && cached.Signature == signature)
+        {
+            return cached.Tasks;
+        }
+
+        var tasks = TaskListReader(dir);
+        if (tasks is null)
+        {
+            _taskLists.Remove(sessionId);
+        }
+        else
+        {
+            _taskLists[sessionId] = (signature, tasks);
+        }
+
+        return tasks;
+    }
+
+    /// <summary>Noms, dates d'écriture et tailles des <c>*.json</c> du dossier ; <c>null</c> si le dossier est absent ou illisible.</summary>
+    private static string? TaskSignature(string dir)
+    {
+        try
+        {
+            var info = new DirectoryInfo(dir);
+            if (!info.Exists)
+            {
+                return null;
+            }
+
+            var signature = new StringBuilder();
+            foreach (var file in info.EnumerateFiles("*.json").OrderBy(f => f.Name, StringComparer.Ordinal))
+            {
+                signature.Append(file.Name).Append('|').Append(file.LastWriteTimeUtc.Ticks).Append('|').Append(file.Length).Append(';');
+            }
+
+            return signature.ToString();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Oublie ce qu'on garde pour les sessions qui ne sont plus ouvertes.</summary>
     private void Forget(IReadOnlyList<ClaudeSessionFile> live)
     {
@@ -222,13 +296,67 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
         {
             _details.Remove(id);
         }
+
+        foreach (var id in _taskLists.Keys.Where(id => !ids.Contains(id)).ToList())
+        {
+            _taskLists.Remove(id);
+        }
     }
 
+    /// <summary>
+    /// Les captures de moins de 8 jours, de la plus récente à la plus ancienne. Un fichier n'est relu que s'il est
+    /// nouveau ou si sa date d'écriture ou sa taille a changé ; l'âge se juge à chaque relevé.
+    /// </summary>
     private IReadOnlyList<StatusLineRecord> ReadCaptures(DateTimeOffset now)
     {
         try
         {
-            return StatusLineFile.ReadAll(_statusLineDir, now, CaptureMaxAge);
+            if (!Directory.Exists(_statusLineDir))
+            {
+                _captures.Clear();
+                return [];
+            }
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var records = new List<StatusLineRecord>();
+            foreach (var path in Directory.EnumerateFiles(_statusLineDir, "*.json"))
+            {
+                var info = new FileInfo(path);
+                if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || !info.Exists)
+                {
+                    continue;
+                }
+
+                seen.Add(path);
+                if (!_captures.TryGetValue(path, out var cached)
+                    || cached.WriteTimeUtc != info.LastWriteTimeUtc || cached.Length != info.Length)
+                {
+                    // Un fichier illisible n'est pas gardé : on le réessaie au prochain relevé.
+                    cached = StatusLineFile.Read(path) is { } record
+                        ? new CachedCapture(info.LastWriteTimeUtc, info.Length, record)
+                        : null;
+                    if (cached is null)
+                    {
+                        _captures.Remove(path);
+                        continue;
+                    }
+
+                    _captures[path] = cached;
+                }
+
+                if (now - cached.Record.CapturedAt <= CaptureMaxAge)
+                {
+                    records.Add(cached.Record);
+                }
+            }
+
+            foreach (var gone in _captures.Keys.Where(path => !seen.Contains(path)).ToList())
+            {
+                _captures.Remove(gone);
+            }
+
+            records.Sort((a, b) => b.CapturedAt.CompareTo(a.CapturedAt));
+            return records;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
