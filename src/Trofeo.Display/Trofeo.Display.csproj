@@ -8,6 +8,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Lecture des fonds vidéo (Media Foundation). MIT ; avec ses dépendances (SharpGen.Runtime, Vortice.DirectX, Vortice.Mathematics), environ 1,2 Mo de DLL dans le dossier de sortie. -->
+    <PackageReference Include="Vortice.MediaFoundation" Version="3.8.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Trofeo.Display.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Trofeo.Core\Trofeo.Core.csproj" />
     <ProjectReference Include="..\Trofeo.Device\Trofeo.Device.csproj" />
     <ProjectReference Include="..\Trofeo.Modules.Agents\Trofeo.Modules.Agents.csproj" />
