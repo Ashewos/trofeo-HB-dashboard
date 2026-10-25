@@ -7,8 +7,8 @@ Tableau de bord modulaire pour l'écran USB Thermalright Trofeo Vision 9,16" (19
 - Spécification : `docs/superpowers/specs/2026-10-24-trofeo-dashboard-design.md`.
 - Feuille de route en 6 plans : `docs/superpowers/plans/2026-10-24-plan-1-fondations.md` (3 Claude Code / Codex, 4 Apparence, 5 Logiciel de réglage, 6 Distribution).
 - Plans 1 et 2 terminés, fusionnés dans `main` et vérifiés sur le vrai écran. Bilan du plan 2 : `docs/superpowers/plans/2026-10-25-plan-2-bilan.md` (dont ce qui revient au plan 5).
-- Plan 3 (Claude Code / Codex) : `docs/superpowers/plans/2026-10-25-plan-3-claude-codex.md`. Tâches 0 à 9 construites dans le cloud et fusionnées dans `main`. Tâches 10 à 13 (raccourcis, branchement, options du fil, mod `trofeo-quotas`) sur la branche locale `plan-3-raccourcis-branchement`, vérifiées sur l'écran, pas encore fusionnées ni poussées.
-- **Bilan du plan 3 : `docs/superpowers/plans/2026-10-25-plan-3-bilan.md`** (état, mesures, décisions, reste à faire, ce qui revient aux plans 5 et 6). Prochaine étape : fusion de la branche avec l'accord d'Alex, puis le plan 4 (Apparence).
+- Plan 3 (Claude Code / Codex) : `docs/superpowers/plans/2026-10-25-plan-3-claude-codex.md`. Tâches 0 à 9 construites dans le cloud et fusionnées dans `main`. Tâches 10 à 13 (raccourcis, branchement, options du fil, mod `trofeo-quotas`) faites sur le PC d'Alex, vérifiées sur l'écran, fusionnées dans `main` et poussées le 25/10/2026.
+- **Bilan du plan 3 : `docs/superpowers/plans/2026-10-25-plan-3-bilan.md`** (état, mesures, décisions, reste à faire, ce qui revient aux plans 5 et 6). Prochaine étape : le plan 4 (Apparence).
 - Les quotas de Claude Code viennent du mod `mods/trofeo-quotas` (appli desktop et terminal) ou de `Trofeo.StatusLine.exe` (terminal seulement : l'appli desktop ne lance pas la barre d'état).
 - Les projets `net10.0` du plan 3 se construisent aussi sous Linux : `apt-get install dotnet-sdk-10.0`, puis `dotnet test tests/Trofeo.Modules.Agents.Tests`.
 
