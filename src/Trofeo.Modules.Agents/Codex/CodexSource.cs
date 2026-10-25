@@ -188,6 +188,12 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
                 ApplyLine(state.Rollout, line);
             }
 
+            if (restarted && !state.Rollout.IsInternal && state.Rollout.Feed.Count == 0
+                && state.Tail.Position > 512 * 1024)
+            {
+                state.Rollout.RestoreConversation(CodexConversationHistory.Read(path, state.Tail.Position));
+            }
+
             if (restarted && state.Rollout.Model is null && !state.Rollout.IsInternal)
             {
                 state.Rollout.RestoreModel(CodexModelHistory.ReadLatest(path));

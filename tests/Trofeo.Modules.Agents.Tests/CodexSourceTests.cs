@@ -266,6 +266,104 @@ public sealed class CodexSourceTests : IDisposable
     }
 
     [Fact]
+    public void Source_EmptyTailAfterLargeCompaction_RestoresConversationWithoutReplayingState()
+    {
+        var started = Now.AddMinutes(-10);
+        var path = Rollout(Now, "rollout-compacted.jsonl", Now.AddSeconds(-1),
+            Meta("compacted-chat", Project("a"), started),
+            CodexTestLines.Item("""{"type":"message","role":"user","content":[{"type":"input_text","text":"Vérifie le café ☕"}]}""", started),
+            Call("exec_command", """{"cmd":"Get-Date","shell":"powershell"}""", started.AddSeconds(1)),
+            CodexTestLines.Item("""{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Vérification terminée"}]}""", started.AddSeconds(2)),
+            CodexTestLines.Item("""{"type":"message","role":"developer","content":[{"type":"input_text","text":"Instruction privée"}]}""", started.AddSeconds(3)),
+            CodexTestLines.Line("compacted", Now.AddSeconds(-4), JsonSerializer.Serialize(new { message = new string('x', 3 * 1024 * 1024) })),
+            CodexTestLines.Line("turn_context", Now.AddSeconds(-3), """{"model":"gpt-6.1-sol"}"""),
+            Event("token_count", Now.AddSeconds(-2), ",\"info\":{\"last_token_usage\":{\"input_tokens\":17000},\"model_context_window\":100000},\"rate_limits\":{\"primary\":{\"used_percent\":42}}"),
+            Event("task_complete", Now.AddSeconds(-1), $",\"started_at\":{Now.AddMinutes(-2).ToUnixTimeSeconds()},\"completed_at\":{Now.AddSeconds(-1).ToUnixTimeSeconds()}"));
+        using var source = NewSource();
+
+        var snapshot = source.Poll("compacted-chat", Now);
+        var detail = snapshot.Selected!;
+        Assert.Equal([new FeedEntry("Vous", "Vérifie le café ☕"), new FeedEntry("PowerShell", "Get-Date"),
+            new FeedEntry("Codex", "Vérification terminée")], detail.Feed);
+        Assert.Equal("Vérifie le café ☕", detail.CurrentTask);
+        Assert.Equal("gpt-6.1-sol", detail.Model);
+        Assert.Equal(17, detail.ContextPercent);
+        Assert.Equal(42, snapshot.Quotas!.FiveHour!.UsedPercent);
+        Assert.Equal(Now.AddMinutes(-2), detail.TaskStartedAt);
+        Assert.Equal(Now.AddSeconds(-1), detail.TaskFinishedAt);
+        Assert.Equal(AgentActivity.Idle, Assert.Single(snapshot.Sessions).Activity);
+        Assert.Equal(detail.Feed, source.Poll("compacted-chat", Now).Selected!.Feed);
+
+        // Les futurs ajouts suivent le curseur habituel : ni répétition de l'historique ni perte d'une ligne partielle.
+        var next = Call("exec_command", """{"cmd":"Get-Location"}""", Now);
+        File.AppendAllText(path, next[..40]);
+        Assert.Equal(3, source.Poll("compacted-chat", Now).Selected!.Feed.Count);
+        File.AppendAllText(path, next[40..] + "\n");
+        var updated = source.Poll("compacted-chat", Now).Selected!;
+        Assert.Equal(4, updated.Feed.Count);
+        Assert.Equal("Get-Location", updated.Feed[^1].Target);
+
+        File.WriteAllText(path, Meta("new-chat", Project("b"), Now) + "\n");
+        var replaced = source.Poll("new-chat", Now).Selected!;
+        Assert.Empty(replaced.Feed);
+        Assert.Null(replaced.CurrentTask);
+    }
+
+    [Fact]
+    public void Source_CompactionWithRecentFeed_DoesNotReplayEarlierMessages()
+    {
+        Rollout(Now, "rollout-recent-feed.jsonl", Now.AddSeconds(-1),
+            Meta("a", Project("a"), Now.AddMinutes(-10)),
+            Call("shell", """{"cmd":"ancien"}""", Now.AddMinutes(-9)),
+            CodexTestLines.Line("compacted", Now.AddMinutes(-1), JsonSerializer.Serialize(new { message = new string('x', 2 * 1024 * 1024) })),
+            Call("shell", """{"cmd":"récent"}""", Now));
+        using var source = NewSource();
+
+        Assert.Equal("récent", Assert.Single(source.Poll("a", Now).Selected!.Feed).Target);
+    }
+
+    [Fact]
+    public void ConversationHistory_RespectsEndAndIncompleteLines()
+    {
+        var first = Call("shell", """{"cmd":"premier"}""", Now);
+        var next = Call("shell", """{"cmd":"suivant"}""", Now);
+        var path = Rollout(Now, "rollout-end.jsonl", Now, first, next);
+        var end = Encoding.UTF8.GetByteCount(first + "\n");
+
+        Assert.Equal("premier", Assert.Single(CodexConversationHistory.Read(path, end)!.Feed).Target);
+        Assert.Single(CodexConversationHistory.Read(path, end + 30)!.Feed);
+        Assert.Equal(2, CodexConversationHistory.Read(path, new FileInfo(path).Length)!.Feed.Count);
+        Assert.Null(CodexConversationHistory.Read(path, new FileInfo(path).Length + 1));
+        Assert.Null(CodexConversationHistory.Read(path + ".absent", end));
+    }
+
+    [Fact]
+    public void ConversationHistory_BoundedWindowSkipsPartialAndOversizedLines()
+    {
+        var path = Rollout(Now, "rollout-bounded.jsonl", Now,
+            Call("shell", """{"cmd":"hors limite"}""", Now.AddMinutes(-10)),
+            CodexTestLines.Line("compacted", Now.AddMinutes(-2), JsonSerializer.Serialize(new { message = new string('é', CodexConversationHistory.MaxBytes) })),
+            "{malformed",
+            Call("shell", """{"cmd":"dans la limite"}""", Now.AddMinutes(-1)),
+            CodexTestLines.Line("compacted", Now, JsonSerializer.Serialize(new { message = new string('x', 2 * 1024 * 1024) })));
+
+        var history = CodexConversationHistory.Read(path, new FileInfo(path).Length)!;
+        Assert.Equal("dans la limite", Assert.Single(history.Feed).Target);
+    }
+
+    [Fact]
+    public void ConversationHistory_KeepsOnlyLastFiftyEntriesInOrder()
+    {
+        var lines = Enumerable.Range(0, 80).Select(i => Call("shell", JsonSerializer.Serialize(new { cmd = $"commande {i}" }), Now)).ToArray();
+        var path = Rollout(Now, "rollout-fifty.jsonl", Now, lines);
+
+        var history = CodexConversationHistory.Read(path, new FileInfo(path).Length)!;
+        Assert.Equal(50, history.Feed.Count);
+        Assert.Equal("commande 30", history.Feed[0].Target);
+        Assert.Equal("commande 79", history.Feed[^1].Target);
+    }
+
+    [Fact]
     public void Source_ReplacedFile_ReadsNewHead()
     {
         var cwd = Project("a");

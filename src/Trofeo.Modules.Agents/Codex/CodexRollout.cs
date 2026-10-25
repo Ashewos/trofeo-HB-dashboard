@@ -71,6 +71,15 @@ public sealed class CodexRollout
     /// <summary>Récupération historique au démarrage, sans remplacer le modèle d'un événement plus récent.</summary>
     internal void RestoreModel(string? model) => Model ??= model;
 
+    /// <summary>Remplit un fil vide depuis le même fichier, sans rejouer l'activité, la durée ou les quotas.</summary>
+    internal void RestoreConversation(CodexRollout? history)
+    {
+        if (history is null || _feed.Count != 0) { return; }
+        foreach (var entry in history.Feed) { AddFeed(entry); }
+        CurrentTask ??= history.CurrentTask;
+        Title ??= history.Title;
+    }
+
     /// <summary>La part de la fenêtre de contexte remplie au dernier relevé de jetons, dans [0, 100].</summary>
     public double? ContextPercent { get; private set; }
 
