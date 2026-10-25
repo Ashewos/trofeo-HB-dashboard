@@ -360,6 +360,52 @@ public sealed partial class ClaudeSourceTests : IDisposable
     }
 
     [Fact]
+    public void Source_Quotas_AreMergedWindowByWindow()
+    {
+        var dir = ClaudeHome.StatusLineDir(_home);
+        StatusLineFile.Write(dir, new StatusLineRecord(Now.AddMinutes(-1), "sess-recente", "m", null, null,
+            new CapturedQuota(40, Now.AddHours(2)), null));
+        StatusLineFile.Write(dir, new StatusLineRecord(Now.AddMinutes(-10), "sess-ancienne", "m", null, null,
+            new CapturedQuota(10, Now.AddHours(1)), new CapturedQuota(60, Now.AddDays(3))));
+        using var source = NewSource();
+
+        var quotas = source.Poll(null, Now).Quotas!;
+
+        Assert.Equal(40, quotas.FiveHour!.UsedPercent); // la plus récente qui porte la fenêtre de 5 h
+        Assert.Equal(60, quotas.Weekly!.UsedPercent); // la plus récente qui porte la fenêtre hebdomadaire
+        Assert.Equal(Now.AddDays(3), quotas.Weekly.ResetsAt);
+        Assert.Equal(Now.AddMinutes(-1), quotas.CapturedAt);
+    }
+
+    [Fact]
+    public void Source_Context_UsesWindowCapturedByAnotherSessionForSameModel()
+    {
+        var cwd = AddSession(10, "sess-a", "projet-a", "busy", StartMs);
+        File.WriteAllLines(TranscriptPath(cwd, "sess-a"), [Prompt("Salut"), ReadCall("t1", "/src/Foo.cs")]);
+        StatusLineFile.Write(ClaudeHome.StatusLineDir(_home),
+            new StatusLineRecord(Now.AddMinutes(-20), "sess-autre", "claude-opus-5-5", 1_000_000, 3, null, null));
+        using var source = NewSource();
+
+        var detail = source.Poll("sess-a", Now).Selected!;
+
+        Assert.Equal(170_449 / 1_000_000d * 100, detail.ContextPercent!.Value, 3);
+    }
+
+    [Fact]
+    public void Source_Context_IgnoresWindowCapturedForAnotherModel()
+    {
+        var cwd = AddSession(10, "sess-a", "projet-a", "busy", StartMs);
+        File.WriteAllLines(TranscriptPath(cwd, "sess-a"), [Prompt("Salut"), ReadCall("t1", "/src/Foo.cs")]);
+        StatusLineFile.Write(ClaudeHome.StatusLineDir(_home),
+            new StatusLineRecord(Now.AddMinutes(-20), "sess-autre", "claude-sonnet-5-5", 1_000_000, 3, null, null));
+        using var source = NewSource();
+
+        var detail = source.Poll("sess-a", Now).Selected!;
+
+        Assert.Equal(170_449 / 200_000d * 100, detail.ContextPercent!.Value, 3);
+    }
+
+    [Fact]
     public void Source_Quotas_SkipsNewerCaptureWithoutQuota_AndTooOldOnes()
     {
         StatusLineFile.Write(ClaudeHome.StatusLineDir(_home),

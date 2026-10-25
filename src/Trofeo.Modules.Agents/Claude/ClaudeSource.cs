@@ -98,7 +98,7 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
         AgentSessionDetail? selected = null;
         if (selectedSessionId is not null && files.FirstOrDefault(f => f.SessionId == selectedSessionId) is { } file)
         {
-            selected = BuildDetail(file, captures.FirstOrDefault(c => c.SessionId == file.SessionId), now);
+            selected = BuildDetail(file, captures.FirstOrDefault(c => c.SessionId == file.SessionId), captures, now);
         }
 
         Forget(files);
@@ -148,7 +148,8 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
     /// Le détail de la session choisie. Une transcription ou une liste de tâches qui pose problème ne fait perdre que ce
     /// détail : la session reste listée et le sondage continue.
     /// </summary>
-    private AgentSessionDetail BuildDetail(ClaudeSessionFile file, StatusLineRecord? capture, DateTimeOffset now)
+    private AgentSessionDetail BuildDetail(ClaudeSessionFile file, StatusLineRecord? capture,
+        IReadOnlyList<StatusLineRecord> captures, DateTimeOffset now)
     {
         try
         {
@@ -163,12 +164,28 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
                 [.. transcript?.Feed ?? []],
                 [.. tasks],
                 model,
-                ContextWindow.Percent(transcript?.ContextTokens, capture?.ModelId ?? model, capture, now));
+                ContextWindow.Percent(transcript?.ContextTokens, capture?.ModelId ?? model, capture, now,
+                    KnownWindowForModel(captures, model)));
         }
         catch (Exception)
         {
             return new AgentSessionDetail(file.SessionId, null, null, [], [], capture?.ModelId, null);
         }
+    }
+
+    /// <summary>
+    /// La fenêtre de contexte relevée par la capture la plus récente (toutes sessions confondues) qui donne une taille pour
+    /// ce modèle ; <c>null</c> sans modèle ou sans telle capture. <paramref name="captures"/> va de la plus récente à la plus ancienne.
+    /// </summary>
+    private static long? KnownWindowForModel(IReadOnlyList<StatusLineRecord> captures, string? model)
+    {
+        if (string.IsNullOrEmpty(model))
+        {
+            return null;
+        }
+
+        return captures.FirstOrDefault(c => c.ContextWindowSize is > 0 && string.Equals(c.ModelId, model, StringComparison.Ordinal))
+            ?.ContextWindowSize;
     }
 
     /// <summary>Applique à l'état de la session les lignes ajoutées à sa transcription ; <c>null</c> si elle n'existe pas encore.</summary>
@@ -319,10 +336,11 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
 
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var records = new List<StatusLineRecord>();
-            foreach (var path in Directory.EnumerateFiles(_statusLineDir, "*.json"))
+            // EnumerateFiles d'un DirectoryInfo donne date et taille sans appel supplémentaire par fichier.
+            foreach (var info in new DirectoryInfo(_statusLineDir).EnumerateFiles("*.json"))
             {
-                var info = new FileInfo(path);
-                if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || !info.Exists)
+                var path = info.FullName;
+                if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -364,13 +382,25 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
         }
     }
 
-    /// <summary>Les quotas de la capture la plus récente qui en porte au moins un, toutes sessions confondues.</summary>
+    /// <summary>
+    /// Les quotas, fenêtre par fenêtre : celle de 5 h vient de la capture la plus récente qui la porte, l'hebdomadaire de la
+    /// plus récente qui la porte, toutes sessions confondues. La date est la plus récente des deux.
+    /// </summary>
     private static AgentQuotas? QuotasOf(IReadOnlyList<StatusLineRecord> captures)
     {
-        // ReadAll rend les captures de la plus récente à la plus ancienne.
-        var capture = captures.FirstOrDefault(c => c.FiveHour is not null || c.SevenDay is not null);
-        return capture is null ? null : new AgentQuotas(Window(capture.FiveHour), Window(capture.SevenDay), capture.CapturedAt);
+        // ReadCaptures rend les captures de la plus récente à la plus ancienne.
+        var five = captures.FirstOrDefault(c => c.FiveHour is not null);
+        var weekly = captures.FirstOrDefault(c => c.SevenDay is not null);
+        if (five is null && weekly is null)
+        {
+            return null;
+        }
+
+        var at = five is null ? weekly!.CapturedAt : weekly is null ? five.CapturedAt : Max(five.CapturedAt, weekly.CapturedAt);
+        return new AgentQuotas(Window(five?.FiveHour), Window(weekly?.SevenDay), at);
     }
+
+    private static DateTimeOffset Max(DateTimeOffset a, DateTimeOffset b) => a >= b ? a : b;
 
     private static QuotaWindow? Window(CapturedQuota? quota) => quota is null ? null : new QuotaWindow(quota.UsedPercent, quota.ResetsAt);
 

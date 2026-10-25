@@ -319,15 +319,59 @@ public sealed class MascotAnimatorTests
     }
 
     [Fact]
-    public void Animator_NonIdleStates_NeverSleep()
+    public void Animator_Working_NeverSleeps()
     {
-        foreach (var state in new[] { MascotState.Working, MascotState.Waiting })
-        {
-            var (animator, time) = Create();
-            animator.SetState(state);
-            time.Advance(TimeSpan.FromHours(2));
-            Assert.False(animator.IsSleeping);
-        }
+        var (animator, time) = Create();
+        animator.SetState(MascotState.Working);
+
+        time.Advance(TimeSpan.FromHours(2));
+
+        Assert.False(animator.IsSleeping);
+    }
+
+    [Fact]
+    public void Animator_Waiting30Min_Sleeps_AndWakesOnStateChange()
+    {
+        var (animator, time) = Create();
+        time.Advance(TimeSpan.FromMinutes(3));
+        animator.SetState(MascotState.Waiting);
+
+        time.Advance(TimeSpan.FromMinutes(30) - TimeSpan.FromMilliseconds(1));
+        Assert.False(animator.IsSleeping);
+        Assert.True(animator.UntilNextChange() <= TimeSpan.FromMilliseconds(1));
+
+        time.Advance(TimeSpan.FromMilliseconds(1));
+
+        Assert.True(animator.IsSleeping);
+        Assert.False(animator.IsAnimating);
+        Assert.Null(animator.CurrentClip);
+        Assert.Equal(TimeSpan.MaxValue, animator.UntilNextChange());
+
+        // SetState(Waiting) ne la réveille pas ; un autre état, si.
+        time.Advance(TimeSpan.FromHours(1));
+        animator.SetState(MascotState.Waiting);
+        Assert.True(animator.IsSleeping);
+
+        animator.SetState(MascotState.Working);
+        Assert.False(animator.IsSleeping);
+        Assert.True(animator.IsAnimating);
+    }
+
+    [Fact]
+    public void Animator_Waiting_CountdownRestartsOnEachWait()
+    {
+        var (animator, time) = Create();
+        animator.SetState(MascotState.Waiting);
+        time.Advance(TimeSpan.FromMinutes(29));
+        animator.SetState(MascotState.Working);
+        time.Advance(TimeSpan.FromMinutes(5));
+        animator.SetState(MascotState.Waiting);
+
+        time.Advance(TimeSpan.FromMinutes(29));
+        Assert.False(animator.IsSleeping);
+
+        time.Advance(TimeSpan.FromMinutes(1));
+        Assert.True(animator.IsSleeping);
     }
 
     [Fact]

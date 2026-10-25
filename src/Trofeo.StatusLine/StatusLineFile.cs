@@ -105,7 +105,9 @@ public static class StatusLineFile
     {
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
+            // Partage large : Trofeo.StatusLine.exe remplace le fichier pendant qu'on le lit.
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var doc = JsonDocument.Parse(stream);
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return null;
             if (Date(root, "capturedAt") is not { } capturedAt) return null;

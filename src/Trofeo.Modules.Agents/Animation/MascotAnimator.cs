@@ -3,7 +3,7 @@ using SkiaSharp;
 namespace Trofeo.Modules.Agents;
 
 /// <summary>
-/// Fait vivre une mascotte : enchaîne des clips séparés de pauses au repos, puis l'endort après 10 min d'inactivité.
+/// Fait vivre une mascotte : enchaîne des clips séparés de pauses au repos, puis l'endort après 10 min d'inactivité (30 min quand elle attend l'utilisateur).
 /// Aucun minuteur interne : le temps est lu dans <see cref="TimeProvider"/> à chaque appel, et les enchaînements dus
 /// depuis l'appel précédent sont rattrapés dans l'ordre. Utilisable depuis deux threads (<see cref="SetState"/> depuis le
 /// sondage, le reste depuis le rendu) : l'état est protégé par un verrou, et le dessin se fait hors verrou.
@@ -12,6 +12,9 @@ public sealed class MascotAnimator
 {
     /// <summary>Durée en <see cref="MascotState.Idle"/> au bout de laquelle la mascotte s'endort.</summary>
     public static readonly TimeSpan SleepAfter = TimeSpan.FromMinutes(10);
+
+    /// <summary>Durée en <see cref="MascotState.Waiting"/> au bout de laquelle la mascotte s'endort aussi (session oubliée).</summary>
+    public static readonly TimeSpan WaitingSleepAfter = TimeSpan.FromMinutes(30);
 
     // Garde-fou : après une très longue suspension, on ne rattrape pas des milliers de clips un par un.
     private const int MaxCatchUpSteps = 10_000;
@@ -37,6 +40,8 @@ public sealed class MascotAnimator
     private Clip? _clip;
     private string? _lastClipName;
     private TimeSpan _idleSince;
+    // Début de l'attente de l'utilisateur en cours (sert au sommeil après WaitingSleepAfter).
+    private TimeSpan _waitingSince;
 
     /// <summary>Crée l'animateur, au repos en <see cref="MascotState.Idle"/> (il commence par une pause).</summary>
     public MascotAnimator(MascotDefinition definition, TimeProvider time, Random random)
@@ -125,6 +130,10 @@ public sealed class MascotAnimator
             {
                 _idleSince = now;
             }
+            else if (state == MascotState.Waiting)
+            {
+                _waitingSince = now;
+            }
 
             if (state == MascotState.Done && GetClips(MascotState.Done).Count == 0)
             {
@@ -155,9 +164,9 @@ public sealed class MascotAnimator
             }
 
             var next = _phase == Phase.Clip ? EndOfCurrentPose(now) : _phaseEnd;
-            if (_state == MascotState.Idle)
+            if (SleepAt() is { } sleepAt)
             {
-                next = TimeSpan.FromTicks(Math.Min(next.Ticks, (_idleSince + SleepAfter).Ticks));
+                next = TimeSpan.FromTicks(Math.Min(next.Ticks, sleepAt.Ticks));
             }
 
             return next == TimeSpan.MaxValue ? next : TimeSpan.FromTicks(Math.Max(0, (next - now).Ticks));
@@ -221,11 +230,11 @@ public sealed class MascotAnimator
                 return;
             }
 
-            if (_state == MascotState.Idle && now - _idleSince >= SleepAfter)
+            if (SleepAt() is { } sleepAt && now >= sleepAt)
             {
                 _phase = Phase.Sleep;
                 _clip = null;
-                _phaseStart = _idleSince + SleepAfter;
+                _phaseStart = sleepAt;
                 _phaseEnd = TimeSpan.MaxValue;
                 return;
             }
@@ -253,6 +262,14 @@ public sealed class MascotAnimator
             }
         }
     }
+
+    // Heure d'endormissement de l'état courant : après SleepAfter en Idle, WaitingSleepAfter en Waiting, jamais en Working.
+    private TimeSpan? SleepAt() => _state switch
+    {
+        MascotState.Idle => _idleSince + SleepAfter,
+        MascotState.Waiting => _waitingSince + WaitingSleepAfter,
+        _ => null,
+    };
 
     private void StartPause(TimeSpan at)
     {

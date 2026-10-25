@@ -18,12 +18,12 @@ public sealed record ClaudeSessionFile(int Pid, string SessionId, string Cwd, st
 /// <param name="isProcessAlive">Dit si le processus de ce numéro tourne encore.</param>
 public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> isProcessAlive)
 {
-    // Dernière lecture réussie par fichier, avec la date d'écriture et la taille au moment où on l'a faite.
+    // Dernière lecture réussie par fichier : elle ne sert que de repli quand le fichier, en cours d'écriture, ne s'analyse pas.
     private readonly Dictionary<string, CachedFile> _cache = new(StringComparer.Ordinal);
 
-    // DeadPid : le numéro de processus qu'on a vu mort pour ce contenu de fichier. On ne revérifie pas tant que le fichier
-    // ne change pas (un fichier orphelin ferait sinon lever Process.GetProcessById à chaque relevé).
-    private sealed record CachedFile(DateTime WriteTimeUtc, long Length, ClaudeSessionFile? Session)
+    // DeadPid : le numéro de processus qu'on a vu mort pour ce fichier. Tant que le fichier relu porte le même numéro, on ne
+    // revérifie pas (un fichier orphelin ferait sinon lever Process.GetProcessById à chaque relevé).
+    private sealed record CachedFile(ClaudeSessionFile Session)
     {
         public int? DeadPid { get; set; }
     }
@@ -96,37 +96,24 @@ public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> i
         }
     }
 
-    /// <summary>La lecture du fichier ; s'il change et qu'on n'arrive pas à le lire, l'ancienne lecture reste.</summary>
+    /// <summary>
+    /// Relit et analyse le fichier à chaque appel (la date d'écriture et la taille ne suffisent pas à voir un changement :
+    /// <c>busy</c> devient <c>idle</c> sans changer la taille, et deux écritures peuvent partager la même date). S'il change
+    /// et qu'on n'arrive pas à l'analyser (en cours d'écriture, verrouillé, disparu), l'ancienne lecture réussie reste.
+    /// </summary>
     private CachedFile? ReadFile(string path)
     {
         _cache.TryGetValue(path, out var cached);
-        try
+        var session = TryParse(path);
+        if (session is null)
         {
-            var info = new FileInfo(path);
-            if (!info.Exists)
-            {
-                return cached;
-            }
-
-            if (cached is not null && cached.WriteTimeUtc == info.LastWriteTimeUtc && cached.Length == info.Length)
-            {
-                return cached;
-            }
-
-            var session = TryParse(path);
-            // Illisible : on garde l'ancienne session, avec son verdict éventuel si c'est la même.
-            var entry = new CachedFile(info.LastWriteTimeUtc, info.Length, session ?? cached?.Session)
-            {
-                DeadPid = session is null ? cached?.DeadPid : null,
-            };
-            _cache[path] = entry;
-            return entry;
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // Verrouillé ou disparu à l'instant : on réessaiera au prochain relevé.
             return cached;
         }
+
+        // Le verdict « mort » ne vaut que pour le même numéro de processus.
+        var entry = new CachedFile(session) { DeadPid = cached?.DeadPid == session.Pid ? session.Pid : null };
+        _cache[path] = entry;
+        return entry;
     }
 
     private static ClaudeSessionFile? TryParse(string path)

@@ -70,7 +70,7 @@ public sealed class ClaudeSessionDirectoryTests : IDisposable
     }
 
     [Fact]
-    public void Directory_DeadProcess_NotRecheckedUntilFileChanges()
+    public void Directory_DeadProcess_NotRecheckedWhileSamePid_ButRecheckedForAnotherPid()
     {
         var calls = new List<int>();
         var directory = new ClaudeSessionDirectory(_root, pid => { calls.Add(pid); return false; });
@@ -80,10 +80,33 @@ public sealed class ClaudeSessionDirectoryTests : IDisposable
         directory.Read();
         Assert.Equal([5], calls);
 
-        // Le fichier change (le numéro de processus a pu être réattribué) : on revérifie.
+        // Le fichier change mais porte le même numéro de processus, déjà vu mort : pas de nouvelle vérification.
         Write("5.json", Session(5, "orpheline", statusUpdatedAt: 1792922999999));
         directory.Read();
-        Assert.Equal([5, 5], calls);
+        Assert.Equal([5], calls);
+
+        // Un autre numéro de processus : on vérifie.
+        Write("5.json", Session(6, "orpheline"));
+        directory.Read();
+        Assert.Equal([5, 6], calls);
+    }
+
+    [Fact]
+    public void Directory_ChangeOfSameSizeAndSameWriteTime_IsSeen()
+    {
+        _alive.Add(5);
+        var path = Path.Combine(_root, "5.json");
+        var when = new DateTime(2026, 10, 25, 12, 0, 0, DateTimeKind.Utc);
+        Write("5.json", Session(5, "s", status: "busy"));
+        File.SetLastWriteTimeUtc(path, when);
+        var directory = NewDirectory();
+        Assert.Equal("busy", Assert.Single(directory.Read()).Status);
+
+        // « idle » et « busy » ont la même longueur ; on force la même date d'écriture.
+        Write("5.json", Session(5, "s", status: "idle"));
+        File.SetLastWriteTimeUtc(path, when);
+
+        Assert.Equal("idle", Assert.Single(directory.Read()).Status);
     }
 
     [Fact]
@@ -289,6 +312,18 @@ public sealed class ClaudeSessionDirectoryTests : IDisposable
     public void Context_DefaultWindowIs200k()
     {
         Assert.Equal(85, ContextWindow.Percent(170_000, null, null, Now));
+    }
+
+    [Fact]
+    public void Context_KnownWindowForSameModel_BeatsTheRules()
+    {
+        // Une autre session a relevé 1 000 000 pour ce modèle : 100 000 jetons = 10 %, pas 50 %.
+        Assert.Equal(10, ContextWindow.Percent(100_000, "claude-opus-5-5", null, Now, knownWindowForModel: 1_000_000));
+        // La capture de la session reste prioritaire quand elle donne sa taille.
+        Assert.Equal(25, ContextWindow.Percent(100_000, "claude-opus-5-5", Capture(Now.AddMinutes(-30), window: 400_000), Now,
+            knownWindowForModel: 1_000_000));
+        // Sans fenêtre connue, les règles habituelles.
+        Assert.Equal(50, ContextWindow.Percent(100_000, "claude-opus-5-5", null, Now, knownWindowForModel: null));
     }
 
     [Fact]

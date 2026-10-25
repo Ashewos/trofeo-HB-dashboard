@@ -272,6 +272,63 @@ public sealed class StatusLineInstallerTests : IDisposable
         Assert.True(Installer().IsInstalled());
     }
 
+    [Theory]
+    [InlineData("""{"previous":null}""")]
+    [InlineData("{}")]
+    public void Uninstall_PreviousFileWithoutPrevious_ChainedCommand_ChangesNothing(string saved)
+    {
+        WriteSettings("""{"statusLine":{"type":"command","command":"bash ~/sl.sh"}}""");
+        Installer().Install(Exe);
+        File.WriteAllText(PreviousPath, saved);
+        var before = File.ReadAllBytes(SettingsPath);
+
+        Assert.Equal(StatusLineInstallResult.InvalidSettings, Installer().Uninstall());
+        Assert.Equal(before, File.ReadAllBytes(SettingsPath)); // la commande d'origine n'est pas jetée
+        Assert.True(File.Exists(PreviousPath));
+        Assert.True(Installer().IsInstalled());
+    }
+
+    [Fact]
+    public void Uninstall_PreviousFileWithoutPrevious_UnchainedCommand_RemovesStatusLine()
+    {
+        WriteSettings("""{"model":"opus"}""");
+        Installer().Install(Exe);
+        File.WriteAllText(PreviousPath, "{}");
+
+        Assert.Equal(StatusLineInstallResult.Uninstalled, Installer().Uninstall());
+        Assert.False(ReadSettings().ContainsKey("statusLine"));
+    }
+
+    [Theory]
+    [InlineData("""{"model":"opus","model":"sonnet"}""")]
+    [InlineData("""{"hooks":{"a":1,"a":2}}""")]
+    [InlineData("""{"list":[{"a":1,"a":2}]}""")]
+    public void Install_DuplicateKeys_ChangesNothing(string content)
+    {
+        WriteSettings(content);
+        var before = File.ReadAllBytes(SettingsPath);
+
+        Assert.Equal(StatusLineInstallResult.InvalidSettings, Installer().Install(Exe));
+        Assert.Equal(before, File.ReadAllBytes(SettingsPath));
+        Assert.False(File.Exists(BackupPath));
+        Assert.False(File.Exists(PreviousPath));
+        Assert.False(Installer().IsInstalled());
+    }
+
+    [Fact]
+    public void Uninstall_DuplicateKeysInSettingsOrPreviousFile_ChangesNothing()
+    {
+        WriteSettings("""{"statusLine":{"type":"command","command":"bash ~/sl.sh"}}""");
+        Installer().Install(Exe);
+        File.WriteAllText(PreviousPath, """{"previous":null,"previous":null}""");
+        var before = File.ReadAllBytes(SettingsPath);
+        Assert.Equal(StatusLineInstallResult.InvalidSettings, Installer().Uninstall());
+        Assert.Equal(before, File.ReadAllBytes(SettingsPath));
+
+        File.WriteAllText(SettingsPath, """{"a":1,"a":2}""");
+        Assert.Equal(StatusLineInstallResult.InvalidSettings, Installer().Uninstall());
+    }
+
     [Fact]
     public void Uninstall_CorruptPreviousFile_InvalidUtf8_ChangesNothing()
     {

@@ -57,6 +57,7 @@ public sealed class StatusLineInstaller(string claudeHome)
         if (!TryReadSettings(out var root)) return StatusLineInstallResult.InvalidSettings;
         if (!IsOurs(root["statusLine"])) return StatusLineInstallResult.NotInstalled;
 
+        var chained = CommandOf(root["statusLine"])!.Contains(ChainSeparator, StringComparison.Ordinal);
         JsonNode? previous = null;
         if (File.Exists(PreviousPath))
         {
@@ -64,11 +65,9 @@ public sealed class StatusLineInstaller(string claudeHome)
             if (!TryParseObject(PreviousPath, out var saved)) return StatusLineInstallResult.InvalidSettings;
             previous = saved["previous"]?.DeepClone();
         }
-        else if (CommandOf(root["statusLine"])!.Contains(ChainSeparator, StringComparison.Ordinal))
-        {
-            // Notre commande enveloppe celle d'origine, et sa sauvegarde a disparu : ne pas jeter l'originale.
-            return StatusLineInstallResult.InvalidSettings;
-        }
+
+        // Notre commande enveloppe celle d'origine, et la sauvegarde manque ou n'en dit rien : ne pas jeter l'originale.
+        if (previous is null && chained) return StatusLineInstallResult.InvalidSettings;
 
         if (previous is null) root.Remove("statusLine"); else root["statusLine"] = previous;
         WriteAtomic(SettingsPath, root);
@@ -95,16 +94,36 @@ public sealed class StatusLineInstaller(string claudeHome)
         {
             if (JsonNode.Parse(ReadStrictUtf8(path), documentOptions: ReadOptions) is JsonObject obj)
             {
+                RejectDuplicateKeys(obj);
                 root = obj;
                 return true;
             }
         }
-        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException or DecoderFallbackException)
+        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException or DecoderFallbackException
+                                      or ArgumentException) // ArgumentException : clé dupliquée
         {
             // Illisible : traité comme invalide.
         }
         root = new JsonObject();
         return false;
+    }
+
+    /// <summary>
+    /// <c>JsonNode</c> ne voit une clé dupliquée (<c>{"a":1,"a":2}</c>) qu'au premier accès à l'objet, où il lève une
+    /// <see cref="ArgumentException"/> : on parcourt tout l'arbre tout de suite pour que l'erreur survienne ici, avant
+    /// toute écriture.
+    /// </summary>
+    private static void RejectDuplicateKeys(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var child in obj) RejectDuplicateKeys(child.Value);
+                break;
+            case JsonArray array:
+                foreach (var child in array) RejectDuplicateKeys(child);
+                break;
+        }
     }
 
     private static string ReadStrictUtf8(string path)
