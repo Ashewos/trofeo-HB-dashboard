@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Trofeo.Core.Rendering;
 using Trofeo.Core.Shortcuts;
 using Trofeo.ModuleKit;
 
@@ -6,8 +7,10 @@ namespace Trofeo.Core.Layout;
 
 /// <summary>Disposition complète du tableau de bord : rotation de l'écran, modules placés et raccourcis clavier.</summary>
 /// <param name="Shortcuts">Raccourcis clavier globaux ; <c>null</c> (ancienne disposition) : <see cref="ShortcutDefaults.All"/>.</param>
+/// <param name="Appearance">Thème, opacité, police et fond ; <c>null</c> (ancienne disposition ou réglage illisible) : <see cref="AppearanceSettings.Default"/>.</param>
 public sealed record DashboardLayout(
-    int Rotation, IReadOnlyList<ModulePlacement> Placements, IReadOnlyList<ShortcutBinding>? Shortcuts = null)
+    int Rotation, IReadOnlyList<ModulePlacement> Placements, IReadOnlyList<ShortcutBinding>? Shortcuts = null,
+    AppearanceSettings? Appearance = null)
 {
     /// <summary>
     /// Disposition par défaut : rotation 180° (montage d'Alex), Claude Code à gauche (colonnes 0 à 7), Monitoring et

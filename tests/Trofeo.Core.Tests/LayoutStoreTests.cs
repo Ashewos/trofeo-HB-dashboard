@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Trofeo.Core.Layout;
+using Trofeo.Core.Rendering;
 using Trofeo.Core.Shortcuts;
 using Trofeo.ModuleKit;
 
@@ -229,5 +230,102 @@ public sealed class LayoutStoreTests : IDisposable
         Assert.Equal(0, layout.Rotation);
         Assert.Equal(2, layout.Placements.Count);
         Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    private static string WithAppearance(string layoutJson, string appearanceJson) =>
+        layoutJson.TrimEnd().TrimEnd('}') + ",\"Appearance\":" + appearanceJson + "}";
+
+    [Fact]
+    public void Load_WithoutAppearance_IsNull()
+    {
+        File.WriteAllText(FilePath, LayoutJson(180, (0, 0, 4, 2)));
+
+        var layout = new LayoutStore(FilePath).Load();
+
+        Assert.Null(layout.Appearance);
+        Assert.Single(layout.Placements);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void SaveLoad_WithoutAppearance_StaysNull()
+    {
+        var store = new LayoutStore(FilePath);
+
+        store.Save(DashboardLayout.Default);
+
+        Assert.Null(store.Load().Appearance);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void Load_UnknownTheme_KeepsPlacements()
+    {
+        File.WriteAllText(FilePath, WithAppearance(LayoutJson(180, (0, 0, 4, 2)), """{"Theme":"neon"}"""));
+
+        var layout = new LayoutStore(FilePath).Load();
+
+        Assert.Single(layout.Placements);
+        Assert.Equal("neon", layout.Appearance!.Theme);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Theory]
+    [InlineData("42")]
+    [InlineData("\"pixel\"")]
+    [InlineData("[]")]
+    [InlineData("""{"Theme":"pixel","Background":{"Kind":"Plasma"}}""")]
+    [InlineData("""{"Theme":"pixel","Background":{"Kind":99}}""")]
+    [InlineData("""{"Theme":42}""")]
+    [InlineData("""{"Theme":null}""")]
+    [InlineData("""{"Theme":"pixel","PanelOpacity":"beaucoup"}""")]
+    [InlineData("""{"Theme":"pixel","Font":7}""")]
+    public void Load_BrokenAppearance_KeepsLayout(string appearance)
+    {
+        File.WriteAllText(FilePath, WithAppearance(LayoutJson(180, (0, 0, 4, 2)), appearance));
+
+        var layout = new LayoutStore(FilePath).Load();
+
+        Assert.Equal(180, layout.Rotation);
+        Assert.Equal("clock", Assert.Single(layout.Placements).TypeId);
+        Assert.Null(layout.Appearance);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void Load_InvalidPlacementsWithBrokenAppearance_StillFallsBack()
+    {
+        AssertFallsBackAndKeepsBackup(WithAppearance(LayoutJson(180, (int.MaxValue, 0, 2, 2)), "42"));
+    }
+
+    [Fact]
+    public void SaveLoad_RoundTrips_Appearance()
+    {
+        var appearance = new AppearanceSettings(
+            "liquid-glass", 0.5f, "Manrope",
+            new BackgroundSettings(BackgroundKind.Animated, null, @"C:\Users\alex\Images\pluie.gif"));
+        var layout = DashboardLayout.Default with { Appearance = appearance };
+        var store = new LayoutStore(FilePath);
+
+        store.Save(layout);
+        var loaded = store.Load();
+
+        Assert.Equal(appearance, loaded.Appearance);
+        Assert.Equal(layout.Placements.Select(p => p.InstanceId), loaded.Placements.Select(p => p.InstanceId));
+        var text = File.ReadAllText(FilePath);
+        Assert.Contains("\"Kind\": \"Animated\"", text);
+        Assert.Contains("\"Theme\": \"liquid-glass\"", text);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void SaveLoad_RoundTrips_DefaultAppearance()
+    {
+        var layout = DashboardLayout.Default with { Appearance = AppearanceSettings.Default };
+        var store = new LayoutStore(FilePath);
+
+        store.Save(layout);
+
+        Assert.Equal(AppearanceSettings.Default, store.Load().Appearance);
     }
 }
