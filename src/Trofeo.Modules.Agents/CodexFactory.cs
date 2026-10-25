@@ -11,7 +11,8 @@ public sealed class CodexFactory(Func<ModuleContext, IAgentSource> createSource)
     private static readonly AgentFlavor Flavor = new(
         "Aucune session Codex ouverte",
         "Codex n'est pas installé sur ce PC",
-        CodexMascot.Definition);
+        CodexMascot.Definition,
+        DisplayRemainingPercent: true);
 
     public ModuleDescriptor Descriptor { get; } = new(
         "codex",
