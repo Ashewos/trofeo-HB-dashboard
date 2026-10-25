@@ -105,10 +105,10 @@ internal static class PanelPainter
 
         // 4. Le reflet, dégradé à 155°.
         var (start, end) = CssGradientLine(155, rect);
-        using (var sheen = new SKPaint())
+        using (var shader = SKShader.CreateLinearGradient(
+                   start, end, [look.SheenTop, look.SheenMid, look.SheenBottom], [0f, .55f, 1f], SKShaderTileMode.Clamp))
+        using (var sheen = new SKPaint { Shader = shader })
         {
-            sheen.Shader = SKShader.CreateLinearGradient(
-                start, end, [look.SheenTop, look.SheenMid, look.SheenBottom], [0f, .55f, 1f], SKShaderTileMode.Clamp);
             canvas.DrawRect(rect, sheen);
         }
         canvas.Restore();

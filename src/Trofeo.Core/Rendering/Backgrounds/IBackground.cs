@@ -49,14 +49,60 @@ internal static class BackgroundSupport
 
     /// <summary>
     /// Dessine <paramref name="source"/> sur tout l'écran, centrée : échelle = max(1920 / l, 462 / h)
-    /// (l'image remplit l'écran, le surplus est coupé).
+    /// (l'image remplit l'écran, le surplus est coupé). <paramref name="origin"/> est l'orientation EXIF de la photo :
+    /// le recadrage se calcule sur la taille redressée, puis la rotation ou le miroir est appliqué au dessin.
     /// </summary>
-    public static void DrawCover(SKCanvas canvas, SKImage source)
+    public static void DrawCover(SKCanvas canvas, SKImage source, SKEncodedOrigin origin = SKEncodedOrigin.TopLeft)
     {
-        float scale = Math.Max((float)GridGeometry.Width / source.Width, (float)GridGeometry.Height / source.Height);
-        float w = source.Width * scale, h = source.Height * scale;
-        var dest = SKRect.Create((GridGeometry.Width - w) / 2f, (GridGeometry.Height - h) / 2f, w, h);
-        canvas.DrawImage(source, new SKRect(0, 0, source.Width, source.Height), dest, Sampling, null);
+        if (origin is < SKEncodedOrigin.TopLeft or > SKEncodedOrigin.LeftBottom)
+        {
+            origin = SKEncodedOrigin.TopLeft; // valeur inconnue : image telle quelle
+        }
+
+        bool turned = Transposes(origin);
+        float width = turned ? source.Height : source.Width, height = turned ? source.Width : source.Height;
+        float scale = Math.Max((float)GridGeometry.Width / width, (float)GridGeometry.Height / height);
+        float w = width * scale, h = height * scale;
+        float left = (GridGeometry.Width - w) / 2f, top = (GridGeometry.Height - h) / 2f;
+
+        if (origin == SKEncodedOrigin.TopLeft)
+        {
+            canvas.DrawImage(source, new SKRect(0, 0, source.Width, source.Height), SKRect.Create(left, top, w, h), Sampling, null);
+            return;
+        }
+
+        canvas.Save();
+        canvas.Translate(left, top);
+        canvas.Scale(scale);
+        var matrix = OriginMatrix(origin, source.Width, source.Height);
+        canvas.Concat(in matrix);
+        canvas.DrawImage(source, SKRect.Create(0, 0, source.Width, source.Height), Sampling);
+        canvas.Restore();
+    }
+
+    /// <summary>Vrai si l'orientation échange la largeur et la hauteur (rotation d'un quart de tour, ou transposition).</summary>
+    private static bool Transposes(SKEncodedOrigin origin) => origin >= SKEncodedOrigin.LeftTop;
+
+    /// <summary>
+    /// Matrice qui redresse une image de <paramref name="w"/> × <paramref name="h"/> pixels stockée avec cette
+    /// orientation EXIF (celle de <c>SkEncodedOriginToMatrix</c> de Skia).
+    /// </summary>
+    private static SKMatrix OriginMatrix(SKEncodedOrigin origin, float w, float h)
+    {
+        static SKMatrix Make(float scaleX, float skewX, float transX, float skewY, float scaleY, float transY) =>
+            new(scaleX, skewX, transX, skewY, scaleY, transY, 0, 0, 1);
+
+        return origin switch
+        {
+            SKEncodedOrigin.TopRight => Make(-1, 0, w, 0, 1, 0),
+            SKEncodedOrigin.BottomRight => Make(-1, 0, w, 0, -1, h),
+            SKEncodedOrigin.BottomLeft => Make(1, 0, 0, 0, -1, h),
+            SKEncodedOrigin.LeftTop => Make(0, 1, 0, 1, 0, 0),
+            SKEncodedOrigin.RightTop => Make(0, -1, h, 1, 0, 0),
+            SKEncodedOrigin.RightBottom => Make(0, -1, h, -1, 0, w),
+            SKEncodedOrigin.LeftBottom => Make(0, 1, 0, -1, 0, w),
+            _ => SKMatrix.Identity,
+        };
     }
 
     /// <summary>
@@ -72,9 +118,17 @@ internal static class BackgroundSupport
         }
 
         SKCodec? codec = null;
+        FileStream? file = null;
         try
         {
-            codec = SKCodec.Create(path);
+            // Ouvert par .NET avec FileShare.Delete : sous Windows, le fichier peut être remplacé ou supprimé pendant la
+            // lecture (l'ouverture native de Skia l'interdirait). Le codec lit le flux au fil de l'eau, sans le charger.
+            file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            codec = SKCodec.Create(new SKManagedStream(file, disposeManagedStream: true));
+            if (codec is not null)
+            {
+                file = null; // le flux appartient maintenant au codec
+            }
             if (codec is not null && codec.Info.Width > 0 && codec.Info.Height > 0 &&
                 codec.Info.Width <= MaxSide && codec.Info.Height <= MaxSide)
             {
@@ -87,6 +141,7 @@ internal static class BackgroundSupport
         }
 
         codec?.Dispose();
+        file?.Dispose();
         warn?.Invoke(Unreadable(path));
         return null;
     }
@@ -98,10 +153,13 @@ internal static class BackgroundSupport
     public static SKImage? DecodeCover(SKCodec codec, out SKSizeI decodedSize)
     {
         decodedSize = codec.Info.Size;
+        var origin = codec.EncodedOrigin; // l'orientation EXIF des photos de téléphone
+        bool turned = Transposes(origin);
         foreach (var fraction in new[] { 1f / 8, 1f / 4, 1f / 2 })
         {
             var scaled = codec.GetScaledDimensions(fraction);
-            if (scaled.Width >= GridGeometry.Width && scaled.Height >= GridGeometry.Height)
+            int shownWidth = turned ? scaled.Height : scaled.Width, shownHeight = turned ? scaled.Width : scaled.Height;
+            if (shownWidth >= GridGeometry.Width && shownHeight >= GridGeometry.Height)
             {
                 decodedSize = scaled;
                 break;
@@ -117,7 +175,7 @@ internal static class BackgroundSupport
         using (var canvas = new SKCanvas(screen))
         {
             canvas.Clear(SKColors.Black); // un fond transparent (PNG, GIF) ne doit pas laisser voir à travers l'écran
-            DrawCover(canvas, source);
+            DrawCover(canvas, source, origin);
         }
         return Freeze(screen);
     }

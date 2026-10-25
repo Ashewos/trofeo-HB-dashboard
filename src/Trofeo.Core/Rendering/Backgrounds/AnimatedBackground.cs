@@ -6,7 +6,7 @@ namespace Trofeo.Core.Rendering;
 /// <summary>
 /// GIF ou WebP animé. Mémoire constante : un seul tampon de décodage (à la taille du fichier) et une seule image
 /// recadrée 1920 × 462, réutilisés à chaque image ; jamais toutes les images du fichier.
-/// Le fichier reste ouvert pendant la lecture. Un fichier d'une seule image est traité comme une image fixe.
+/// Le fichier reste ouvert pendant la lecture (partage en lecture, écriture et suppression : on peut le remplacer sous Windows). Un fichier d'une seule image est traité comme une image fixe.
 /// </summary>
 public sealed class AnimatedBackground : IBackground
 {
@@ -143,12 +143,14 @@ public sealed class AnimatedBackground : IBackground
 
         // Le tampon et l'image d'écran sont réutilisés (mêmes adresses de pixels). La nouvelle image Skia est construite
         // avant de libérer l'ancienne : en cas d'exception, Current reste valable.
-        using (var source = SKImage.FromPixels(_buffer!.PeekPixels()))
+        using (var bufferPixels = _buffer!.PeekPixels())
+        using (var source = SKImage.FromPixels(bufferPixels))
         {
             _canvas!.Clear(SKColors.Black);
             BackgroundSupport.DrawCover(_canvas, source);
         }
-        var next = SKImage.FromPixels(_screen!.PeekPixels());
+        using var screenPixels = _screen!.PeekPixels();
+        var next = SKImage.FromPixels(screenPixels);
         _current?.Dispose();
         _current = next;
         return true;

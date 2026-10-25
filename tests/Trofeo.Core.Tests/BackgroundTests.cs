@@ -103,6 +103,93 @@ public sealed class BackgroundTests : IDisposable
         Assert.True(p.Red < 140 && p.Green < 140 && p.Blue < 140, $"Trop clair : {p}");
     }
 
+    // ---- Orientation EXIF ----
+
+    /// <summary>
+    /// Insère, juste après le SOI (FF D8) d'un JPEG, un segment APP1 « Exif » minimal qui ne porte que l'orientation :
+    /// <code>
+    /// FF E1 00 22                      marqueur APP1, longueur 34 (2 + 6 + 26)
+    /// 45 78 69 66 00 00                « Exif\0\0 »
+    /// 4D 4D 00 2A 00 00 00 08          TIFF gros-boutiste, premier IFD à l'octet 8
+    /// 00 01                            une entrée
+    /// 01 12 00 03 00 00 00 01 00 oo 00 00   tag 0x0112 (orientation), type SHORT, 1 valeur = oo
+    /// 00 00 00 00                      pas d'autre IFD
+    /// </code>
+    /// </summary>
+    private static byte[] WithExifOrientation(byte[] jpeg, byte orientation)
+    {
+        byte[] app1 =
+        [
+            0xFF, 0xE1, 0x00, 0x22,
+            0x45, 0x78, 0x69, 0x66, 0x00, 0x00,
+            0x4D, 0x4D, 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08,
+            0x00, 0x01,
+            0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, orientation, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ];
+        Assert.Equal(0xFF, jpeg[0]);
+        Assert.Equal(0xD8, jpeg[1]);
+        return [.. jpeg[..2], .. app1, .. jpeg[2..]];
+    }
+
+    /// <summary>JPEG de 400 × 200 : moitié gauche rouge, moitié droite bleue, ou moitié haute rouge et basse bleue.</summary>
+    private string WriteExifJpeg(string name, byte orientation, bool leftRight)
+    {
+        using var bmp = new SKBitmap(400, 200);
+        using (var canvas = new SKCanvas(bmp))
+        {
+            canvas.Clear(Red);
+            using var paint = new SKPaint { Color = Blue };
+            canvas.DrawRect(leftRight ? SKRect.Create(200, 0, 200, 200) : SKRect.Create(0, 100, 400, 100), paint);
+        }
+        using var data = SKImage.FromBitmap(bmp).Encode(SKEncodedImageFormat.Jpeg, 100);
+        var path = Path.Combine(_dir, name);
+        File.WriteAllBytes(path, WithExifOrientation(data.ToArray(), orientation));
+        return path;
+    }
+
+    [Fact]
+    public void Image_ExifOrientationIsRead_ByTheTestJpeg()
+    {
+        var path = WriteExifJpeg("garde-fou.jpg", 3, leftRight: true);
+        using var codec = SKCodec.Create(path);
+
+        Assert.Equal(SKEncodedOrigin.BottomRight, codec.EncodedOrigin); // garde-fou : l'octet fabriqué est bien lu
+    }
+
+    [Fact]
+    public void Image_Exif3_IsTurnedUpright()
+    {
+        var path = WriteExifJpeg("tourne180.jpg", 3, leftRight: true); // pixels : rouge à gauche, bleu à droite
+        using var bg = ImageBackground.TryLoad(path, null)!;
+
+        AssertNear(Blue, Pixel(bg.Current, 300, 231), 40); // redressée à 180° : bleu à gauche
+        AssertNear(Red, Pixel(bg.Current, 1600, 231), 40);
+    }
+
+    [Fact]
+    public void Image_Exif6_RotatesQuarterTurnAndCropsOnTheTurnedSize()
+    {
+        var path = WriteExifJpeg("tourne90.jpg", 6, leftRight: false); // pixels : rouge en haut, bleu en bas
+        using var bg = ImageBackground.TryLoad(path, null)!;
+
+        // Un quart de tour horaire : le haut passe à droite. Redressée, l'image fait 200 × 400 : elle remplit la largeur.
+        AssertNear(Blue, Pixel(bg.Current, 300, 231), 40);
+        AssertNear(Red, Pixel(bg.Current, 1600, 231), 40);
+        Assert.Equal(GridGeometry.Width, bg.Current.Width);
+        Assert.Equal(GridGeometry.Height, bg.Current.Height);
+    }
+
+    [Fact]
+    public void Image_Exif1_IsUnchanged()
+    {
+        var path = WriteExifJpeg("droit.jpg", 1, leftRight: true);
+        using var bg = ImageBackground.TryLoad(path, null)!;
+
+        AssertNear(Red, Pixel(bg.Current, 300, 231), 40);
+        AssertNear(Blue, Pixel(bg.Current, 1600, 231), 40);
+    }
+
     // ---- Image ----
 
     [Fact]
@@ -498,6 +585,23 @@ public sealed class BackgroundTests : IDisposable
 
         bg.Dispose();
         Assert.DoesNotContain(OpenFiles(), f => f == path);
+    }
+
+    [Fact]
+    public void Animated_FileReplacedOrDeletedWhilePlaying_KeepsPlaying()
+    {
+        var path = WriteGif("remplace.gif", [10, 10], Red, Green);
+        using var bg = AnimatedBackground.TryLoad(path, null)!;
+
+        // Le fichier est ouvert avec FileShare.ReadWrite | Delete : un autre processus peut l'écraser ou le supprimer.
+        using (var other = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+        {
+            Assert.True(other.CanWrite);
+        }
+        File.Delete(path);
+
+        Assert.True(bg.Advance(TimeSpan.FromMilliseconds(100)));
+        AssertNear(Green, Pixel(bg.Current, 960, 231));
     }
 
     private static List<string> OpenFiles() =>
