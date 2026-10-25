@@ -62,7 +62,7 @@ public static class ClaudeMascot
         var clips = new Dictionary<MascotState, IReadOnlyList<Clip>>
         {
             [MascotState.Idle] = [Walk(), LookAround()],
-            [MascotState.Working] = [Curl(), Press()],
+            [MascotState.Working] = [Curl(), Laptop()],
             [MascotState.Waiting] = [Wave(), WaveAndJump()],
             [MascotState.Done] = [Confetti()],
         };
@@ -100,29 +100,22 @@ public static class ClaudeMascot
         [
             .. Figure(rightArm: false),
             Still(Px("oo", "oo"), BodyX + 14, BodyY + row),
-            Still(Dumbbell(), BodyX + 14, BodyY + row - 2),
+            Still(Dumbbell(), BodyX + 14, BodyY + row - 3),
         ])).ToList();
         return new Clip("haltère", [.. cycle, .. cycle, .. cycle]);
     }
 
-    // L'haltère au-dessus de la tête, tenu à deux bras : il monte de 2 pixels (OutQuad), tient, puis redescend.
-    private static Clip Press()
+    // Tourné vers un portable posé à sa gauche (vu de profil, écran ouvert), le bras gauche tape : 8 poses, regard sur l'écran, un clignement.
+    private static Clip Laptop()
     {
-        Pose At(int fromRow, int toRow, Ease ease) => new(120,
+        var poses = Enumerable.Range(0, 8).Select(i => new Pose(i == 5 ? 120 : 140,
         [
-            .. Figure(),
-            new Layer(OverheadDumbbell(), new SKPointI(BodyX + 5, BodyY + fromRow), new SKPointI(BodyX + 5, BodyY + toRow)),
-        ], ease);
-
-        return new Clip("développé",
-        [
-            At(-1, -1, Ease.Linear),
-            At(-1, -2, Ease.OutQuad),
-            At(-2, -3, Ease.OutQuad),
-            At(-3, -3, Ease.Linear),
-            At(-3, -2, Ease.InQuad),
-            At(-2, -1, Ease.InQuad),
-        ]);
+            .. Figure(leftArm: false, look: -1, eyes: i == 5 ? Eyes.Closed : Eyes.Open),
+            Still(LaptopSide(), 0, BodyY + 2),
+            // La main monte d'un pixel puis frappe le clavier.
+            Still(Px("oo", "oo"), BodyX, BodyY + (i % 2 == 0 ? 7 : 6)),
+        ]));
+        return new Clip("ordinateur", [.. poses]);
     }
 
     // ---------------------------------------------------------------- Attend
@@ -230,11 +223,19 @@ public static class ClaudeMascot
         Still(Px("w"), 19, 1),
     ];
 
-    // Haltère de 5 × 2 : un disque gris de 2 pixels de haut à chaque bout, la barre blanche entre les deux.
-    private static Sprite Dumbbell() => Px("g...g", "gwwwg");
+    // Haltère de 5 × 3 : un disque gris de 3 pixels de haut à chaque bout, la barre blanche au milieu.
+    private static Sprite Dumbbell() => Px("g...g", "gwwwg", "g...g");
 
-    // Haltère tenu à deux bras : l'haltère, puis deux bras de 2 pixels qui le relient à la tête.
-    private static Sprite OverheadDumbbell() => Px("g...g", "gwwwg", "o...o", "o...o");
+    // Portable vu de profil, 6 × 8 : l'écran ouvert penché vers l'arrière (blanc), le clavier à plat au sol (gris).
+    private static Sprite LaptopSide() => Px(
+        "w.....",
+        "w.....",
+        ".w....",
+        ".w....",
+        "..w...",
+        "..w...",
+        "...w..",
+        "..gggg");
 
     private static Layer Still(Sprite sprite, int x, int y) => new(sprite, new SKPointI(x, y), new SKPointI(x, y));
 

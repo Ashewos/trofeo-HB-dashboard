@@ -148,7 +148,9 @@ public sealed class StatusLineCaptureTests : IDisposable
     {
         Directory.CreateDirectory(Path.Combine(_dir, "s-1.json")); // un dossier à la place : le déplacement échoue
 
-        Assert.ThrowsAny<IOException>(() => StatusLineFile.Write(_dir, Sample("s-1", Now)));
+        // Linux lève IOException, Windows UnauthorizedAccessException.
+        var error = Record.Exception(() => StatusLineFile.Write(_dir, Sample("s-1", Now)));
+        Assert.True(error is IOException or UnauthorizedAccessException, $"Exception inattendue : {error}");
 
         Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
     }

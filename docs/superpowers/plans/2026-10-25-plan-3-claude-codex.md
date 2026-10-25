@@ -720,7 +720,7 @@ Yeux : colonnes 5 et 10, rangées 3 et 4 (corrigé pendant la construction : en 
 | État | Variantes (≥ 2, sauf Terminé) |
 |---|---|
 | Inactif | **« balade »** : 8 poses de 110 ms, pattes alternées, avec un pas d'un pixel par pose de gauche à droite et retour. **« regarde »** : yeux à gauche (400 ms), au centre, à droite (400 ms), puis un clignement (yeux fermés 120 ms). |
-| Travaille | **« haltère »** : bras droit levé et baissé, haltère `g` 5×2 dans la main, 4 poses de 140 ms × 3. **« développé »** : haltère au-dessus de la tête, montée en `OutQuad` sur 2 pixels, 6 poses de 120 ms. |
+| Travaille | **« haltère »** : bras droit levé et baissé, haltère `g` 5×3 dans la main, 4 poses de 140 ms × 3. **« ordinateur »** (remplace « développé » à la demande d'Alex) : tourné vers un portable de profil posé à sa gauche, le bras gauche tape, 8 poses de 140 ms dont un clignement. |
 | Attend | **« drapeau »** : bras levé tenant un mât `w` et un drapeau `y` 5×3 en 2 formes alternées, 6 × 130 ms. **« saut-drapeau »** : même drapeau, avec un saut de 2 pixels en `OutQuad` à l'aller et `InQuad` au retour. |
 | Terminé | **« confettis »** : 24 particules (`Accent`, `Warning`, `o`, `w`) qui partent du haut du corps en `OutQuad`, 10 poses de 100 ms. |
 

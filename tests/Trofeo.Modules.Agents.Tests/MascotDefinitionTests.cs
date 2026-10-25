@@ -114,7 +114,7 @@ public sealed class MascotDefinitionTests
     {
         var clips = ClaudeMascot.Definition.Clips;
         Assert.Equal(["balade", "regarde"], clips[MascotState.Idle].Select(c => c.Name));
-        Assert.Equal(["haltère", "développé"], clips[MascotState.Working].Select(c => c.Name));
+        Assert.Equal(["haltère", "ordinateur"], clips[MascotState.Working].Select(c => c.Name));
         Assert.Equal(["drapeau", "saut-drapeau"], clips[MascotState.Waiting].Select(c => c.Name));
         Assert.Equal(["confettis"], clips[MascotState.Done].Select(c => c.Name));
     }
@@ -152,7 +152,7 @@ public sealed class MascotDefinitionTests
 
         var working = ClaudeMascot.Definition.Clips[MascotState.Working];
         Assert.Equal(12, working.Single(c => c.Name == "haltère").Poses.Count);
-        Assert.Equal(6, working.Single(c => c.Name == "développé").Poses.Count);
+        Assert.Equal(8, working.Single(c => c.Name == "ordinateur").Poses.Count);
 
         Assert.Equal(10, ClaudeMascot.Definition.Clips[MascotState.Done].Single().Poses.Count);
     }
@@ -269,27 +269,32 @@ public sealed class MascotDefinitionTests
     }
 
     [Fact]
-    public void Claude_Press_KeepsTheSideArms()
+    public void Claude_Laptop_HandTouchesTheKeyboard()
     {
-        // À chaque pose du développé, les bras du corps (rangées 4 et 5, colonnes 0-1 et 14-15) sont dessinés.
-        var press = ClaudeMascot.Definition.Clips[MascotState.Working].Single(c => c.Name == "développé");
-        foreach (var pose in press.Poses)
+        // Une pose sur deux, la main (colonnes 4-5) est juste au-dessus du clavier (rangée 15) : elle frappe.
+        var laptop = ClaudeMascot.Definition.Clips[MascotState.Working].Single(c => c.Name == "ordinateur");
+        for (var i = 0; i < laptop.Poses.Count; i++)
         {
             using var bitmap = new SKBitmap(24, 16);
             using (var canvas = new SKCanvas(bitmap))
             {
                 canvas.Clear(SKColors.Transparent);
-                foreach (var layer in pose.Layers)
+                foreach (var layer in laptop.Poses[i].Layers)
                 {
                     layer.Sprite.Draw(canvas, layer.From.X, layer.From.Y, 1);
                 }
             }
 
-            foreach (var column in new[] { 0, 1, 14, 15 })
-            {
-                Assert.NotEqual(0, bitmap.GetPixel(4 + column, 6 + 4).Alpha);
-                Assert.NotEqual(0, bitmap.GetPixel(4 + column, 6 + 5).Alpha);
-            }
+            Assert.NotEqual(0, bitmap.GetPixel(4, 15).Alpha);
+            Assert.Equal(i % 2 == 0, bitmap.GetPixel(4, 14).Alpha != 0);
         }
+    }
+
+    [Fact]
+    public void Claude_Dumbbell_HasFullPlates()
+    {
+        // Les disques dépassent la barre en haut et en bas : l'haltère ne paraît pas coupé.
+        var curl = ClaudeMascot.Definition.Clips[MascotState.Working].Single(c => c.Name == "haltère");
+        Assert.All(curl.Poses, pose => Assert.Contains(pose.Layers, l => l.Sprite.Width == 5 && l.Sprite.Height == 3));
     }
 }
