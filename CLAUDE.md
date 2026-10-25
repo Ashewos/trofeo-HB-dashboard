@@ -6,9 +6,10 @@ Tableau de bord modulaire pour l'écran USB Thermalright Trofeo Vision 9,16" (19
 
 - Spécification : `docs/superpowers/specs/2026-10-24-trofeo-dashboard-design.md`.
 - Feuille de route en 6 plans : `docs/superpowers/plans/2026-10-24-plan-1-fondations.md` (3 Claude Code / Codex, 4 Apparence, 5 Logiciel de réglage, 6 Distribution).
-- Plans 1 et 2 terminés, fusionnés dans `main` et vérifiés sur le vrai écran.
-- **Point de reprise : `docs/superpowers/plans/2026-10-25-plan-2-bilan.md`**. Il contient l'état, les mesures, les décisions, ce qui revient au plan 5 (dont le choix du GPU surveillé) et les petits points repoussés. Lire aussi `git log`.
-- Prochaine étape : écrire le plan 3 (module Claude Code / Codex, colonnes 0 à 7 ; la disposition par défaut occupe les colonnes 8 à 15), avec superpowers:writing-plans, quand Alex le demande.
+- Plans 1 et 2 terminés, fusionnés dans `main` et vérifiés sur le vrai écran. Bilan du plan 2 : `docs/superpowers/plans/2026-10-25-plan-2-bilan.md` (dont ce qui revient au plan 5).
+- Plan 3 (Claude Code / Codex) : `docs/superpowers/plans/2026-10-25-plan-3-claude-codex.md`. Tâches 0 à 9 construites dans le cloud sur la branche `main-zcgy1g`, non fusionnée.
+- **Point de reprise : `docs/superpowers/plans/2026-10-25-plan-3-etat-cloud.md`** (décisions, points à reprendre). Prochaine étape, sur le PC d'Alex : tâches 10 (raccourcis) et 11 (branchement, vérification sur l'écran), puis le bilan du plan 3.
+- Les projets `net10.0` du plan 3 se construisent aussi sous Linux : `apt-get install dotnet-sdk-10.0`, puis `dotnet test tests/Trofeo.Modules.Agents.Tests`.
 
 ## Règles de travail
 

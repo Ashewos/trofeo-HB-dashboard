@@ -102,7 +102,7 @@ Vérifiées sur Claude Code **2.1.310**, dans la session cloud qui a écrit ce p
   1. la valeur capturée par la barre d'état pour cette session ;
   2. 1 000 000 si l'identifiant du modèle contient `[1m]` ou si l'usage dépasse 200 000 ;
   3. sinon 200 000.
-- **Chaînage d'une barre d'état existante** : `"<exe>" --tee | <ancienne commande>`. Le shell de Claude Code exécute lui-même le tuyau, ce qui évite de deviner son shell (cmd ou Git Bash). Le chemin de l'exe est écrit avec des `/`, que comprennent les deux.
+- **Chaînage d'une barre d'état existante** : `"<exe>" --tee | ( <ancienne commande> )`, entre parenthèses pour qu'une commande avec `&&`, `||` ou `;` reçoive bien l'entrée. Le shell de Claude Code exécute lui-même le tuyau, ce qui évite de deviner son shell (cmd ou Git Bash). Le chemin de l'exe est écrit avec des `/`, que comprennent les deux.
 - **Suivi automatique** (réglage `autoFollow`, activé par défaut) : quand une session passe à « attend l'utilisateur », son onglet s'affiche, sauf si Alex a changé d'onglet au clavier dans les 2 dernières minutes. C'est le cas qui justifie un coup d'œil.
 - **Codex** : format d'après la communauté (spec 6.3), **non vérifié**. Le code est tolérant : un champ inconnu est ignoré, jamais une erreur. `AgentPreview --codex-probe` affiche la structure d'une vraie transcription (les clés, sans les valeurs) pour qu'un ami d'Alex la transmette.
 - **Raccourcis** rangés dans `layout.json` (`Shortcuts`, absent = valeurs par défaut). Le plan 5 les rendra modifiables.
@@ -427,7 +427,7 @@ public sealed class StatusLineInstaller(string claudeHome)
    - La première fois seulement, copie de `settings.json` en `settings.json.trofeo-bak`.
    - À chaque installation, l'ancien nœud `statusLine` (ou `null`) est écrit dans `<claudeHome>/trofeo-HB-dashboard/statusline-previous.json`, sous la forme `{"previous": …}`.
 4. **Nouvelle commande.** Le chemin est absolu, avec `/`, entre guillemets.
-   - Si l'ancien nœud est `{"type":"command","command":X}` : `"<exe>" --tee | X`, et ses autres propriétés (`padding`, `refreshInterval`…) sont gardées.
+   - Si l'ancien nœud est `{"type":"command","command":X}` : `"<exe>" --tee | ( X )`, et ses autres propriétés (`padding`, `refreshInterval`…) sont gardées.
    - Sinon : `{"type":"command","command":"\"<exe>\""}`.
 5. **Écriture** atomique, indentée, en UTF-8 sans BOM. Les autres clés sont conservées.
 
@@ -447,7 +447,7 @@ public sealed class StatusLineInstaller(string claudeHome)
   - `Program_GarbageInput_ExitsZeroSilently`.
   - `Install_NoSettings_CreatesCommand`.
   - `Install_KeepsOtherKeys` (`model`, `hooks`, `permissions`).
-  - `Install_ChainsExistingCommand` : `{"type":"command","command":"bash ~/sl.sh","padding":1}` donne `"\"C:/x/Trofeo.StatusLine.exe\" --tee | bash ~/sl.sh"` et `padding` 1.
+  - `Install_ChainsExistingCommand` : `{"type":"command","command":"bash ~/sl.sh","padding":1}` donne `"\"C:/x/Trofeo.StatusLine.exe\" --tee | ( bash ~/sl.sh )"` et `padding` 1.
   - `Install_Twice_AlreadyInstalled`.
   - `Install_InvalidJson_ChangesNothing` : octets du fichier identiques et aucune sauvegarde créée.
   - `Uninstall_RestoresPreviousExactly`.
@@ -706,8 +706,8 @@ public sealed class MascotAnimator(MascotDefinition definition, TimeProvider tim
 ................
 ..oooooooooooo..
 ..oooooooooooo..
-..ooookooookoo..
-ooooookooookoooo
+..oookooookooo..
+oooookooookooooo
 oooooooooooooooo
 ..oooooooooooo..
 ..oooooooooooo..
@@ -715,7 +715,7 @@ oooooooooooooooo
 ..o.o......o.o..
 ```
 
-Yeux : colonnes 6 et 11, rangées 3 et 4. Bras : rangées 4 et 5, colonnes 0-1 et 14-15. Pattes : rangées 8 et 9.
+Yeux : colonnes 5 et 10, rangées 3 et 4 (corrigé pendant la construction : en 6 et 11, le visage était décentré). Bras : rangées 4 et 5, colonnes 0-1 et 14-15. Pattes : rangées 8 et 9.
 
 | État | Variantes (≥ 2, sauf Terminé) |
 |---|---|
@@ -842,7 +842,7 @@ internal static class AgentLayout { public static AgentLayoutResult Compute(SKRe
   - « Tâches 3/7 » en 18 `TextMuted`, avec une barre ;
   - puis les tâches : case de 14 px (vide = à faire, pleine `Accent` = faite, point `#E8875B` = en cours) et texte en 22.
 - **Barre du bas**, de gauche à droite :
-  1. la mascotte, dans un carré de 64 px ;
+  1. la mascotte, dans une zone de 96 × 64 px (pixels de sprite de 4 ; agrandie pendant la construction) ;
   2. « Contexte » / « Durée » / « Modèle » : libellé en 15 `TextMuted`, valeur en 24 `Text` :
      - `AgentText.Percent` ;
      - `AgentText.Duration(now − TaskStartedAt)` ;
