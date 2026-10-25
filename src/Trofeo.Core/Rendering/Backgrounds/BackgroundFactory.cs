@@ -7,7 +7,7 @@ public static class BackgroundFactory
 {
     /// <summary>
     /// <paramref name="settings"/> null ou Kind Theme : fond par défaut du thème. Video : <paramref name="video"/>(chemin), ou
-    /// le fond du thème si <paramref name="video"/> est null ou rend null. Fichier absent ou illisible, couleur mal écrite :
+    /// le fond du thème si <paramref name="video"/> est null (avertissement « non prise en charge ») ou rend null (l'hôte a déjà averti). Fichier absent ou illisible, couleur mal écrite :
     /// fond du thème, et <paramref name="warn"/>.
     /// </summary>
     public static IBackground Create(BackgroundSettings? settings, ThemeDefinition theme,
@@ -41,7 +41,10 @@ public static class BackgroundFactory
                 {
                     var background = settings.Path is { Length: > 0 } path ? video?.Invoke(path) : null;
                     if (background is not null) return background;
-                    warn?.Invoke(BackgroundSupport.NoVideo(settings.Path));
+                    // L'hôte qui rend null a déjà averti lui-même (fichier absent, illisible) : pas de second message,
+                    // surtout pas un faux « non prise en charge ». Seul un chemin vide reste à signaler.
+                    if (video is null) warn?.Invoke(BackgroundSupport.NoVideo(settings.Path));
+                    else if (string.IsNullOrEmpty(settings.Path)) warn?.Invoke(BackgroundSupport.Missing(settings.Path ?? ""));
                     break;
                 }
         }

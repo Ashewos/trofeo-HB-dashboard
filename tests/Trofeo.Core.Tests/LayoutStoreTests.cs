@@ -284,11 +284,58 @@ public sealed class LayoutStoreTests : IDisposable
     {
         File.WriteAllText(FilePath, WithAppearance(LayoutJson(180, (0, 0, 4, 2)), appearance));
 
-        var layout = new LayoutStore(FilePath).Load();
+        var warnings = new List<string>();
+        var layout = new LayoutStore(FilePath, warnings.Add).Load();
 
         Assert.Equal(180, layout.Rotation);
         Assert.Equal("clock", Assert.Single(layout.Placements).TypeId);
         Assert.Null(layout.Appearance);
+        Assert.False(File.Exists(FilePath + ".bad"));
+        Assert.Equal(["Réglages d'apparence illisibles dans layout.json : apparence par défaut utilisée."], warnings);
+    }
+
+    [Fact]
+    public void Load_ValidOrNullAppearance_DoesNotWarn()
+    {
+        var warnings = new List<string>();
+        File.WriteAllText(FilePath, WithAppearance(LayoutJson(180, (0, 0, 4, 2)), """{"Theme":"pixel"}"""));
+        Assert.Equal("pixel", new LayoutStore(FilePath, warnings.Add).Load().Appearance!.Theme);
+
+        File.WriteAllText(FilePath, WithAppearance(LayoutJson(180, (0, 0, 4, 2)), "null"));
+        Assert.Null(new LayoutStore(FilePath, warnings.Add).Load().Appearance);
+
+        File.WriteAllText(FilePath, LayoutJson(180, (0, 0, 4, 2)));
+        Assert.Null(new LayoutStore(FilePath, warnings.Add).Load().Appearance);
+
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void Load_DuplicateKeys_StayReadableLastValueWins()
+    {
+        // Avant le plan 4, le sérialiseur acceptait un nom de propriété en double (la dernière valeur gagne).
+        var json = LayoutJson(180, (0, 0, 4, 2)).TrimEnd().TrimEnd('}') + ",\"Rotation\":0,\"Appearance\":{\"Theme\":\"classique\"}}";
+        File.WriteAllText(FilePath, json);
+
+        var layout = new LayoutStore(FilePath).Load();
+
+        Assert.Equal(0, layout.Rotation);
+        Assert.Equal("clock", Assert.Single(layout.Placements).TypeId);
+        Assert.Equal("classique", layout.Appearance!.Theme);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void Load_DuplicateAppearanceKey_StaysReadable()
+    {
+        var json = LayoutJson(180, (0, 0, 4, 2)).TrimEnd().TrimEnd('}') +
+                   ",\"Appearance\":{\"Theme\":\"pixel\"},\"Appearance\":{\"Theme\":\"liquid-glass\"}}";
+        File.WriteAllText(FilePath, json);
+
+        var layout = new LayoutStore(FilePath).Load();
+
+        Assert.Single(layout.Placements);
+        Assert.Equal("liquid-glass", layout.Appearance!.Theme);
         Assert.False(File.Exists(FilePath + ".bad"));
     }
 

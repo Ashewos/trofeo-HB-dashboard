@@ -372,7 +372,20 @@ public sealed class BackgroundTests : IDisposable
             video: _ => null, warn: warnings.Add);
 
         Assert.IsType<ColorBackground>(bg);
-        Assert.Equal(["Vidéo non prise en charge ici : clip.mp4. Fond du thème utilisé."], warnings);
+        Assert.Empty(warnings); // l'hôte avertit lui-même : la vidéo est bien prise en charge ici
+    }
+
+    [Fact]
+    public void Factory_Video_HostPresentButEmptyPath_WarnsMissing()
+    {
+        var warnings = new List<string>();
+
+        using var bg = BackgroundFactory.Create(
+            new BackgroundSettings(BackgroundKind.Video, Path: ""), Themes.ClassiqueDefinition,
+            video: _ => throw new InvalidOperationException("ne doit pas être appelé"), warn: warnings.Add);
+
+        Assert.IsType<ColorBackground>(bg);
+        Assert.Equal(["Fond d'écran introuvable : . Fond du thème utilisé."], warnings);
     }
 
     [Fact]
