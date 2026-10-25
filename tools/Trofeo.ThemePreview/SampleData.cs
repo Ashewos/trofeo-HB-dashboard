@@ -36,6 +36,9 @@ internal sealed class PreviewScene : IDisposable
     /// <summary>Le nom de chaque module par identifiant d'emplacement (pour les messages).</summary>
     public Dictionary<Guid, string> Names { get; } = [];
 
+    /// <summary>Les modules qui ne sont pas en ligne après l'attente de démarrage (vide si tout va bien).</summary>
+    public List<string> NotOnline { get; } = [];
+
     private PreviewScene(bool longTexts)
     {
         _feed = new FakeFeed(Sensors());
@@ -107,6 +110,17 @@ internal sealed class PreviewScene : IDisposable
         }
 
         await Task.Delay(200).ConfigureAwait(false); // laisse les continuations asynchrones se poser
+
+        // Un module hors ligne montrerait des textes courts : l'aperçu et surtout --check ne vaudraient plus rien.
+        foreach (var (id, name) in Names)
+        {
+            if (ByPlacement[id].Status.Health != ModuleHealth.Online)
+            {
+                NotOnline.Add(name);
+                Console.Error.WriteLine(
+                    $"Attention : le module « {name} » n'est pas en ligne après 3 s d'attente ; l'aperçu ne le montre pas comme prévu.");
+            }
+        }
     }
 
     /// <summary>La disposition par défaut, avec cette taille de texte partout.</summary>

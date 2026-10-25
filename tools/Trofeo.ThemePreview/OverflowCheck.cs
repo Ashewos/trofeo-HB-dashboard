@@ -39,6 +39,12 @@ internal static class OverflowCheck
             }
         }
 
+        if (scene.NotOnline.Count > 0)
+        {
+            // Le contrôle porterait sur des textes de module hors ligne, donc trop courts : il ne prouve rien.
+            faults.Add("Contrôle non fiable : module(s) hors ligne : " + string.Join(", ", scene.NotOnline) + ".");
+        }
+
         if (faults.Count == 0)
         {
             output.WriteLine("OK");
