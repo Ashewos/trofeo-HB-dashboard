@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Time.Testing;
 using Trofeo.Core.Layout;
@@ -16,14 +17,14 @@ public sealed class DisplayLoopTests
     {
         public ModuleDescriptor Descriptor { get; } = new(typeId, typeId, minSize, new Dictionary<SizePreset, GridSize>());
 
-        public IModule Create(JsonElement settings, TimeProvider time) => make();
+        public IModule Create(ModuleContext context) => make();
     }
 
     private sealed class ThrowingModuleFactory : IModuleFactory
     {
         public ModuleDescriptor Descriptor { get; } = new("boom", "boom", new GridSize(1, 1), new Dictionary<SizePreset, GridSize>());
 
-        public IModule Create(JsonElement settings, TimeProvider time) => throw new InvalidOperationException("création impossible");
+        public IModule Create(ModuleContext context) => throw new InvalidOperationException("création impossible");
     }
 
     private sealed class DisposeCountingModule : IModule
@@ -33,6 +34,7 @@ public sealed class DisplayLoopTests
         public ModuleStatus Status => new(ModuleHealth.Online);
         public bool IsAnimating => false;
         public event EventHandler? Invalidated { add { } remove { } }
+        public event EventHandler? StatusChanged { add { } remove { } }
         public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
         public void Render(SkiaSharp.SKCanvas canvas, ModuleRenderContext ctx) { }
         public void Dispose() => Disposed++;
@@ -54,7 +56,8 @@ public sealed class DisplayLoopTests
             Screen = new ScreenDevice(Usb, Time);
             Scheduler = new FrameScheduler(Time);
             var registry = new ModuleRegistry(
-                [new FakeModuleFactory("fake", new GridSize(2, 1), () => Module), .. extraFactories ?? []]);
+                [new FakeModuleFactory("fake", new GridSize(2, 1), () => Module), .. extraFactories ?? []],
+                _ => new FakeSecretStore());
             var placements = new List<ModulePlacement>
             {
                 new(InstanceId, typeId, 0, 0, cols, rows, TextSize.Normal, JsonDocument.Parse("{}").RootElement.Clone()),
@@ -77,6 +80,7 @@ public sealed class DisplayLoopTests
         {
             Loop.Dispose();
             Screen.Dispose();
+            Scheduler.Dispose();
         }
     }
 
@@ -193,6 +197,88 @@ public sealed class DisplayLoopTests
         rig.Loop.Tick();
         Assert.Equal(3, rig.Usb.OpenCount);
         Assert.Equal(0, rig.Loop.FramesSent);
+    }
+
+    [Fact]
+    public void Tick_Idle_ReturnsTimeUntilKeepAlive()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+
+        Assert.Equal(TimeSpan.FromSeconds(1), rig.Loop.Tick()); // juste après l'envoi : un renvoi dans 1 s
+
+        rig.Time.Advance(TimeSpan.FromMilliseconds(400));
+        Assert.Equal(TimeSpan.FromMilliseconds(600), rig.Loop.Tick());
+    }
+
+    [Fact]
+    public void Tick_Animating_ReturnsFrameInterval()
+    {
+        using var rig = new Rig(new FakeModule { IsAnimating = true });
+        rig.AddHealthyScreen(acks: 100);
+
+        var delay = rig.Loop.Tick();
+
+        Assert.Equal(rig.Scheduler.MinInterval, delay);
+        Assert.InRange(delay.TotalMilliseconds, 83, 84);
+    }
+
+    [Fact]
+    public void Tick_Dirty_ReturnsTimeUntilNextSlot()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+        rig.Time.Advance(TimeSpan.FromMilliseconds(30));
+        rig.Module.RaiseInvalidated();
+
+        // 30 ms écoulés sur 83,3 ms : l'image attend le créneau, pas le renvoi dans 970 ms.
+        Assert.Equal(rig.Scheduler.MinInterval - TimeSpan.FromMilliseconds(30), rig.Loop.Tick());
+    }
+
+    [Fact]
+    public void Tick_Disconnected_ReturnsTimeUntilReconnect()
+    {
+        using var rig = new Rig(); // aucun écran : TryOpen renvoie null
+
+        // Juste après l'échec : 2 s avant le prochain essai, ramenées à 1 s par le plafond global.
+        Assert.Equal(TimeSpan.FromSeconds(1), rig.Loop.Tick());
+
+        rig.Time.Advance(TimeSpan.FromMilliseconds(1500));
+        Assert.Equal(TimeSpan.FromMilliseconds(500), rig.Loop.Tick()); // intervalle pas écoulé : le reste
+
+        rig.Time.Advance(TimeSpan.FromMilliseconds(490));
+        Assert.Equal(TimeSpan.FromMilliseconds(10), rig.Loop.Tick());
+        Assert.Equal(1, rig.Usb.OpenCount);
+
+        rig.Time.Advance(TimeSpan.FromMilliseconds(10)); // à l'échéance : essai, puis nouvelle attente
+        Assert.Equal(TimeSpan.FromSeconds(1), rig.Loop.Tick());
+        Assert.Equal(2, rig.Usb.OpenCount);
+    }
+
+    [Fact]
+    public void Tick_ConnectedButNothingToSend_NeverReturnsZeroForever()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+
+        rig.Time.Advance(TimeSpan.FromSeconds(3));
+        var delay = rig.Loop.Tick(); // présence et renvoi faits : le prochain est dans 1 s
+
+        Assert.Equal(TimeSpan.FromSeconds(1), delay);
+    }
+
+    [Fact]
+    public void RequestReconnect_SetsSignal()
+    {
+        using var rig = new Rig();
+        rig.Scheduler.Signal.WaitOne(0); // vide le signal de l'invalidation initiale
+        Assert.False(rig.Scheduler.Signal.WaitOne(0));
+
+        rig.Loop.RequestReconnect();
+
+        Assert.True(rig.Scheduler.Signal.WaitOne(0));
     }
 
     [Fact]
@@ -383,6 +469,47 @@ public sealed class DisplayLoopTests
     }
 
     [Fact]
+    public void StatusChanged_MarksDirtyAndLogs()
+    {
+        using var rig = new Rig();
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+
+        var listener = new CapturingTraceListener();
+        Trace.Listeners.Add(listener);
+        try
+        {
+            rig.Module.Status = new ModuleStatus(ModuleHealth.Offline, "Reconnectez le compte");
+            rig.Module.RaiseStatusChanged();
+        }
+        finally
+        {
+            Trace.Listeners.Remove(listener);
+        }
+
+        rig.Loop.Tick(); // une image au tick suivant
+
+        Assert.Equal(2, rig.Loop.FramesSent);
+        Assert.Contains(listener.Lines, l => l.Contains("[fake 11111111] État : Offline — Reconnectez le compte"));
+    }
+
+    [Fact]
+    public void Dispose_UnsubscribesStatusChanged()
+    {
+        var rig = new Rig();
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+        rig.Loop.Dispose();
+
+        rig.Module.RaiseStatusChanged(); // toléré après Dispose
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.False(rig.Scheduler.ShouldRender(false));
+        rig.Screen.Dispose();
+    }
+
+    [Fact]
     public void Dispose_UnsubscribesInvalidated()
     {
         var rig = new Rig();
@@ -398,15 +525,52 @@ public sealed class DisplayLoopTests
     }
 }
 
+internal sealed class CapturingTraceListener : TraceListener
+{
+    private readonly object _gate = new();
+    private readonly List<string> _lines = [];
+
+    public string[] Lines
+    {
+        get { lock (_gate) return [.. _lines]; }
+    }
+
+    public override void Write(string? message) => WriteLine(message);
+
+    public override void WriteLine(string? message)
+    {
+        lock (_gate) _lines.Add(message ?? "");
+    }
+}
+
 public sealed class ModuleRegistryTests
 {
+    /// <summary>Fournisseur de météo qui n'est jamais interrogé : les réglages de ces tests n'ont pas de lieu.</summary>
+    private sealed class NoWeather : Trofeo.Modules.Clock.IWeatherProvider
+    {
+        public Task<Trofeo.Modules.Clock.WeatherNow> GetCurrentAsync(
+            Trofeo.Modules.Clock.WeatherLocation where, Trofeo.Modules.Clock.TemperatureUnit unit, CancellationToken ct) =>
+            throw new InvalidOperationException("Aucune météo attendue.");
+    }
+
+    private sealed class CapturingFactory(Action<ModuleContext> capture) : IModuleFactory
+    {
+        public ModuleDescriptor Descriptor { get; } = new("fake", "fake", new GridSize(1, 1), new Dictionary<SizePreset, GridSize>());
+
+        public IModule Create(ModuleContext context)
+        {
+            capture(context);
+            return new FakeModule();
+        }
+    }
+
     private static ModulePlacement Placement(string typeId) => new(
         Guid.NewGuid(), typeId, 0, 0, 4, 2, TextSize.Normal, JsonDocument.Parse("{}").RootElement.Clone());
 
     [Fact]
     public void Create_KnownType_ReturnsModule()
     {
-        var registry = new ModuleRegistry([new Trofeo.Modules.Clock.ClockFactory()]);
+        var registry = new ModuleRegistry([new Trofeo.Modules.Clock.ClockFactory(new NoWeather())], _ => new FakeSecretStore());
 
         using var module = registry.Create(Placement("clock"), TimeProvider.System);
 
@@ -415,9 +579,46 @@ public sealed class ModuleRegistryTests
     }
 
     [Fact]
+    public void Create_BuildsContextFromPlacement()
+    {
+        ModuleContext? captured = null;
+        var scopes = new List<string>();
+        var store = new FakeSecretStore();
+        var registry = new ModuleRegistry(
+            [new CapturingFactory(ctx => captured = ctx)],
+            typeId => { scopes.Add(typeId); return store; });
+        var settings = JsonDocument.Parse("{\"k\":42}").RootElement.Clone();
+        var placement = Placement("fake") with { Settings = settings };
+        var time = new FakeTimeProvider();
+        var listener = new CapturingTraceListener();
+        Trace.Listeners.Add(listener);
+
+        try
+        {
+            using var module = registry.Create(placement, time);
+
+            Assert.NotNull(module);
+            Assert.NotNull(captured);
+            Assert.Equal(placement.InstanceId, captured.InstanceId);
+            Assert.Equal(42, captured.Settings.GetProperty("k").GetInt32());
+            Assert.Same(time, captured.Time);
+            Assert.Equal(["fake"], scopes);
+            Assert.Same(store, captured.Secrets);
+
+            captured.Log.Info("bonjour");
+            Assert.Contains(
+                listener.Lines, l => l.Contains($"[fake {placement.InstanceId.ToString("N")[..8]}] bonjour"));
+        }
+        finally
+        {
+            Trace.Listeners.Remove(listener);
+        }
+    }
+
+    [Fact]
     public void Create_UnknownType_ReturnsNull()
     {
-        var registry = new ModuleRegistry([new Trofeo.Modules.Clock.ClockFactory()]);
+        var registry = new ModuleRegistry([new Trofeo.Modules.Clock.ClockFactory(new NoWeather())], _ => new FakeSecretStore());
 
         Assert.Null(registry.Create(Placement("meteo"), TimeProvider.System));
     }

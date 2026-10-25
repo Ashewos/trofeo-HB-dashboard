@@ -1,7 +1,12 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 using SkiaSharp;
+using Trofeo.Core;
 using Trofeo.Core.Rendering;
+using Trofeo.Core.Secrets;
 using Trofeo.Device;
+using Trofeo.Modules.Clock;
 
 // Vérification sur le vrai écran. Chaque mode se termine seul ; fermer Thermalright TRCC avant.
 const int Width = 1920;
@@ -9,6 +14,9 @@ const int Height = 462;
 
 var rotation = 180;
 string? mode = null;
+string? secretScope = null;
+string? secretKey = null;
+string? cityName = null;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -24,8 +32,28 @@ for (var i = 0; i < args.Length; i++)
         case "--recovery":
             mode = "recovery";
             break;
+        case "--set-secret" when i + 2 < args.Length && !args[i + 1].StartsWith("--") && !args[i + 2].StartsWith("--"):
+            secretScope = args[i + 1];
+            secretKey = args[i + 2];
+            i += 2;
+            mode = "set-secret";
+            break;
+        case "--clear-secret" when i + 2 < args.Length && !args[i + 1].StartsWith("--") && !args[i + 2].StartsWith("--"):
+            secretScope = args[i + 1];
+            secretKey = args[i + 2];
+            i += 2;
+            mode = "clear-secret";
+            break;
+        case "--city" when i + 1 < args.Length && !args[i + 1].StartsWith("--"):
+            var words = args.Skip(i + 1).TakeWhile(a => !a.StartsWith("--")).ToArray();
+            cityName = string.Join(' ', words);
+            i += words.Length;
+            mode = "city";
+            break;
         default:
-            Console.Error.WriteLine("Usage : Trofeo.HardwareCheck [--orientation <0|180>] [--fps] [--recovery]");
+            Console.Error.WriteLine(
+                "Usage : Trofeo.HardwareCheck [--orientation <0|180>] [--fps] [--recovery]"
+                + " | --set-secret <portée> <clé> (valeur sur l'entrée standard) | --clear-secret <portée> <clé> | --city <nom>");
             return 2;
     }
 }
@@ -35,6 +63,9 @@ return mode switch
 {
     "fps" => RunFps(rotation),
     "recovery" => RunRecovery(rotation),
+    "set-secret" => RunSetSecret(secretScope!, secretKey!),
+    "clear-secret" => RunClearSecret(secretScope!, secretKey!),
+    "city" => RunCity(cityName!),
     _ => RunOrientation(rotation),
 };
 
@@ -152,7 +183,7 @@ static int RunRecovery(int rotation)
     }
     catch (UsbBusyException)
     {
-        Console.WriteLine("Écran utilisé par un autre programme (fermez TRCC).");
+        Console.WriteLine("Écran utilisé par un autre programme (ferme TRCC).");
         return 1;
     }
 
@@ -202,4 +233,124 @@ static int RunRecovery(int rotation)
         Console.WriteLine("  " + line);
     Console.WriteLine($"recovered: {recovered}");
     return recovered ? 0 : 1;
+}
+
+/// <summary>
+/// Écrit un secret dans le coffre du service (même fichier, même portée). La valeur vient de l'entrée standard, jamais
+/// de la ligne de commande, et n'est jamais affichée.
+/// </summary>
+static int RunSetSecret(string scope, string key)
+{
+    string? value;
+    if (Console.IsInputRedirected)
+    {
+        value = Console.In.ReadToEnd();
+    }
+    else
+    {
+        Console.Error.Write($"Valeur de {scope}/{key} (saisie masquée) : ");
+        value = ReadHidden();
+        Console.Error.WriteLine();
+    }
+
+    value = TrimOneNewline(value);
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        Console.Error.WriteLine("Valeur vide : rien n'a été enregistré.");
+        return 1;
+    }
+
+    try
+    {
+        new DpapiSecretVault(Path.Combine(AppPaths.SettingsDir, "secrets.dat")).Scope(scope).Set(key, value);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
+    {
+        Console.Error.WriteLine($"Coffre inaccessible : {ex.Message}");
+        return 1;
+    }
+
+    Console.WriteLine($"Secret {scope}/{key} enregistré.");
+    return 0;
+}
+
+/// <summary>
+/// Efface un secret du coffre du service (<c>Set(clé, null)</c>). Sert aussi à faire confiance à nouveau à la console
+/// UniFi après le renouvellement de son certificat (clé <c>unifi.certSha256.&lt;hôte en minuscules&gt;</c>, portée
+/// <c>network</c>). Seul le nom de la clé est affiché, jamais une valeur.
+/// </summary>
+static int RunClearSecret(string scope, string key)
+{
+    try
+    {
+        new DpapiSecretVault(Path.Combine(AppPaths.SettingsDir, "secrets.dat")).Scope(scope).Set(key, null);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
+    {
+        Console.Error.WriteLine($"Coffre inaccessible : {ex.Message}");
+        return 1;
+    }
+
+    Console.WriteLine($"Secret {scope}/{key} effacé.");
+    return 0;
+}
+
+/// <summary>Saisie au clavier sans écho (le secret n'apparaît pas à l'écran).</summary>
+static string ReadHidden()
+{
+    var text = new StringBuilder();
+    while (Console.ReadKey(intercept: true) is var key && key.Key != ConsoleKey.Enter)
+    {
+        if (key.Key == ConsoleKey.Backspace)
+        {
+            if (text.Length > 0) text.Length--;
+        }
+        else if (!char.IsControl(key.KeyChar))
+        {
+            text.Append(key.KeyChar);
+        }
+    }
+
+    return text.ToString();
+}
+
+/// <summary>Retire un seul retour à la ligne final (celui de <c>echo</c>), pas les espaces du secret.</summary>
+static string TrimOneNewline(string value) =>
+    value.EndsWith("\r\n", StringComparison.Ordinal) ? value[..^2]
+    : value.EndsWith('\n') ? value[..^1]
+    : value;
+
+/// <summary>Cherche une ville chez Open-Meteo (seul appel réseau de l'outil, à lancer à la main).</summary>
+static int RunCity(string name)
+{
+    if (string.IsNullOrWhiteSpace(name))
+    {
+        Console.Error.WriteLine("Nom de ville vide.");
+        return 2;
+    }
+
+    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("trofeo-HB-dashboard/0.2");
+    try
+    {
+        var cities = new OpenMeteoClient(http).SearchCityAsync(name, CancellationToken.None).GetAwaiter().GetResult();
+        if (cities.Count == 0)
+        {
+            Console.WriteLine($"Aucune ville trouvée pour « {name} ».");
+            return 1;
+        }
+
+        foreach (var city in cities.Take(5))
+        {
+            var where = string.Join(", ", new[] { city.Name, city.Region, city.Country }.Where(p => !string.IsNullOrWhiteSpace(p)));
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{where}  ({city.Latitude:0.####}, {city.Longitude:0.####})"));
+        }
+
+        return 0;
+    }
+    catch (WeatherException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 1;
+    }
 }

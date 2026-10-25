@@ -3,9 +3,10 @@ using SkiaSharp;
 namespace Trofeo.ModuleKit;
 
 /// <summary>
-/// Un module du tableau de bord. Règles de threads : <see cref="Invalidated"/> peut être levé depuis n'importe
-/// quel thread (le minuteur du module, par exemple) ; <see cref="Render"/> est appelé sur le thread d'affichage,
-/// qui n'est pas celui du minuteur du module, donc l'état lu au rendu doit pouvoir être lu en concurrence.
+/// Un module du tableau de bord. Règles de threads : <see cref="Invalidated"/> et <see cref="StatusChanged"/>
+/// peuvent être levés depuis n'importe quel thread (le minuteur du module, par exemple) ; <see cref="Render"/>
+/// est appelé sur le thread d'affichage, qui n'est pas celui du minuteur du module, donc l'état lu au rendu
+/// doit pouvoir être lu en concurrence.
 /// </summary>
 public interface IModule : IDisposable
 {
@@ -18,6 +19,12 @@ public interface IModule : IDisposable
     /// tardif reste possible après <see cref="IDisposable.Dispose"/>.
     /// </summary>
     event EventHandler? Invalidated;
+
+    /// <summary>
+    /// Levé quand <see cref="Status"/> change, depuis n'importe quel thread. L'hôte journalise le nouvel état
+    /// et redemande une image. Un dernier <c>StatusChanged</c> tardif reste possible après <c>Dispose</c>.
+    /// </summary>
+    event EventHandler? StatusChanged;
 
     Task StartAsync(CancellationToken ct);
 

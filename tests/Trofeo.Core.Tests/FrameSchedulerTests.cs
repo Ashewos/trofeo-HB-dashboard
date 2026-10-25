@@ -25,6 +25,75 @@ public class FrameSchedulerTests
     }
 
     [Fact]
+    public void MarkDirty_SetsSignal()
+    {
+        using var scheduler = new FrameScheduler(new FakeTimeProvider());
+        Assert.False(scheduler.Signal.WaitOne(0));
+
+        scheduler.MarkDirty();
+
+        Assert.True(scheduler.IsDirty);
+        Assert.True(scheduler.Signal.WaitOne(0));
+        Assert.False(scheduler.Signal.WaitOne(0)); // se réarme seul
+    }
+
+    [Fact]
+    public void Wake_SetsSignal_WithoutMarkingDirty()
+    {
+        using var scheduler = new FrameScheduler(new FakeTimeProvider());
+
+        scheduler.Wake();
+
+        Assert.False(scheduler.IsDirty);
+        Assert.True(scheduler.Signal.WaitOne(0));
+    }
+
+    [Fact]
+    public void MarkDirty_AfterDispose_DoesNotThrow()
+    {
+        var scheduler = new FrameScheduler(new FakeTimeProvider());
+        scheduler.Dispose();
+
+        scheduler.MarkDirty();
+        scheduler.Wake();
+    }
+
+    [Fact]
+    public void IsDirty_DoesNotConsume_ShouldRenderDoes()
+    {
+        var scheduler = new FrameScheduler(new FakeTimeProvider());
+        scheduler.MarkDirty();
+
+        Assert.True(scheduler.IsDirty);
+        Assert.True(scheduler.IsDirty);
+        Assert.True(scheduler.ShouldRender(anyAnimating: false));
+        Assert.False(scheduler.IsDirty);
+    }
+
+    [Fact]
+    public void UntilNextSlot_BeforeAnyRender_IsZero()
+    {
+        var scheduler = new FrameScheduler(new FakeTimeProvider());
+
+        Assert.Equal(TimeSpan.Zero, scheduler.UntilNextSlot());
+    }
+
+    [Fact]
+    public void UntilNextSlot_AfterRender_IsRemainingInterval()
+    {
+        var time = new FakeTimeProvider();
+        var scheduler = new FrameScheduler(time);
+        scheduler.OnRendered();
+        Assert.Equal(scheduler.MinInterval, scheduler.UntilNextSlot());
+
+        time.Advance(TimeSpan.FromMilliseconds(30));
+        Assert.Equal(scheduler.MinInterval - TimeSpan.FromMilliseconds(30), scheduler.UntilNextSlot());
+
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(TimeSpan.Zero, scheduler.UntilNextSlot());
+    }
+
+    [Fact]
     public void Idle_NeverRenders()
     {
         var time = new FakeTimeProvider();

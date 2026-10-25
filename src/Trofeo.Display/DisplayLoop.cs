@@ -17,6 +17,9 @@ public sealed class DisplayLoop : IDisposable
     private static readonly TimeSpan ReconnectInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan PresenceInterval = TimeSpan.FromSeconds(1);
 
+    /// <summary>Plus longue attente renvoyée par <see cref="Tick"/> : la boucle se réveille au moins une fois par seconde.</summary>
+    private static readonly TimeSpan MaxDelay = TimeSpan.FromSeconds(1);
+
     /// <summary>
     /// L'écran repasse au logo Thermalright environ 3 s après la dernière image reçue : sans nouvelle image,
     /// on lui renvoie la dernière (déjà encodée) à ce rythme.
@@ -31,7 +34,11 @@ public sealed class DisplayLoop : IDisposable
     private readonly RateLimitedErrorLog _renderErrors;
     private readonly Dictionary<Guid, IModule> _modules = [];
     private readonly IModule[] _moduleList;
+
+    // Identifiants d'instance, remplis par le constructeur seul puis lus depuis n'importe quel thread (jamais modifiés ensuite).
+    private readonly Dictionary<IModule, Guid> _instanceIds = [];
     private readonly EventHandler _onInvalidated;
+    private readonly EventHandler _onStatusChanged;
     private bool _hasTriedConnect;
     private long _lastConnectAttempt;
     private long _lastPresenceCheck;
@@ -48,6 +55,7 @@ public sealed class DisplayLoop : IDisposable
         _scheduler = scheduler;
         _time = time;
         _onInvalidated = (_, _) => _scheduler.MarkDirty();
+        _onStatusChanged = OnStatusChanged;
         _renderErrors = new RateLimitedErrorLog(time);
         _composer = new FrameComposer(_renderErrors);
 
@@ -88,8 +96,31 @@ public sealed class DisplayLoop : IDisposable
             return;
         }
 
+        _instanceIds[module] = placement.InstanceId;
         module.Invalidated += _onInvalidated;
+        module.StatusChanged += _onStatusChanged;
         _modules[placement.InstanceId] = module;
+    }
+
+    /// <summary>Journalise le nouvel état d'un module et redemande une image. Peut être appelé depuis n'importe quel thread.</summary>
+    private void OnStatusChanged(object? sender, EventArgs e)
+    {
+        if (sender is IModule module)
+        {
+            try
+            {
+                var status = module.Status;
+                var action = status.ActionMessage is { Length: > 0 } message ? $" — {message}" : "";
+                var instance = _instanceIds.TryGetValue(module, out var id) ? $" {id.ToString("N")[..8]}" : "";
+                Trace.TraceInformation($"[{module.Descriptor.TypeId}{instance}] État : {status.Health}{action}");
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError($"Échec de lecture de l'état d'un module : {ex.Message}");
+            }
+        }
+
+        _scheduler.MarkDirty();
     }
 
     /// <summary>Nombre d'images envoyées et validées par l'écran depuis le démarrage.</summary>
@@ -120,14 +151,19 @@ public sealed class DisplayLoop : IDisposable
     /// Demande d'abandonner la connexion et de se reconnecter tout de suite (reprise après veille). Peut être
     /// appelée depuis n'importe quel thread : le prochain <see cref="Tick"/> s'en charge.
     /// </summary>
-    public void RequestReconnect() => Volatile.Write(ref _reconnectRequested, 1);
+    public void RequestReconnect()
+    {
+        Volatile.Write(ref _reconnectRequested, 1);
+        _scheduler.Wake();
+    }
 
     /// <summary>
     /// Une itération : abandonne la connexion si on l'a demandé ou si l'écran a disparu (sondé au plus une fois
     /// par seconde), reconnecte si besoin (au plus toutes les 2 s), rend et envoie si l'ordonnanceur le demande,
     /// sinon renvoie la dernière image si rien n'est parti depuis 1 s.
     /// </summary>
-    public void Tick()
+    /// <returns>Le délai avant la prochaine itération utile, borné à [0, 1 s] : le réveil par le signal de l'ordonnanceur peut venir avant.</returns>
+    public TimeSpan Tick()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -144,11 +180,12 @@ public sealed class DisplayLoop : IDisposable
 
         if (_screen.State != ScreenState.Ready && !TryReconnect())
         {
-            return;
+            return NextDelay();
         }
 
         RenderAndSend();
         KeepAlive();
+        return NextDelay();
     }
 
     public void Dispose()
@@ -159,6 +196,7 @@ public sealed class DisplayLoop : IDisposable
         foreach (var module in _moduleList)
         {
             module.Invalidated -= _onInvalidated;
+            module.StatusChanged -= _onStatusChanged;
             try
             {
                 module.Dispose();
@@ -171,6 +209,44 @@ public sealed class DisplayLoop : IDisposable
 
         _modules.Clear();
     }
+
+    /// <summary>
+    /// Le temps à dormir d'après l'état après cette itération : jusqu'au prochain essai de connexion si l'écran
+    /// n'est pas prêt ; sinon jusqu'à la prochaine image possible (si un redessin est attendu ou si un module
+    /// s'anime), au renvoi de l'image ou au sondage de présence. Borné à [0, 1 s].
+    /// </summary>
+    private TimeSpan NextDelay()
+    {
+        var delay = MaxDelay;
+        if (_screen.State != ScreenState.Ready)
+        {
+            if (!_forceReconnect && _hasTriedConnect)
+            {
+                delay = Min(delay, ReconnectInterval - _time.GetElapsedTime(_lastConnectAttempt));
+            }
+            else
+            {
+                delay = TimeSpan.Zero;
+            }
+        }
+        else
+        {
+            delay = Min(delay, PresenceInterval - _time.GetElapsedTime(_lastPresenceCheck));
+            if (_screen.LastFrame is not null)
+            {
+                delay = Min(delay, KeepAliveInterval - _time.GetElapsedTime(_lastSend));
+            }
+
+            if (_scheduler.IsDirty || AnyAnimating())
+            {
+                delay = Min(delay, _scheduler.UntilNextSlot());
+            }
+        }
+
+        return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
+    }
+
+    private static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
 
     private bool TryReconnect()
     {

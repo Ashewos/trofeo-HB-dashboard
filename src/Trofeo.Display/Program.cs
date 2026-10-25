@@ -2,16 +2,22 @@ using System.Diagnostics;
 using Microsoft.Win32;
 using Trofeo.Core;
 using Trofeo.Core.Layout;
+using Trofeo.Core.Logging;
 using Trofeo.Core.Rendering;
+using Trofeo.Core.Secrets;
 using Trofeo.Device;
 using Trofeo.Modules.Clock;
+using Trofeo.Modules.Monitoring;
+using Trofeo.Modules.Network;
+using Trofeo.Modules.NowPlaying;
+using Trofeo.Sensors;
 
 namespace Trofeo.Display;
 
 static class Program
 {
     private const string MutexName = @"Local\trofeo-HB-dashboard.display";
-    private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(10);
+    private static readonly TimeSpan ErrorRetryDelay = TimeSpan.FromMilliseconds(100);
 
     [STAThread]
     static int Main()
@@ -45,11 +51,34 @@ static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Trace.TraceError($"Exception non gérée : {e.ExceptionObject}");
 
         var layout = LoadLayout();
-        var registry = new ModuleRegistry([new ClockFactory()]);
-        var screen = new ScreenDevice(new WinUsbTransportFactory(), TimeProvider.System);
-        screen.StateChanged += (_, _) => Trace.TraceInformation($"Écran : {screen.State} ({screen.Reason ?? "ok"}).");
+        var vault = new DpapiSecretVault(Path.Combine(AppPaths.SettingsDir, "secrets.dat"));
+        // Tout ce qui suit est déclaré avant la boucle : libéré après elle, dans l'ordre inverse de la création.
+        // Pas de redirection suivie : la session Freebox ne doit jamais partir vers un autre hôte.
+        using var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(15) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("trofeo-HB-dashboard/0.2");
 
-        using var loop = new DisplayLoop(layout, registry, screen, new FrameScheduler(TimeProvider.System), TimeProvider.System);
+        // Capteurs : l'assistant élevé s'il tourne, sinon une lecture locale. Aucune panne ici n'arrête le service.
+        using var sensorPipe = new SensorPipeClient(SensorPipe.Name, HelperIdentity.IsTrusted, TimeProvider.System);
+        StartSensorPipe(sensorPipe);
+        using var sensorHub = new SensorHub(() => new LhmSensorReader(), sensorPipe, TimeProvider.System);
+
+        var registry = new ModuleRegistry(
+            [
+                new ClockFactory(new OpenMeteoClient(http)),
+                new MonitoringFactory(sensorHub),
+                new NowPlayingFactory(ctx => new SmtcMediaSource(ctx.Log)),
+                NetworkFactory.CreateProduction(http),
+            ],
+            vault.Scope);
+        var screen = new ScreenDevice(new WinUsbTransportFactory(), TimeProvider.System);
+        screen.StateChanged += (_, _) =>
+        {
+            var status = screen.Status;
+            Trace.TraceInformation($"Écran : {status.State} ({status.Reason ?? "ok"}).");
+        };
+
+        using var scheduler = new FrameScheduler(TimeProvider.System); // déclaré avant la boucle : libéré après elle
+        using var loop = new DisplayLoop(layout, registry, screen, scheduler, TimeProvider.System);
         using var cts = new CancellationTokenSource();
         loop.Start(cts.Token);
 
@@ -62,7 +91,7 @@ static class Program
         };
         SystemEvents.PowerModeChanged += onPowerChanged;
 
-        var thread = new Thread(() => TickLoop(loop, cts.Token)) { IsBackground = true, Name = "Trofeo.Display.Tick" };
+        var thread = new Thread(() => TickLoop(loop, scheduler, cts.Token)) { IsBackground = true, Name = "Trofeo.Display.Tick" };
         thread.Start();
 
         try
@@ -87,20 +116,39 @@ static class Program
         return 0;
     }
 
-    private static void TickLoop(DisplayLoop loop, CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
+    /// <summary>Lance la boucle de connexion au tube en tâche de fond ; <see cref="SensorPipeClient.Dispose"/> l'arrête.</summary>
+    private static void StartSensorPipe(SensorPipeClient client) =>
+        _ = Task.Run(async () =>
         {
             try
             {
-                loop.Tick();
+                await client.RunAsync(CancellationToken.None);
             }
             catch (Exception ex)
             {
-                Trace.TraceError($"Erreur dans la boucle d'affichage : {ex}");
+                Trace.TraceError($"Liaison avec l'assistant des capteurs interrompue : {ex}");
+            }
+        });
+
+    private static void TickLoop(DisplayLoop loop, FrameScheduler scheduler, CancellationToken ct)
+    {
+        WaitHandle[] handles = [ct.WaitHandle, scheduler.Signal];
+        var errors = new RateLimitedErrorLog(TimeProvider.System); // une panne qui se répète à chaque tour ne remplit pas le journal
+        while (!ct.IsCancellationRequested)
+        {
+            TimeSpan delay;
+            try
+            {
+                delay = loop.Tick();
+            }
+            catch (Exception ex)
+            {
+                errors.Report($"Erreur dans la boucle d'affichage : {ex}");
+                ct.WaitHandle.WaitOne(ErrorRetryDelay); // pas de boucle serrée si l'erreur se répète
+                continue;
             }
 
-            ct.WaitHandle.WaitOne(TickInterval);
+            WaitHandle.WaitAny(handles, delay); // dort jusqu'à l'échéance, un signal ou l'arrêt
         }
     }
 

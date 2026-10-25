@@ -30,6 +30,15 @@ public class FrameComposerTests
     }
 
     [Fact]
+    public void Compose_InvalidLayout_Throws()
+    {
+        var layout = new DashboardLayout(0, null!);
+
+        Assert.ThrowsAny<Exception>(() => new FrameComposer().Compose(
+            layout, new Dictionary<Guid, IModule>(), Themes.Classique, DateTimeOffset.UnixEpoch));
+    }
+
+    [Fact]
     public void Compose_PaintsPanelInModuleRect()
     {
         var id = Guid.NewGuid();

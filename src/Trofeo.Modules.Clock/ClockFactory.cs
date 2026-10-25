@@ -1,14 +1,13 @@
-using System.Text.Json;
 using Trofeo.ModuleKit;
 
 namespace Trofeo.Modules.Clock;
 
-/// <summary>Fabrique du module Heure et date.</summary>
-public sealed class ClockFactory : IModuleFactory
+/// <summary>Fabrique du module Heure, date et météo ; la météo vient de <paramref name="weather"/>.</summary>
+public sealed class ClockFactory(IWeatherProvider weather) : IModuleFactory
 {
     public ModuleDescriptor Descriptor { get; } = new(
         "clock",
-        "Heure et date",
+        "Heure, date et météo",
         new GridSize(3, 1),
         new Dictionary<SizePreset, GridSize>
         {
@@ -17,6 +16,6 @@ public sealed class ClockFactory : IModuleFactory
             [SizePreset.Large] = new GridSize(6, 2),
         });
 
-    public IModule Create(JsonElement settings, TimeProvider time) =>
-        new ClockModule(Descriptor, ClockSettings.FromJson(settings), time);
+    public IModule Create(ModuleContext context) =>
+        new ClockModule(Descriptor, ClockSettings.FromJson(context.Settings), weather, context.Time, context.Log);
 }
