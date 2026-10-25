@@ -7,7 +7,7 @@
 - **Tâches 0 à 8 construites** sur `main-zcgy1g`, partie de `main` en `b365cb9`. Le plan est en `df14846` et le dernier correctif en `d49a3e3`.
   - Chaque tâche a eu sa relecture, et ses corrections ont été relues à leur tour.
   - La relecture de toute la branche (sur Opus) a donné « prête après corrections » : aucun défaut critique et 2 importants (orientation EXIF des photos, garde de lisibilité). Ils sont corrigés avec 7 petits points dans une vague relue à son tour. Aucun constat important ne reste ouvert.
-  - **Rien n'est fusionné dans `main`.**
+  - **Fusionné dans `main` le 26/10/2026** à la demande d'Alex, pour les essais sur son PC.
 - **Tests sous Linux**, avec le SDK 10.0.113 d'Ubuntu. Depuis la tâche 0, la plupart des projets de tests Windows tournent aussi sous Linux.
 
   | Projet de tests | Réussis | Échecs connus (Linux seulement) |
