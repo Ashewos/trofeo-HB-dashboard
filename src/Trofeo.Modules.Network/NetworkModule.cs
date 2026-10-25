@@ -66,6 +66,9 @@ public sealed class NetworkModule : IModule
     public event EventHandler? Invalidated;
     public event EventHandler? StatusChanged;
 
+    /// <summary>Dernier échantillon affiché, ou <c>null</c> (rien lu, ou dernière lecture ratée).</summary>
+    internal ThroughputSample? LatestSample => Volatile.Read(ref _latest);
+
     /// <summary>Copie de l'historique des trois dernières minutes.</summary>
     internal IReadOnlyList<(DateTimeOffset At, ThroughputSample Sample)> HistorySnapshot() => _history.Snapshot();
 
@@ -170,11 +173,11 @@ public sealed class NetworkModule : IModule
                 {
                     _log.Error($"Lecture du débit réseau impossible : {ex.Message}");
                 }
-                Publish(null, new ModuleStatus(ModuleHealth.Offline), keepLatest: true);
+                Publish(null, new ModuleStatus(ModuleHealth.Offline));
                 return;
             }
 
-            Publish(reading.Sample, reading.Status, keepLatest: false);
+            Publish(reading.Sample, reading.Status);
         }
         finally
         {
@@ -218,17 +221,18 @@ public sealed class NetworkModule : IModule
         }
     }
 
-    private void Publish(ThroughputSample? sample, ModuleStatus status, bool keepLatest)
+    /// <summary>
+    /// Publie le résultat d'une lecture. Sans échantillon (lecture ratée ou sur délai comprises), les valeurs affichées
+    /// sont effacées : une valeur périmée ne doit pas passer pour du direct. La courbe, elle, garde son historique.
+    /// </summary>
+    private void Publish(ThroughputSample? sample, ModuleStatus status)
     {
         bool changed;
         lock (_gate)
         {
             if (_disposed) return;
-            if (!keepLatest)
-            {
-                if (sample is not null) _history.Add(_time.GetUtcNow(), sample);
-                Volatile.Write(ref _latest, sample);
-            }
+            if (sample is not null) _history.Add(_time.GetUtcNow(), sample);
+            Volatile.Write(ref _latest, sample);
 
             changed = !Equals(_status, status);
             if (changed) Volatile.Write(ref _status, status);
@@ -256,9 +260,10 @@ public sealed class NetworkModule : IModule
         {
             if (ctx.Size.Rows < 2)
             {
-                // En une rangée, ni titre ni courbe : le message d'action ou les valeurs seulement.
+                // En une rangée, ni titre ni courbe : le message d'action, l'état s'il n'est pas en direct, ou les valeurs.
                 var area = SKRect.Inflate(bounds, -Padding * scale, -CompactPaddingY * scale);
                 if (status.ActionMessage is { } message) ModuleDrawing.DrawActionMessage(canvas, area, theme, scale, message);
+                else if (status.Health != ModuleHealth.Online) ModuleDrawing.DrawActionMessage(canvas, area, theme, scale, StateText(status));
                 else DrawValues(canvas, area, sample, theme, scale);
                 return;
             }
@@ -296,6 +301,13 @@ public sealed class NetworkModule : IModule
         }
     }
 
+    private static string StateText(ModuleStatus status) => status.Health switch
+    {
+        ModuleHealth.Online => "en direct",
+        ModuleHealth.NotConfigured => "à configurer",
+        _ => "hors ligne",
+    };
+
     private void DrawTitle(SKCanvas canvas, SKRect content, float height, ModuleStatus status, Theme theme, float scale)
     {
         var online = status.Health == ModuleHealth.Online;
@@ -304,7 +316,7 @@ public sealed class NetworkModule : IModule
         using var statePaint = new SKPaint { Color = online ? theme.TextMuted : theme.Warning, IsAntialias = true };
         var mid = content.Top + height / 2f;
 
-        var state = online ? "en direct" : "hors ligne";
+        var state = StateText(status);
         var stateWidth = Math.Min(ModuleDrawing.MeasureText(state, font), content.Width);
         DrawCentered(canvas, state, content.Right, mid, SKTextAlign.Right, font, statePaint, stateWidth);
 

@@ -645,6 +645,119 @@ public class NetworkModuleTests
         Assert.Equal(0, Count(bitmap, inside, c => c == theme.Text));
     }
 
+    // --- Valeurs périmées et état affiché ---
+
+    [Fact]
+    public async Task FailedRead_ClearsTheValues_ButKeepsTheCurve()
+    {
+        var theme = Themes.Classique;
+        var rect = GridGeometry.ModuleRect(5, 2, 4, 2);
+        var inside = Inflate(rect, 30);
+        var valuesArea = new SKRectI(inside.Left, inside.Top + 50, inside.Right, inside.Bottom - 100);
+        var curveArea = new SKRectI(inside.Left, inside.Bottom - 62 - 18, inside.Right, inside.Bottom);
+        using var live = await CreateWithHistory();
+        using var failing = await CreateWithHistory(i => i < 30
+            ? Reading(1_000_000 + 20_000 * i, 200_000)
+            : throw new InvalidOperationException("coupé"));
+        using var empty = await CreateWithHistory(_ => new SourceReading(null, new ModuleStatus(ModuleHealth.Online)));
+
+        Assert.Null(failing.Module.LatestSample);
+        Assert.NotNull(live.Module.LatestSample);
+        Assert.Equal(ModuleHealth.Offline, failing.Module.Status.Health);
+        Assert.Equal(30, failing.Module.HistorySnapshot().Count); // la courbe garde ce qui a été lu
+
+        using var failingBitmap = RenderOn(failing.Module, rect, new GridSize(4, 2), 1f, theme);
+        using var emptyBitmap = RenderOn(empty.Module, rect, new GridSize(4, 2), 1f, theme);
+        // Les valeurs sont « — » sans unité : exactement ce que montre une source sans échantillon.
+        for (var y = valuesArea.Top; y < valuesArea.Bottom; y++)
+            for (var x = valuesArea.Left; x < valuesArea.Right; x++)
+                Assert.Equal(emptyBitmap.GetPixel(x, y), failingBitmap.GetPixel(x, y));
+        Assert.True(Count(failingBitmap, curveArea, c => c == theme.Accent) > 20);
+    }
+
+    [Fact]
+    public async Task TimedOutRead_ClearsTheValues()
+    {
+        var rig = Create();
+        await rig.Module.StartAsync(CancellationToken.None);
+        Assert.NotNull(rig.Module.LatestSample);
+        rig.Source.OnRead = () => new TaskCompletionSource<SourceReading>().Task;
+
+        rig.Time.Advance(TimeSpan.FromSeconds(1)); // lecture lancée, jamais terminée
+        rig.Time.Advance(TimeSpan.FromSeconds(10)); // délai écoulé
+
+        Assert.True(SpinWait.SpinUntil(() => rig.Module.Status.Health == ModuleHealth.Offline, TimeSpan.FromSeconds(5)));
+        Assert.Null(rig.Module.LatestSample);
+        Assert.Single(rig.Module.HistorySnapshot());
+    }
+
+    [Fact]
+    public async Task Render_OneRow_NotOnline_ShowsOfflineInWarning_InsteadOfValues()
+    {
+        var theme = Themes.Classique;
+        var rect = GridGeometry.ModuleRect(0, 3, 3, 1);
+        var inside = Inflate(rect, 30);
+
+        using var online = await CreateWithHistory();
+        using var onlineBitmap = RenderOn(online.Module, rect, new GridSize(3, 1), 1f, theme);
+        Assert.Equal(0, Count(onlineBitmap, inside, c => c == theme.Warning));
+
+        using var offline = await CreateWithHistory(_ => new SourceReading(Reading(1_000_000, 1).Sample, new ModuleStatus(ModuleHealth.Offline)));
+        using var offlineBitmap = RenderOn(offline.Module, rect, new GridSize(3, 1), 1f, theme);
+        Assert.True(Count(offlineBitmap, inside, c => c == theme.Warning) > 100);
+        Assert.Equal(0, Count(offlineBitmap, inside, c => c == theme.Text)); // pas de valeurs
+        Assert.Equal(0, Count(offlineBitmap, inside, c => c == theme.Accent));
+
+        using var failed = await CreateWithHistory(_ => throw new InvalidOperationException("coupé"));
+        using var failedBitmap = RenderOn(failed.Module, rect, new GridSize(3, 1), 1f, theme);
+        Assert.True(Count(failedBitmap, inside, c => c == theme.Warning) > 100);
+        Assert.Equal(0, Count(failedBitmap, inside, c => c == theme.Text));
+    }
+
+    [Fact]
+    public async Task Render_OneRow_NotOnline_WithActionMessage_DrawsTheMessage()
+    {
+        var theme = Themes.Classique;
+        var rect = GridGeometry.ModuleRect(0, 3, 3, 1);
+        var inside = Inflate(rect, 30);
+        using var offline = await CreateWithHistory(_ => new SourceReading(null, new ModuleStatus(ModuleHealth.Offline)));
+        using var withMessage = await CreateWithHistory(_ => new SourceReading(null,
+            new ModuleStatus(ModuleHealth.Offline, "Statistiques UniFi indisponibles pour cette passerelle")));
+
+        using var offlineBitmap = RenderOn(offline.Module, rect, new GridSize(3, 1), 1f, theme);
+        using var messageBitmap = RenderOn(withMessage.Module, rect, new GridSize(3, 1), 1f, theme);
+
+        Assert.True(Count(messageBitmap, inside, c => c == theme.Warning) > 100);
+        Assert.Equal(0, Count(messageBitmap, inside, c => c == theme.Text));
+        Assert.NotEqual(Count(offlineBitmap, inside, c => c == theme.Warning), Count(messageBitmap, inside, c => c == theme.Warning));
+    }
+
+    [Fact]
+    public async Task Render_Title_NotConfigured_SaysToConfigure_InWarning()
+    {
+        var theme = Themes.Classique;
+        var rect = GridGeometry.ModuleRect(10, 0, 6, 2);
+        var inside = Inflate(rect, 30);
+        var titleRow = new SKRectI(inside.Left, inside.Top, inside.Right, inside.Top + 50);
+        using var offline = await CreateWithHistory(_ => new SourceReading(null, new ModuleStatus(ModuleHealth.Offline)));
+        using var notConfigured = await CreateWithHistory(_ => new SourceReading(null, new ModuleStatus(ModuleHealth.NotConfigured)));
+
+        using var offlineBitmap = RenderOn(offline.Module, rect, new GridSize(6, 2), 1f, theme);
+        using var notConfiguredBitmap = RenderOn(notConfigured.Module, rect, new GridSize(6, 2), 1f, theme);
+
+        Assert.True(Count(notConfiguredBitmap, titleRow, c => c == theme.Warning) > 30);
+        // « à configurer » et « hors ligne » n'ont pas la même largeur : le mot commence à un autre endroit.
+        Assert.NotEqual(LeftmostWarning(offlineBitmap, titleRow, theme), LeftmostWarning(notConfiguredBitmap, titleRow, theme));
+    }
+
+    private static int LeftmostWarning(SKBitmap bitmap, SKRectI area, Theme theme)
+    {
+        for (var x = area.Left; x < area.Right; x++)
+            for (var y = area.Top; y < area.Bottom; y++)
+                if (bitmap.GetPixel(x, y) == theme.Warning) return x;
+        return -1;
+    }
+
     [Fact]
     public void Render_BeforeStart_AndAfterDispose_DoesNotThrow()
     {

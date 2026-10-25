@@ -30,10 +30,14 @@ public sealed partial class UniFiSource : IThroughputSource
     private const string RefusedMessage = "Clé API UniFi refusée";
     private const string NoGatewayMessage = "Aucune passerelle UniFi trouvée";
     private const string NoSiteMessage = "Aucun site UniFi trouvé";
-    private const string CertificateMessage = "Certificat UniFi changé : vérifiez la console";
+    private const string StatsUnavailableMessage = "Statistiques UniFi indisponibles pour cette passerelle";
+    private const string CertificateMessage = "Certificat UniFi changé : vérifie la console";
 
     private static readonly TimeSpan ReadInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>Repos après un 404 persistant aux statistiques : pas de nouvelle recherche avant ce délai.</summary>
+    private static readonly TimeSpan UnavailableBackoff = TimeSpan.FromMinutes(1);
 
     private readonly string? _host;
     private readonly Uri? _baseUri;
@@ -45,7 +49,13 @@ public sealed partial class UniFiSource : IThroughputSource
     private string? _apiKey;
     private Gateway? _gateway;
     private string? _lastWarning;
+    private long? _unavailableAt;
     private volatile bool _certificateRefused;
+
+    // Empreinte épinglée : une fois connue (lue du coffre ou mémorisée), elle reste celle du processus. Un coffre qui ne
+    // rend plus rien ne doit jamais rouvrir la « première utilisation ».
+    private readonly object _pinGate = new();
+    private string? _pin;
 
     private sealed record Gateway(string SiteId, string DeviceId);
 
@@ -106,6 +116,13 @@ public sealed partial class UniFiSource : IThroughputSource
 
     private async Task<SourceReading> ReadRatesAsync(string key, CancellationToken ct)
     {
+        // Statistiques introuvables malgré une nouvelle recherche : on se repose, sans appel, jusqu'à la fin du délai.
+        if (_unavailableAt is { } since)
+        {
+            if (_time.GetElapsedTime(since) < UnavailableBackoff) return StatsUnavailable();
+            _unavailableAt = null;
+        }
+
         // Au plus une nouvelle recherche de la passerelle par lecture, quand la console répond 404 aux statistiques.
         for (var attempt = 0; attempt < 2; attempt++)
         {
@@ -133,9 +150,13 @@ public sealed partial class UniFiSource : IThroughputSource
             return new SourceReading(new ThroughputSample(down / 8d, up / 8d), new ModuleStatus(ModuleHealth.Online));
         }
 
-        _log.Warning("Passerelle UniFi introuvable après une nouvelle recherche.");
-        return new SourceReading(null, new ModuleStatus(ModuleHealth.Offline));
+        Warn("Passerelle UniFi introuvable après une nouvelle recherche.");
+        _unavailableAt = _time.GetTimestamp();
+        return StatsUnavailable();
     }
+
+    private static SourceReading StatsUnavailable() =>
+        new(null, new ModuleStatus(ModuleHealth.Offline, StatsUnavailableMessage));
 
     /// <summary>Cherche le premier site puis sa passerelle. Renvoie l'état à afficher s'il n'y en a pas, sinon <c>null</c> (et <c>_gateway</c> est renseigné).</summary>
     private async Task<SourceReading?> DiscoverAsync(string key, CancellationToken ct)
@@ -321,20 +342,30 @@ public sealed partial class UniFiSource : IThroughputSource
         certificate is not null && ValidateFingerprint(Fingerprint(certificate), errors);
 
     /// <summary>
-    /// Épinglage sous <c>unifi.certSha256.{hôte}</c> par <see cref="CertificatePinning.Check"/>. Un refus est noté pour
+    /// Épinglage sous <c>unifi.certSha256.{hôte en minuscules}</c> par <see cref="CertificatePinning.Check"/>. Un refus est noté pour
     /// que la lecture en échec devienne « Certificat changé » plutôt qu'une panne réseau.
     /// </summary>
     internal bool ValidateFingerprint(string presentedSha256, SslPolicyErrors errors)
     {
         if (_host is null) return false;
 
-        var pinKey = PinKeyPrefix + _host;
-        var (accept, newPin) = CertificatePinning.Check(_secrets.Get(pinKey), presentedSha256, errors);
-        if (newPin is not null)
+        var pinKey = PinKeyPrefix + _host.ToLowerInvariant();
+        bool accept;
+        var stored = false;
+        lock (_pinGate)
         {
-            _secrets.Set(pinKey, newPin);
-            _log.Info("Certificat de la console UniFi mémorisé.");
+            if (_pin is null && _secrets.Get(pinKey) is { Length: > 0 } fromVault) _pin = fromVault;
+
+            string? newPin;
+            (accept, newPin) = CertificatePinning.Check(_pin, presentedSha256, errors);
+            if (newPin is not null)
+            {
+                _pin = newPin;
+                _secrets.Set(pinKey, newPin);
+                stored = true;
+            }
         }
+        if (stored) _log.Info("Certificat de la console UniFi mémorisé.");
         if (!accept) _certificateRefused = true;
         return accept;
     }

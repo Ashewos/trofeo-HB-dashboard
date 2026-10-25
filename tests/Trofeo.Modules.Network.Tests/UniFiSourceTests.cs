@@ -17,7 +17,8 @@ public class UniFiSourceTests
     private const string NoKeyMessage = "Ajoute la clé API UniFi dans le logiciel de réglage";
     private const string RefusedMessage = "Clé API UniFi refusée";
     private const string NoGatewayMessage = "Aucune passerelle UniFi trouvée";
-    private const string CertMessage = "Certificat UniFi changé : vérifiez la console";
+    private const string CertMessage = "Certificat UniFi changé : vérifie la console";
+    private const string StatsUnavailableMessage = "Statistiques UniFi indisponibles pour cette passerelle";
 
     private const string Prefix = "/proxy/network/integration/v1/";
     private const string Sites = "GET " + Prefix + "sites";
@@ -393,9 +394,43 @@ public class UniFiSourceTests
         var reading = await rig.Read();
 
         Assert.Equal(ModuleHealth.Offline, reading.Status.Health);
+        Assert.Equal(StatsUnavailableMessage, reading.Status.ActionMessage);
         Assert.Null(reading.Sample);
         Assert.Equal(2, rig.Handler.Count(Stats)); // une seule nouvelle recherche
         Assert.Equal(2, rig.Handler.Count(Sites));
+        Assert.Single(rig.Log.Entries, e => e.StartsWith("Warning") && e.Contains("introuvable"));
+    }
+
+    [Fact]
+    public async Task NotFound_Twice_BacksOffForAMinute_WithoutHttpAndWithoutLogFlood()
+    {
+        using var rig = new Rig();
+        rig.Handler.Clear(Stats);
+        rig.Handler.On(Stats, "{}", HttpStatusCode.NotFound);
+        var first = await rig.Read();
+        var calls = rig.Handler.Calls.Count;
+
+        for (var i = 0; i < 11; i++)
+        {
+            rig.Time.Advance(TimeSpan.FromSeconds(5));
+            Assert.Equal(first, await rig.Read());
+        }
+
+        Assert.Equal(calls, rig.Handler.Calls.Count); // 55 s : aucun appel
+        Assert.Single(rig.Log.Entries, e => e.StartsWith("Warning"));
+
+        rig.Time.Advance(TimeSpan.FromSeconds(5)); // 60 s : nouvelle recherche
+        Assert.Equal(first, await rig.Read());
+        Assert.Equal(calls + 6, rig.Handler.Calls.Count); // (sites, appareils, statistiques) deux fois
+        Assert.Single(rig.Log.Entries, e => e.StartsWith("Warning")); // même alerte : pas répétée
+
+        // Les statistiques reviennent : la lecture qui suit la minute de repos est en ligne.
+        rig.Handler.Clear(Stats);
+        rig.Handler.On(Stats, StatsJson);
+        rig.Time.Advance(TimeSpan.FromSeconds(60));
+        var recovered = await rig.Read();
+        Assert.Equal(ModuleHealth.Online, recovered.Status.Health);
+        Assert.NotNull(recovered.Sample);
     }
 
     [Fact]
@@ -530,6 +565,50 @@ public class UniFiSourceTests
         Assert.False(rig.Source.ValidateCertificate(other, errors));
         Assert.Equal(UniFiSource.Fingerprint(first), rig.Secrets.Get($"unifi.certSha256.{Host}")); // l'empreinte mémorisée reste
         Assert.False(rig.Source.ValidateCertificate(null, SslPolicyErrors.RemoteCertificateNotAvailable));
+    }
+
+    [Fact]
+    public void Validate_PinKnown_KeepsItInMemory_NeverAcceptsFirstUseAgain()
+    {
+        using var rig = new Rig();
+        using var first = NewCertificate("first");
+        using var other = NewCertificate("other");
+        const SslPolicyErrors errors = SslPolicyErrors.RemoteCertificateChainErrors;
+        Assert.True(rig.Source.ValidateCertificate(first, errors)); // première utilisation : épinglé
+
+        rig.Secrets.Set($"unifi.certSha256.{Host}", null); // le coffre ne rend plus rien
+
+        Assert.False(rig.Source.ValidateCertificate(other, errors));
+        Assert.True(rig.Source.ValidateCertificate(first, errors));
+        Assert.Null(rig.Secrets.Get($"unifi.certSha256.{Host}")); // et on ne réécrit pas une empreinte étrangère
+    }
+
+    [Fact]
+    public void Validate_PinReadFromTheVault_IsKeptInMemory()
+    {
+        using var rig = new Rig();
+        using var first = NewCertificate("first");
+        using var other = NewCertificate("other");
+        const SslPolicyErrors errors = SslPolicyErrors.RemoteCertificateChainErrors;
+        rig.Secrets.Set($"unifi.certSha256.{Host}", UniFiSource.Fingerprint(first));
+        Assert.True(rig.Source.ValidateCertificate(first, errors));
+
+        rig.Secrets.Set($"unifi.certSha256.{Host}", null);
+
+        Assert.False(rig.Source.ValidateCertificate(other, errors));
+        Assert.Equal(1, rig.Secrets.Gets[$"unifi.certSha256.{Host}"]); // lue une seule fois
+    }
+
+    [Fact]
+    public void Validate_PinKey_UsesTheLowerCaseHost()
+    {
+        using var rig = new Rig("UniFi.Local:8443");
+        using var cert = NewCertificate("a");
+
+        Assert.True(rig.Source.ValidateCertificate(cert, SslPolicyErrors.RemoteCertificateChainErrors));
+
+        Assert.Equal(UniFiSource.Fingerprint(cert), rig.Secrets.Get("unifi.certSha256.unifi.local:8443"));
+        Assert.Null(rig.Secrets.Get("unifi.certSha256.UniFi.Local:8443"));
     }
 
     [Fact]

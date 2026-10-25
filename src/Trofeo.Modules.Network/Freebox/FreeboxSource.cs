@@ -39,6 +39,7 @@ public sealed class FreeboxSource : IThroughputSource
     private long? _trackId;
     private string? _session;
     private long? _deniedAt;
+    private string? _lastWarning;
     private volatile bool _connected;
 
     public FreeboxSource(HttpClient http, ISecretStore secrets, IModuleLog log, Uri? baseUri = null, TimeProvider? time = null)
@@ -219,7 +220,7 @@ public sealed class FreeboxSource : IThroughputSource
             {
                 _session = null;
                 _connected = false;
-                _log.Warning($"Lecture du débit refusée par la Freebox malgré une nouvelle session ({response.ErrorCode ?? "erreur inconnue"}).");
+                Warn($"Lecture du débit refusée par la Freebox malgré une nouvelle session ({response.ErrorCode ?? "erreur inconnue"}).");
                 return new SourceReading(null, new ModuleStatus(ModuleHealth.Offline));
             }
         }
@@ -229,6 +230,7 @@ public sealed class FreeboxSource : IThroughputSource
         }
 
         if (response.GetString("state") is not { } state) throw new FreeboxException("État de la connexion Freebox illisible.");
+        _lastWarning = null; // la box répond de nouveau : la prochaine panne sera signalée
         if (state != "up")
         {
             // La box répond et son état est lisible : la connexion est établie avec elle, seule la ligne est coupée.
@@ -270,6 +272,14 @@ public sealed class FreeboxSource : IThroughputSource
         }
 
         throw Refused("ouverture de session", response);
+    }
+
+    /// <summary>Journalise une fois par épisode : la même alerte n'est pas répétée à chaque lecture.</summary>
+    private void Warn(string message)
+    {
+        if (message == _lastWarning) return;
+        _lastWarning = message;
+        _log.Warning(message);
     }
 
     private static FreeboxException Refused(string step, FreeboxResponse response) =>

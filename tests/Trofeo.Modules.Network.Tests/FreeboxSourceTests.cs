@@ -326,6 +326,31 @@ public class FreeboxSourceTests
     }
 
     [Fact]
+    public async Task AuthRequired_Persistent_WarnsOncePerEpisode()
+    {
+        var rig = new Rig();
+        rig.Secrets.Set("freebox.app_token", AppToken);
+        rig.LoginAndConnection();
+        rig.Handler.Clear(Connection);
+        rig.Handler.On(Connection, Err("auth_required"), HttpStatusCode.Forbidden);
+
+        for (var i = 0; i < 5; i++) await rig.Read();
+
+        Assert.Single(rig.Log.Entries, e => e.StartsWith("Warning") && e.Contains("malgré une nouvelle session"));
+
+        // Une lecture réussie ferme l'épisode : la panne suivante est de nouveau signalée.
+        rig.Handler.Clear(Connection);
+        rig.Handler.On(Connection, Ok("""{"state":"up","rate_down":1,"rate_up":1}"""));
+        Assert.Equal(ModuleHealth.Online, (await rig.Read()).Status.Health);
+        rig.Handler.Clear(Connection);
+        rig.Handler.On(Connection, Err("auth_required"), HttpStatusCode.Forbidden);
+        await rig.Read();
+        await rig.Read();
+
+        Assert.Equal(2, rig.Log.Entries.Count(e => e.StartsWith("Warning") && e.Contains("malgré une nouvelle session")));
+    }
+
+    [Fact]
     public async Task ConnectionDown_IsOffline()
     {
         var rig = new Rig();
