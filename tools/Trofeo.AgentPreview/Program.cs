@@ -1,7 +1,10 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using SkiaSharp;
+using Trofeo.Core.Layout;
 using Trofeo.Core.Rendering;
+using Trofeo.ModuleKit;
 using Trofeo.Modules.Agents;
 
 namespace Trofeo.AgentPreview;
@@ -9,7 +12,7 @@ namespace Trofeo.AgentPreview;
 /// <summary>
 /// Outil d'aperçu du module Claude Code / Codex. <c>--codex-probe [codexHome]</c> décrit la structure de la transcription
 /// Codex la plus récente (les clés et leur genre, jamais les valeurs) ; <c>--mascot-sheet &lt;dossier&gt;</c> écrit une feuille
-/// d'aperçu PNG par clip de chaque mascotte ; les autres options viennent avec le dessin du module.
+/// d'aperçu PNG par clip de chaque mascotte ; <c>--render &lt;png&gt;</c> dessine le module sur des données d'exemple.
 /// </summary>
 internal static class Program
 {
@@ -17,6 +20,8 @@ internal static class Program
         Usage : Trofeo.AgentPreview <option>
           --codex-probe [codexHome]   décrit la structure (clés, sans valeurs) de la transcription Codex la plus récente
           --mascot-sheet <dossier>    écrit un PNG par clip de chaque mascotte (poses côte à côte, pixel de 8)
+          --render <png> [--agent claude|codex] [--view feed|overview] [--size 6x3|8x4|10x4] [--text small|normal|large]
+                                      dessine le module (1920 × 462, en haut à gauche) sur des données d'exemple
         """;
 
     private static int Main(string[] args)
@@ -29,6 +34,11 @@ internal static class Program
         if (args.Length == 2 && args[0] == "--mascot-sheet")
         {
             return MascotSheetCommand(args[1]);
+        }
+
+        if (args.Length >= 2 && args[0] == "--render")
+        {
+            return RenderCommand(args);
         }
 
         Console.WriteLine(Usage);
@@ -134,6 +144,147 @@ internal static class Program
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);
         using var output = File.Create(path);
         data.SaveTo(output);
+    }
+
+    // --- Aperçu du module ---
+
+    private static int RenderCommand(string[] args)
+    {
+        var options = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var i = 2; i < args.Length; i += 2)
+        {
+            if (i + 1 >= args.Length || !args[i].StartsWith("--", StringComparison.Ordinal))
+            {
+                Console.Error.WriteLine("Option incomplète ou inconnue : " + args[i]);
+                return 2;
+            }
+
+            options[args[i]] = args[i + 1];
+        }
+
+        var agent = options.GetValueOrDefault("--agent", "claude");
+        var view = options.GetValueOrDefault("--view", "feed");
+        var size = options.GetValueOrDefault("--size", "8x4");
+        var text = options.GetValueOrDefault("--text", "normal");
+        var known = new[] { "--agent", "--view", "--size", "--text" };
+        if (options.Keys.Any(k => !known.Contains(k))
+            || agent is not ("claude" or "codex") || view is not ("feed" or "overview")
+            || size is not ("6x3" or "8x4" or "10x4") || text is not ("small" or "normal" or "large"))
+        {
+            Console.Error.WriteLine(Usage);
+            return 2;
+        }
+
+        try
+        {
+            RenderModule(args[1], agent == "codex", view == "overview", size, text);
+            return 0;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine("Impossible d'écrire " + args[1] + " : " + e.Message);
+            return 1;
+        }
+    }
+
+    private static void RenderModule(string path, bool codex, bool overview, string size, string text)
+    {
+        var columns = int.Parse(size.AsSpan(0, size.IndexOf('x')), CultureInfo.InvariantCulture);
+        var rows = int.Parse(size.AsSpan(size.IndexOf('x') + 1), CultureInfo.InvariantCulture);
+        var scale = (text switch { "small" => TextSize.Small, "large" => TextSize.Large, _ => TextSize.Normal }).Factor();
+        var theme = Themes.Classique;
+        var now = DateTimeOffset.Now;
+
+        IModuleFactory factory = codex
+            ? new CodexFactory(_ => new SampleSource(now, codex: true))
+            : new ClaudeCodeFactory(_ => new SampleSource(now, codex: false));
+        using var json = JsonDocument.Parse(overview ? "{\"view\":\"overview\"}" : "{\"view\":\"feed\"}");
+        var context = new ModuleContext(Guid.NewGuid(), json.RootElement.Clone(), TimeProvider.System, new ConsoleLog(), new NoSecrets());
+        using var module = (AgentModule)factory.Create(context);
+        module.PollNow();
+        module.PollNow(); // le premier sondage choisit l'onglet, le second lit son détail
+
+        var rect = GridGeometry.ModuleRect(0, 0, columns, rows);
+        using var bitmap = new SKBitmap(GridGeometry.Width, GridGeometry.Height);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(theme.Background);
+            var bounds = new SKRect(rect.Left, rect.Top, rect.Right, rect.Bottom);
+            using var panel = new SKPaint { IsAntialias = true, Color = theme.Panel.WithAlpha((byte)Math.Round(theme.PanelOpacity * 255f)) };
+            canvas.DrawRoundRect(bounds, theme.CornerRadius, theme.CornerRadius, panel);
+            using var clip = new SKRoundRect(bounds, theme.CornerRadius);
+            canvas.ClipRoundRect(clip, antialias: true);
+            module.Render(canvas, new ModuleRenderContext(bounds, new GridSize(columns, rows), theme, scale, now));
+        }
+
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        using var output = File.Create(path);
+        data.SaveTo(output);
+        Console.WriteLine("Aperçu écrit : " + path);
+    }
+
+    private sealed class NoSecrets : ISecretStore
+    {
+        public string? Get(string key) => null;
+
+        public void Set(string key, string? value)
+        {
+        }
+    }
+
+    private sealed class ConsoleLog : IModuleLog
+    {
+        public void Info(string message) => Console.WriteLine("Info : " + message);
+
+        public void Warning(string message) => Console.WriteLine("Warning : " + message);
+
+        public void Error(string message) => Console.Error.WriteLine("Erreur : " + message);
+    }
+
+    /// <summary>Quatre sessions dans les trois états, un fil avec un Edit +12 / −3, des tâches et des quotas.</summary>
+    private sealed class SampleSource(DateTimeOffset now, bool codex) : IAgentSource
+    {
+        public AgentSnapshot Poll(string? selectedSessionId, DateTimeOffset at)
+        {
+            var sessions = new List<AgentSessionSummary>
+            {
+                new("s1", "trofeo-HB-dashboard", AgentActivity.Working, now.AddHours(-3), now.AddSeconds(-2)),
+                new("s2", "site-perso", AgentActivity.Waiting, now.AddHours(-2), now.AddMinutes(-4)),
+                new("s3", "docs", AgentActivity.Idle, now.AddHours(-1), now.AddMinutes(-22)),
+                new("s4", "un-projet-au-nom-vraiment-trop-long", AgentActivity.Idle, now.AddMinutes(-30), now.AddHours(-1)),
+            };
+
+            var feed = new List<FeedEntry>
+            {
+                new("Read", "src/Trofeo.Modules.Agents/AgentModule.cs"),
+                new("Grep", "\"IsAnimating\" in src"),
+                new("Bash", "dotnet test tests/Trofeo.Modules.Agents.Tests"),
+                new("Read", "tests/Trofeo.Modules.Agents.Tests/AgentModuleTests.cs"),
+                new("Write", "src/Trofeo.Modules.Agents/AgentLayout.cs", 57, null),
+                new("Edit", "src/Trofeo.Modules.Agents/AgentPainter.cs", 12, 3),
+                new("Bash", "dotnet build tests/Trofeo.Modules.Agents.Tests"),
+                new("Edit", "src/Trofeo.Modules.Agents/AgentModule.cs", 12, 3),
+            };
+            var tasks = codex
+                ? new List<AgentTask>()
+                : new List<AgentTask>
+                {
+                    new("Écrire la mise en page des onglets", AgentTaskState.Completed),
+                    new("Dessiner le fil d'activité", AgentTaskState.Completed),
+                    new("Dessiner la vue d'ensemble", AgentTaskState.InProgress),
+                    new("Brancher les raccourcis clavier", AgentTaskState.Pending),
+                    new("Vérifier sur le vrai écran", AgentTaskState.Pending),
+                };
+            var detail = new AgentSessionDetail(selectedSessionId ?? "s1", "Dessiner le module Claude Code / Codex", now.AddMinutes(-47),
+                feed, tasks, codex ? "gpt-5.1-codex-max" : "claude-opus-5-5", 63);
+            var quotas = new AgentQuotas(new QuotaWindow(42, now.AddHours(2.4)), new QuotaWindow(77.5, now.AddDays(3.2)), now);
+            return new AgentSnapshot(true, sessions, detail, quotas);
+        }
+
+        public void Dispose()
+        {
+        }
     }
 
     private static int CodexProbeCommand(string codexHome)
