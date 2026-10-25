@@ -96,9 +96,27 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
 
 ## Quotas de Claude Code
 
-Le module lit les sessions Claude Code sans rien installer. Pour afficher en plus les quotas (fenêtre de 5 h et hebdomadaire), il faut brancher `Trofeo.StatusLine.exe` comme barre d'état de Claude Code : Claude lui envoie ses chiffres à chaque mise à jour de la barre, il les garde dans `~/.claude/trofeo-HB-dashboard/statusline`, et le module les relit. Tant qu'aucune session ne fait tourner la barre d'état, le module affiche « Quotas indisponibles ».
+Le module lit les sessions Claude Code sans rien installer. Pour afficher en plus les quotas (fenêtre de 5 h et hebdomadaire) et le remplissage exact du contexte, il faut que Claude Code écrive ses chiffres dans `~/.claude/trofeo-HB-dashboard/statusline`, un fichier par session, que le module relit. Tant que rien n'y est écrit, le module affiche « Quotas indisponibles ». Deux façons de le faire, qui écrivent le même fichier :
 
-Lance ces commandes **toi-même, dans ton propre terminal** : elles modifient les réglages de Claude Code, ce n'est pas à un assistant de le faire à ta place. Après `dotnet build -c Release`, depuis la racine du dépôt :
+- **le mod `trofeo-quotas`** (conseillé) : il marche dans l'appli desktop **et** dans le terminal ;
+- **la barre d'état `Trofeo.StatusLine.exe`** : elle ne marche que dans le terminal, car l'appli desktop ne lance pas la commande de barre d'état.
+
+Lance ces commandes **toi-même, dans ton propre terminal** : elles modifient les réglages de Claude Code, ce n'est pas à un assistant de le faire à ta place.
+
+### Le mod (appli desktop et terminal)
+
+Le mod est dans `mods/trofeo-quotas`. À chaque mesure de Claude Code (après chaque réponse, ou quand un quota bouge d'un point), il écrit les chiffres de la session : rien d'autre n'est lu, aucune connexion n'est ouverte. Depuis la racine du dépôt :
+
+```powershell
+claude plugin marketplace add "$PWD\mods"
+claude plugin install trofeo-quotas@trofeo-hb-dashboard
+```
+
+La portée par défaut est « user » : le mod se charge alors dans toutes les nouvelles sessions, celles de l'appli desktop comprises. Il est lu directement dans `mods/trofeo-quotas` : après un `git pull`, `/reload-plugins` suffit. Pour le retirer : `claude plugin uninstall trofeo-quotas@trofeo-hb-dashboard`.
+
+### La barre d'état (terminal seulement)
+
+Après `dotnet build -c Release`, depuis la racine du dépôt :
 
 ```powershell
 tools\Trofeo.HardwareCheck\bin\Release\net10.0-windows10.0.19041.0\Trofeo.HardwareCheck.exe --claude-statusline install "$PWD\src\Trofeo.StatusLine\bin\Release\net10.0\Trofeo.StatusLine.exe"
@@ -131,6 +149,7 @@ La ligne d'aide disparaît dès que la température arrive, et ne s'affiche pas 
 | `src/Trofeo.Display` | Le service d'affichage, dans la zone de notification |
 | `src/Trofeo.Modules.*` | Les modules |
 | `src/Trofeo.StatusLine` | La barre d'état de Claude Code (quotas) et son installation |
+| `mods/trofeo-quotas` | Le mod Claude Code qui écrit les quotas, appli desktop comprise |
 | `docs/superpowers` | Conception et plans de développement |
 
 Les modules sont intégrés au logiciel. Pour en proposer un nouveau, ouvre une pull request avec un projet `Trofeo.Modules.<Nom>` qui implémente `IModuleFactory` et `IModule`.
