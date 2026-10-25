@@ -7,6 +7,10 @@ using Trofeo.Core.Rendering;
 using Trofeo.Core.Secrets;
 using Trofeo.Device;
 using Trofeo.Modules.Clock;
+using Trofeo.Modules.Monitoring;
+using Trofeo.Modules.Network;
+using Trofeo.Modules.NowPlaying;
+using Trofeo.Sensors;
 
 namespace Trofeo.Display;
 
@@ -48,8 +52,24 @@ static class Program
 
         var layout = LoadLayout();
         var vault = new DpapiSecretVault(Path.Combine(AppPaths.SettingsDir, "secrets.dat"));
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) }; // déclaré avant la boucle : libéré après elle
-        var registry = new ModuleRegistry([new ClockFactory(new OpenMeteoClient(http))], vault.Scope);
+        // Tout ce qui suit est déclaré avant la boucle : libéré après elle, dans l'ordre inverse de la création.
+        // Pas de redirection suivie : la session Freebox ne doit jamais partir vers un autre hôte.
+        using var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(15) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("trofeo-HB-dashboard/0.2");
+
+        // Capteurs : l'assistant élevé s'il tourne, sinon une lecture locale. Aucune panne ici n'arrête le service.
+        using var sensorPipe = new SensorPipeClient(SensorPipe.Name, HelperIdentity.IsTrusted, TimeProvider.System);
+        StartSensorPipe(sensorPipe);
+        using var sensorHub = new SensorHub(() => new LhmSensorReader(), sensorPipe, TimeProvider.System);
+
+        var registry = new ModuleRegistry(
+            [
+                new ClockFactory(new OpenMeteoClient(http)),
+                new MonitoringFactory(sensorHub),
+                new NowPlayingFactory(ctx => new SmtcMediaSource(ctx.Log)),
+                NetworkFactory.CreateProduction(http),
+            ],
+            vault.Scope);
         var screen = new ScreenDevice(new WinUsbTransportFactory(), TimeProvider.System);
         screen.StateChanged += (_, _) =>
         {
@@ -95,6 +115,20 @@ static class Program
 
         return 0;
     }
+
+    /// <summary>Lance la boucle de connexion au tube en tâche de fond ; <see cref="SensorPipeClient.Dispose"/> l'arrête.</summary>
+    private static void StartSensorPipe(SensorPipeClient client) =>
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await client.RunAsync(CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError($"Liaison avec l'assistant des capteurs interrompue : {ex}");
+            }
+        });
 
     private static void TickLoop(DisplayLoop loop, FrameScheduler scheduler, CancellationToken ct)
     {

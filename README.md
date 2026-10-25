@@ -4,7 +4,7 @@ Un tableau de bord modulaire pour l'écran LCD USB **Thermalright Trofeo Vision 
 
 On place des modules sur un damier de 16 × 4 cases : heure et météo, monitoring du PC, réseau, musique en cours, sessions Claude Code ou Codex… Chacun choisit les modules qu'il garde, leur taille, le thème et le fond d'écran.
 
-> 🚧 **Projet en construction.** Les fondations sont faites : connexion à l'écran, rendu et module Heure. Les autres modules et le logiciel de réglage arrivent dans les prochaines versions.
+> 🚧 **Projet en construction.** Les fondations et les quatre modules de données sont faits : Heure et météo, Monitoring PC, En écoute et Réseau. Les modules Claude Code et Codex, ainsi que le logiciel de réglage, arrivent dans les prochaines versions.
 
 ## Ce qui marche aujourd'hui
 
@@ -16,19 +16,21 @@ On place des modules sur un damier de 16 × 4 cases : heure et météo, monitori
   - écran figé par un autre programme.
 - Renvoi de l'image chaque seconde, sinon l'écran repasse au logo Thermalright au bout d'environ 3 s.
 - Orientation 0° ou 180°, selon le sens de montage.
-- Module **Heure**, au format 24 h ou 12 h.
+- Quatre modules de données, placés par défaut dans les colonnes 8 à 15 :
+  - **Heure et météo** : date, heure en 24 h ou 12 h, météo du lieu choisi ;
+  - **Monitoring PC** : CPU, GPU, mémoire et températures ;
+  - **En écoute** : titre, pochette et progression du média en cours dans Windows ;
+  - **Réseau** : débit instantané de la carte réseau du PC, d'une Freebox ou d'une console UniFi.
 - Icône dans la zone de notification, qui indique l'état de l'écran.
 
 ## Ce qui arrive
 
 | Module | Contenu |
 |---|---|
-| Heure et météo | Date, heure, météo du lieu choisi |
-| Monitoring PC | CPU, GPU, températures, RAM… avec un titre libre et le choix des valeurs affichées |
-| Réseau | Débit instantané via Freebox, UniFi ou la carte réseau du PC |
-| En écoute | Titre en cours via les contrôles média de Windows |
 | Claude Code | Sessions en onglets, flux en direct, mascotte animée, contexte, quotas 5 h et hebdo |
 | Codex | Le même module pour Codex, avec sa mascotte en pixel art |
+
+Les colonnes 0 à 7 sont gardées pour Claude Code.
 
 Également prévus :
 
@@ -60,13 +62,24 @@ dotnet test
 dotnet run -c Release --project src/Trofeo.Display
 ```
 
-Le service s'installe dans la zone de notification. La disposition est enregistrée dans `%AppData%\trofeo-HB-dashboard\layout.json`, et le journal dans `%AppData%\trofeo-HB-dashboard\logs\display.log`.
+Le service s'installe dans la zone de notification. La disposition est enregistrée dans `%AppData%	rofeo-HB-dashboard\layout.json`, et le journal dans `%AppData%\trofeo-HB-dashboard\logs\display.log`.
 
 L'outil `tools/Trofeo.HardwareCheck` sert à vérifier un écran :
 
 - `--orientation 0` ou `--orientation 180` : affiche une mire pour trouver le bon sens ;
 - `--fps` : mesure le débit réel ;
-- `--recovery` : teste la reprise d'un écran figé.
+- `--recovery` : teste la reprise d'un écran figé ;
+- `--set-secret <portée> <clé>` : enregistre un secret (mot de passe, jeton) dans le coffre du service. La valeur se lit sur l'entrée standard, saisie masquée au clavier, et n'est jamais affichée ;
+- `--city <nom>` : affiche les cinq villes proposées par Open-Meteo, avec leurs coordonnées, pour régler la météo.
+
+## Températures du processeur
+
+Sans réglage, le module Monitoring affiche la ligne « Temp. CPU : installez le pilote ». Windows ne laisse lire ces températures qu'à un programme élevé, grâce à un pilote. Pour les activer :
+
+1. Installer PawnIO : `winget install --id namazso.PawnIO`.
+2. Ouvrir un terminal en administrateur et lancer `Trofeo.SensorHelper.exe install`. Cela crée la tâche planifiée `\trofeo-HB-dashboard\Capteurs`, qui relève les capteurs à chaque ouverture de session et les transmet au service. Le service lui-même reste sans droits d'administrateur.
+
+La ligne d'aide disparaît dès que la température arrive.
 
 ## Organisation du code
 
@@ -90,6 +103,10 @@ Le protocole de l'écran a été compris grâce à ces projets :
 - [haven80/trofeo-lcd-rs](https://github.com/haven80/trofeo-lcd-rs)
 - [JuliusNarvasa/TrofeoVision](https://github.com/JuliusNarvasa/TrofeoVision)
 - [CraigyBabyJ/lcd_therma](https://github.com/CraigyBabyJ/lcd_therma)
+
+Les relevés de capteurs viennent de [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0), qui s'appuie sur le pilote [PawnIO](https://pawnio.eu/) pour les températures du processeur.
+
+Données météo : [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0).
 
 La police Barlow Semi Condensed est distribuée sous licence SIL Open Font License 1.1 (voir `src/Trofeo.Core/Assets/Fonts/OFL.txt`).
 

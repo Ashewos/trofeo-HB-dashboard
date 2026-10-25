@@ -20,9 +20,43 @@ public sealed class LayoutStoreTests : IDisposable
         var layout = new LayoutStore(FilePath).Load();
 
         Assert.Equal(180, layout.Rotation);
-        var clock = Assert.Single(layout.Placements);
-        Assert.Equal("clock", clock.TypeId);
-        Assert.Equal((12, 0, 4, 2), (clock.Column, clock.Row, clock.Columns, clock.Rows));
+        Assert.Same(DashboardLayout.Default, layout);
+    }
+
+    [Fact]
+    public void Default_HasFourDataModules_NoOverlap()
+    {
+        var layout = DashboardLayout.Default;
+
+        Assert.Equal(180, layout.Rotation);
+        Assert.Equal(
+            [("monitoring", 8, 0), ("nowplaying", 8, 2), ("clock", 12, 0), ("network", 12, 2)],
+            layout.Placements.Select(p => (p.TypeId, p.Column, p.Row)));
+        Assert.All(layout.Placements, p => Assert.Equal((4, 2), (p.Columns, p.Rows)));
+        Assert.Equal(layout.Placements.Count, layout.Placements.Select(p => p.InstanceId).Distinct().Count());
+        Assert.Equal(new Guid("5b0c5e2e-6a53-4c0b-9d0e-3f1a7c1d2b01"), layout.Placements.Single(p => p.TypeId == "clock").InstanceId);
+        Assert.Equal("pc", layout.Placements.Single(p => p.TypeId == "network").Settings.GetProperty("source").GetString());
+        // Les colonnes 0 à 7 restent libres pour Claude Code (plan 3).
+        Assert.All(layout.Placements, p => Assert.True(p.Column >= 8));
+        foreach (var a in layout.Placements)
+        {
+            foreach (var b in layout.Placements.Where(b => b != a))
+            {
+                Assert.False(LayoutValidator.Intersects(a, b), $"{a.TypeId} chevauche {b.TypeId}");
+            }
+        }
+    }
+
+    [Fact]
+    public void Default_SurvivesSaveAndLoad()
+    {
+        var store = new LayoutStore(FilePath);
+
+        store.Save(DashboardLayout.Default);
+        var loaded = store.Load();
+
+        Assert.Equal(DashboardLayout.Default.Placements.Select(p => p.InstanceId), loaded.Placements.Select(p => p.InstanceId));
+        Assert.False(File.Exists(FilePath + ".bad"));
     }
 
     [Fact]
@@ -55,8 +89,7 @@ public sealed class LayoutStoreTests : IDisposable
 
         var layout = new LayoutStore(FilePath).Load();
 
-        Assert.Equal(180, layout.Rotation);
-        Assert.Single(layout.Placements);
+        Assert.Same(DashboardLayout.Default, layout);
         Assert.Equal("{nope", File.ReadAllText(FilePath + ".bad"));
     }
 
@@ -68,8 +101,7 @@ public sealed class LayoutStoreTests : IDisposable
 
         var layout = new LayoutStore(FilePath).Load();
 
-        Assert.Equal(180, layout.Rotation);
-        Assert.Single(layout.Placements);
+        Assert.Same(DashboardLayout.Default, layout);
         Assert.False(File.Exists(FilePath + ".bad"));
     }
 
@@ -89,7 +121,7 @@ public sealed class LayoutStoreTests : IDisposable
         var layout = new LayoutStore(FilePath).Load();
 
         Assert.Equal(180, layout.Rotation);
-        Assert.Equal(DashboardLayout.Default.Placements[0].InstanceId, Assert.Single(layout.Placements).InstanceId);
+        Assert.Same(DashboardLayout.Default, layout);
         Assert.Equal(json, File.ReadAllText(FilePath + ".bad"));
     }
 
