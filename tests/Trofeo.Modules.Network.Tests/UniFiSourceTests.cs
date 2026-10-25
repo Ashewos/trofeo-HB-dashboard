@@ -259,6 +259,20 @@ public class UniFiSourceTests
     }
 
     [Fact]
+    public async Task UcgWithoutGatewayFeature_IsAccepted()
+    {
+        using var rig = new Rig();
+        rig.Handler.Clear(Devices);
+        rig.Handler.On(Devices, """{"data":[{"id":"gw-1","name":"UCG","model":"UCG Fiber","features":["switching"]},{"id":"ap-1","model":"U7 Lite","features":["accessPoint"]}]}""");
+
+        var reading = await rig.Read();
+
+        Assert.Equal(ModuleHealth.Online, reading.Status.Health);
+        Assert.Equal(new ThroughputSample(50_000_000, 10_000_000), reading.Sample);
+        Assert.Equal([Sites, Devices, Stats], rig.Handler.Calls.Select(c => c.Route));
+    }
+
+    [Fact]
     public async Task SecondRead_UsesCachedIdsAndKey()
     {
         using var rig = new Rig();

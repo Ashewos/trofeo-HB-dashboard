@@ -181,7 +181,7 @@ public sealed partial class UniFiSource : IThroughputSource
         {
             foreach (var device in Data(doc.RootElement).EnumerateArray())
             {
-                if (!HasGatewayFeature(device) || ReadId(device) is not { } deviceId) continue;
+                if (!IsGateway(device) || ReadId(device) is not { } deviceId) continue;
                 _gateway = new Gateway(siteId, deviceId);
                 return null;
             }
@@ -190,21 +190,33 @@ public sealed partial class UniFiSource : IThroughputSource
         return new SourceReading(null, new ModuleStatus(ModuleHealth.Offline, NoGatewayMessage));
     }
 
-    private static bool HasGatewayFeature(JsonElement device)
+    private static bool IsGateway(JsonElement device)
     {
-        if (device.ValueKind != JsonValueKind.Object
-            || !device.TryGetProperty("features", out var features) || features.ValueKind != JsonValueKind.Array)
+        if (device.ValueKind != JsonValueKind.Object)
         {
             return false;
         }
-        foreach (var feature in features.EnumerateArray())
+
+        if (device.TryGetProperty("features", out var features) && features.ValueKind == JsonValueKind.Array)
         {
-            if (feature.ValueKind == JsonValueKind.String && string.Equals(feature.GetString(), "gateway", StringComparison.OrdinalIgnoreCase))
+            foreach (var feature in features.EnumerateArray())
             {
-                return true;
+                if (feature.ValueKind == JsonValueKind.String
+                    && string.Equals(feature.GetString(), "gateway", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
             }
         }
-        return false;
+
+        // Certaines versions récentes d'UniFi OS annoncent les UCG uniquement comme « switching »,
+        // alors que leur endpoint de statistiques expose bien l'uplink de la passerelle.
+        if (!device.TryGetProperty("model", out var model) || model.ValueKind != JsonValueKind.String) return false;
+        var text = model.GetString()?.Trim();
+        return text is not null && (text.StartsWith("UCG", StringComparison.OrdinalIgnoreCase)
+            || text.StartsWith("UDM", StringComparison.OrdinalIgnoreCase)
+            || text.StartsWith("UXG", StringComparison.OrdinalIgnoreCase)
+            || text.StartsWith("USG", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string? ReadId(JsonElement element) =>
