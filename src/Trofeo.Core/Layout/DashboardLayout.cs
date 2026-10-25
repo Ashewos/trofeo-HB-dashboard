@@ -10,12 +10,15 @@ public sealed record DashboardLayout(
     int Rotation, IReadOnlyList<ModulePlacement> Placements, IReadOnlyList<ShortcutBinding>? Shortcuts = null)
 {
     /// <summary>
-    /// Disposition par défaut : rotation 180° (montage d'Alex), Monitoring et En écoute au milieu, Heure et Réseau
-    /// à droite. Les colonnes 0 à 7 restent libres pour Claude Code (plan 3).
+    /// Disposition par défaut : rotation 180° (montage d'Alex), Claude Code à gauche (colonnes 0 à 7), Monitoring et
+    /// En écoute au milieu, Heure et Réseau à droite. Codex n'y est pas : il se place à la main.
     /// </summary>
     public static DashboardLayout Default { get; } = new(
         180,
         [
+            new ModulePlacement(
+                new Guid("3c1d9f5e-7a2b-4e8c-9b1f-6d2a0e4c8b17"),
+                "claudecode", 0, 0, 8, 4, TextSize.Normal, Settings("""{"view":"feed","autoFollow":true}""")),
             new ModulePlacement(
                 new Guid("246ac06d-eec2-4d64-9930-24b64603a03b"),
                 "monitoring", 8, 0, 4, 2, TextSize.Normal, Settings("{}")),

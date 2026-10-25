@@ -7,6 +7,7 @@ using Trofeo.Core.Rendering;
 using Trofeo.Core.Secrets;
 using Trofeo.Device;
 using Trofeo.Modules.Clock;
+using Trofeo.StatusLine;
 
 // Vérification sur le vrai écran. Chaque mode se termine seul ; fermer Thermalright TRCC avant.
 const int Width = 1920;
@@ -17,6 +18,7 @@ string? mode = null;
 string? secretScope = null;
 string? secretKey = null;
 string? cityName = null;
+string[] statusLineArgs = [];
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -50,10 +52,16 @@ for (var i = 0; i < args.Length; i++)
             i += words.Length;
             mode = "city";
             break;
+        case "--claude-statusline":
+            statusLineArgs = args.Skip(i + 1).ToArray(); // la commande lit elle-même ses arguments
+            i = args.Length;
+            mode = "claude-statusline";
+            break;
         default:
             Console.Error.WriteLine(
                 "Usage : Trofeo.HardwareCheck [--orientation <0|180>] [--fps] [--recovery]"
-                + " | --set-secret <portée> <clé> (valeur sur l'entrée standard) | --clear-secret <portée> <clé> | --city <nom>");
+                + " | --set-secret <portée> <clé> (valeur sur l'entrée standard) | --clear-secret <portée> <clé> | --city <nom>"
+                + " | --claude-statusline install <chemin de Trofeo.StatusLine.exe> | uninstall | status");
             return 2;
     }
 }
@@ -66,6 +74,7 @@ return mode switch
     "set-secret" => RunSetSecret(secretScope!, secretKey!),
     "clear-secret" => RunClearSecret(secretScope!, secretKey!),
     "city" => RunCity(cityName!),
+    "claude-statusline" => StatusLineCommand.Run(statusLineArgs, ClaudeHome.Resolve(), Console.Out, Console.Error),
     _ => RunOrientation(rotation),
 };
 

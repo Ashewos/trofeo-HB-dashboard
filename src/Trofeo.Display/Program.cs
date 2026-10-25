@@ -7,6 +7,7 @@ using Trofeo.Core.Rendering;
 using Trofeo.Core.Secrets;
 using Trofeo.Core.Shortcuts;
 using Trofeo.Device;
+using Trofeo.Modules.Agents;
 using Trofeo.Modules.Clock;
 using Trofeo.Modules.Monitoring;
 using Trofeo.Modules.Network;
@@ -69,6 +70,8 @@ static class Program
                 new MonitoringFactory(sensorHub),
                 new NowPlayingFactory(ctx => new SmtcMediaSource(ctx.Log)),
                 NetworkFactory.CreateProduction(http),
+                ClaudeCodeFactory.CreateProduction(),
+                CodexFactory.CreateProduction(),
             ],
             vault.Scope);
         var screen = new ScreenDevice(new WinUsbTransportFactory(), TimeProvider.System);
@@ -100,10 +103,7 @@ static class Program
             // Sur le thread de l'interface, avant la pompe de messages. Déclarés après la boucle et dans ce bloc :
             // le routeur (qui retire les raccourcis) puis la fenêtre sont libérés avant elle, plus aucun raccourci
             // ne peut atteindre une boucle libérée.
-            using var hotkeyWindow = new HotkeyWindow();
-            using var hotkeys = new HotkeyRouter(hotkeyWindow, layout.Shortcuts ?? ShortcutDefaults.All, loop.FindCommandTarget);
-            hotkeyWindow.Hotkey += hotkeys.OnHotkey;
-            hotkeys.RegisterAll();
+            using var hotkeys = StartHotkeys(layout, loop);
 
             using var tray = new TrayIcon(screen);
             Application.Run(tray);
@@ -123,6 +123,41 @@ static class Program
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Crée la fenêtre des raccourcis et enregistre ceux de la disposition. Une panne ici n'arrête pas le service :
+    /// il tourne sans raccourcis (<c>null</c>). Libérer le résultat retire les raccourcis puis détruit la fenêtre.
+    /// </summary>
+    private static IDisposable? StartHotkeys(DashboardLayout layout, DisplayLoop loop)
+    {
+        HotkeyWindow? window = null;
+        HotkeyRouter? router = null;
+        try
+        {
+            window = new HotkeyWindow();
+            router = new HotkeyRouter(window, layout.Shortcuts ?? ShortcutDefaults.All, loop.FindCommandTarget);
+            window.Hotkey += router.OnHotkey;
+            router.RegisterAll();
+            return new HotkeyScope(router, window);
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceWarning($"Raccourcis clavier indisponibles, le service tourne sans : {ex.Message}");
+            router?.Dispose();
+            window?.Dispose();
+            return null;
+        }
+    }
+
+    /// <summary>Libère le routeur (qui retire les raccourcis) avant la fenêtre qui les portait.</summary>
+    private sealed class HotkeyScope(HotkeyRouter router, HotkeyWindow window) : IDisposable
+    {
+        public void Dispose()
+        {
+            router.Dispose();
+            window.Dispose();
+        }
     }
 
     /// <summary>Lance la boucle de connexion au tube en tâche de fond ; <see cref="SensorPipeClient.Dispose"/> l'arrête.</summary>

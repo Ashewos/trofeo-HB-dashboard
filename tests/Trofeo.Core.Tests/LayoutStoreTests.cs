@@ -25,20 +25,26 @@ public sealed class LayoutStoreTests : IDisposable
     }
 
     [Fact]
-    public void Default_HasFourDataModules_NoOverlap()
+    public void Default_HasFiveModules_NoOverlap()
     {
         var layout = DashboardLayout.Default;
 
         Assert.Equal(180, layout.Rotation);
         Assert.Equal(
-            [("monitoring", 8, 0), ("nowplaying", 8, 2), ("clock", 12, 0), ("network", 12, 2)],
+            [("claudecode", 0, 0), ("monitoring", 8, 0), ("nowplaying", 8, 2), ("clock", 12, 0), ("network", 12, 2)],
             layout.Placements.Select(p => (p.TypeId, p.Column, p.Row)));
-        Assert.All(layout.Placements, p => Assert.Equal((4, 2), (p.Columns, p.Rows)));
+        Assert.All(layout.Placements.Where(p => p.TypeId != "claudecode"), p => Assert.Equal((4, 2), (p.Columns, p.Rows)));
+        var claude = layout.Placements.Single(p => p.TypeId == "claudecode");
+        Assert.Equal((8, 4), (claude.Columns, claude.Rows));
+        Assert.Equal(new Guid("3c1d9f5e-7a2b-4e8c-9b1f-6d2a0e4c8b17"), claude.InstanceId);
+        Assert.Equal("feed", claude.Settings.GetProperty("view").GetString());
+        Assert.True(claude.Settings.GetProperty("autoFollow").GetBoolean());
+        Assert.Null(layout.Shortcuts);
         Assert.Equal(layout.Placements.Count, layout.Placements.Select(p => p.InstanceId).Distinct().Count());
         Assert.Equal(new Guid("5b0c5e2e-6a53-4c0b-9d0e-3f1a7c1d2b01"), layout.Placements.Single(p => p.TypeId == "clock").InstanceId);
         Assert.Equal("pc", layout.Placements.Single(p => p.TypeId == "network").Settings.GetProperty("source").GetString());
-        // Les colonnes 0 à 7 restent libres pour Claude Code (plan 3).
-        Assert.All(layout.Placements, p => Assert.True(p.Column >= 8));
+        // Les modules de données restent dans les colonnes 8 à 15 ; Claude Code occupe les colonnes 0 à 7.
+        Assert.All(layout.Placements.Where(p => p.TypeId != "claudecode"), p => Assert.True(p.Column >= 8));
         foreach (var a in layout.Placements)
         {
             foreach (var b in layout.Placements.Where(b => b != a))

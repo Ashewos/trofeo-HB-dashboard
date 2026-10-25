@@ -36,8 +36,11 @@ public sealed class StatusLineInstaller(string claudeHome)
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, // garde lisibles |, &, accents…
     };
 
-    private string SettingsPath => Path.Combine(claudeHome, "settings.json");
-    private string BackupPath => SettingsPath + ".trofeo-bak";
+    /// <summary>Le <c>settings.json</c> de Claude Code, tel que ce programme le lit et le réécrit.</summary>
+    public string SettingsPath => Path.Combine(claudeHome, "settings.json");
+
+    /// <summary>La copie du fichier d'origine, faite à la première installation.</summary>
+    public string BackupPath => SettingsPath + ".trofeo-bak";
     private string PreviousPath => Path.Combine(claudeHome, "trofeo-HB-dashboard", "statusline-previous.json");
 
     public StatusLineInstallResult Install(string exePath)
@@ -95,6 +98,12 @@ public sealed class StatusLineInstaller(string claudeHome)
         File.Delete(PreviousPath);
         return StatusLineInstallResult.Uninstalled;
     }
+
+    /// <summary>
+    /// La commande de barre d'état actuelle de <c>settings.json</c> (la nôtre ou une autre), ou <c>null</c> s'il n'y en a
+    /// pas ou si le fichier n'est pas lisible.
+    /// </summary>
+    public string? CurrentCommand() => TryReadSettings(out var root) ? CommandOf(root["statusLine"]) : null;
 
     public bool IsInstalled() => TryReadSettings(out var root) && IsOurs(root["statusLine"]);
 

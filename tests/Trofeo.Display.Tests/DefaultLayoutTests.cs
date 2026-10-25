@@ -1,5 +1,6 @@
 using Trofeo.Core.Layout;
 using Trofeo.ModuleKit;
+using Trofeo.Modules.Agents;
 using Trofeo.Modules.Clock;
 using Trofeo.Modules.Monitoring;
 using Trofeo.Modules.Network;
@@ -20,6 +21,8 @@ public sealed class DefaultLayoutTests
                 new MonitoringFactory(null!),
                 new NowPlayingFactory(null!),
                 new NetworkFactory(null!),
+                new ClaudeCodeFactory(null!),
+                new CodexFactory(null!),
             ],
             _ => null!).Descriptors;
 
@@ -32,5 +35,16 @@ public sealed class DefaultLayoutTests
         {
             Assert.Equal(PlacementError.None, LayoutValidator.Check(DashboardLayout.Default, placement, types));
         }
+    }
+
+    [Fact]
+    public void Default_HasFiveModules_NoOverlap()
+    {
+        var layout = DashboardLayout.Default;
+
+        Assert.Equal(["claudecode", "monitoring", "nowplaying", "clock", "network"], layout.Placements.Select(p => p.TypeId));
+        Assert.Equal(layout.Placements.Count, layout.Placements.Select(p => p.InstanceId).Distinct().Count());
+        var types = RealDescriptors();
+        Assert.All(layout.Placements, p => Assert.Equal(PlacementError.None, LayoutValidator.Check(layout, p, types)));
     }
 }
