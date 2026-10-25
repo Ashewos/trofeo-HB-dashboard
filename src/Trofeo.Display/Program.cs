@@ -133,6 +133,7 @@ static class Program
     private static void TickLoop(DisplayLoop loop, FrameScheduler scheduler, CancellationToken ct)
     {
         WaitHandle[] handles = [ct.WaitHandle, scheduler.Signal];
+        var errors = new RateLimitedErrorLog(TimeProvider.System); // une panne qui se répète à chaque tour ne remplit pas le journal
         while (!ct.IsCancellationRequested)
         {
             TimeSpan delay;
@@ -142,7 +143,7 @@ static class Program
             }
             catch (Exception ex)
             {
-                Trace.TraceError($"Erreur dans la boucle d'affichage : {ex}");
+                errors.Report($"Erreur dans la boucle d'affichage : {ex}");
                 ct.WaitHandle.WaitOne(ErrorRetryDelay); // pas de boucle serrée si l'erreur se répète
                 continue;
             }

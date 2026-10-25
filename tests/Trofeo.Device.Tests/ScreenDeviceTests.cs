@@ -192,7 +192,7 @@ public sealed class ScreenDeviceTests
         Assert.False(device.TryConnect());
 
         Assert.Equal(ScreenState.Disconnected, device.State);
-        Assert.Equal("Écran utilisé par un autre programme (fermez TRCC)", device.Reason);
+        Assert.Equal("Écran utilisé par un autre programme (ferme TRCC)", device.Reason);
     }
 
     [Fact]

@@ -10,7 +10,7 @@ namespace Trofeo.Device;
 public sealed class ScreenDevice : IDisposable
 {
     public const string AbsentReason = "Écran non branché";
-    public const string BusyReason = "Écran utilisé par un autre programme (fermez TRCC)";
+    public const string BusyReason = "Écran utilisé par un autre programme (ferme TRCC)";
     public const string NotRespondingReason = "Écran ne répond plus";
 
     private const int WriteBlockSize = 4096;

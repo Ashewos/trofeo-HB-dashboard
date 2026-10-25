@@ -34,6 +34,9 @@ public sealed class DisplayLoop : IDisposable
     private readonly RateLimitedErrorLog _renderErrors;
     private readonly Dictionary<Guid, IModule> _modules = [];
     private readonly IModule[] _moduleList;
+
+    // Identifiants d'instance, remplis par le constructeur seul puis lus depuis n'importe quel thread (jamais modifiés ensuite).
+    private readonly Dictionary<IModule, Guid> _instanceIds = [];
     private readonly EventHandler _onInvalidated;
     private readonly EventHandler _onStatusChanged;
     private bool _hasTriedConnect;
@@ -93,6 +96,7 @@ public sealed class DisplayLoop : IDisposable
             return;
         }
 
+        _instanceIds[module] = placement.InstanceId;
         module.Invalidated += _onInvalidated;
         module.StatusChanged += _onStatusChanged;
         _modules[placement.InstanceId] = module;
@@ -107,7 +111,8 @@ public sealed class DisplayLoop : IDisposable
             {
                 var status = module.Status;
                 var action = status.ActionMessage is { Length: > 0 } message ? $" — {message}" : "";
-                Trace.TraceInformation($"Module « {module.Descriptor.TypeId} » : {status.Health}{action}");
+                var instance = _instanceIds.TryGetValue(module, out var id) ? $" {id.ToString("N")[..8]}" : "";
+                Trace.TraceInformation($"[{module.Descriptor.TypeId}{instance}] État : {status.Health}{action}");
             }
             catch (Exception ex)
             {

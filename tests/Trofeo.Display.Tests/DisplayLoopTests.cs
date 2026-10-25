@@ -491,7 +491,7 @@ public sealed class DisplayLoopTests
         rig.Loop.Tick(); // une image au tick suivant
 
         Assert.Equal(2, rig.Loop.FramesSent);
-        Assert.Contains(listener.Lines, l => l.Contains("Module « fake » : Offline — Reconnectez le compte"));
+        Assert.Contains(listener.Lines, l => l.Contains("[fake 11111111] État : Offline — Reconnectez le compte"));
     }
 
     [Fact]
