@@ -18,4 +18,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Sous Linux, SkiaSharp a besoin de sa bibliothèque native (les tests de dessin la chargent). -->
+  <ItemGroup Condition="'$(IsTestSupportLibrary)' != 'true' And $([MSBuild]::IsOSPlatform('Linux'))">
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.0" />
+  </ItemGroup>
+
 </Project>

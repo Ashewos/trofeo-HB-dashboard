@@ -10,7 +10,7 @@ Tableau de bord modulaire pour l'écran USB Thermalright Trofeo Vision 9,16" (19
 - Plan 3 (Claude Code / Codex) : `docs/superpowers/plans/2026-10-25-plan-3-claude-codex.md`. Tâches 0 à 9 construites dans le cloud et fusionnées dans `main`. Tâches 10 à 13 (raccourcis, branchement, options du fil, mod `trofeo-quotas`) faites sur le PC d'Alex, vérifiées sur l'écran, fusionnées dans `main` et poussées le 25/10/2026.
 - **Bilan du plan 3 : `docs/superpowers/plans/2026-10-25-plan-3-bilan.md`** (état, mesures, décisions, reste à faire, ce qui revient aux plans 5 et 6). Prochaine étape : le plan 4 (Apparence).
 - Les quotas de Claude Code viennent du mod `mods/trofeo-quotas` (appli desktop et terminal) ou de `Trofeo.StatusLine.exe` (terminal seulement : l'appli desktop ne lance pas la barre d'état).
-- Les projets `net10.0` du plan 3 se construisent aussi sous Linux : `apt-get install dotnet-sdk-10.0`, puis `dotnet test tests/Trofeo.Modules.Agents.Tests`.
+- Sous Linux (`apt-get install dotnet-sdk-10.0`), la plupart des projets de tests se construisent et tournent, y compris les projets Windows : `dotnet test tests/Trofeo.Modules.Agents.Tests`. Voir « Pièges connus ».
 
 ## Règles de travail
 
@@ -22,6 +22,6 @@ Tableau de bord modulaire pour l'écran USB Thermalright Trofeo Vision 9,16" (19
 
 ## Pièges connus
 
-- **Windows uniquement** : les projets ciblent `net10.0-windows` (WinForms, WinRT, LibreHardwareMonitor, WinUSB). Dans une session cloud sous Linux, la compilation et les tests des projets Windows ne marcheront probablement pas : écrire les plans et la logique indépendante de Windows là-bas, et vérifier sur le PC d'Alex (suite complète + vrai écran).
+- **Windows, mais testable sous Linux** : les projets ciblent `net10.0-windows` (WinForms, WinRT, LibreHardwareMonitor, WinUSB). Sous Linux, la plupart des projets de tests se construisent et tournent quand même (`dotnet test tests/<projet>`), grâce à `EnableWindowsTargeting` et au paquet natif Skia pour Linux, tous deux conditionnés à Linux. Échecs connus : DPAPI et police de secours (pas de polices système) dans Core et Network, `cmd.exe` dans Sensors, et Display.Tests qui demande le runtime Windows Desktop. L'écran réel, Media Foundation, WinRT et les raccourcis clavier restent à vérifier sur le PC d'Alex.
 - **Application Claude empaquetée (MSIX)** sur le PC d'Alex : ce qui est lancé depuis les terminaux de Claude écrit `%AppData%` dans une copie privée (`%LocalAppData%\Packages\Claude_…\LocalCache\Roaming`). Pour changer ses vrais réglages (`%AppData%\trofeo-HB-dashboard`), lui donner une commande à lancer dans son propre terminal. Pour lire ses vrais fichiers (journal, `layout.json`), passer par `\\localhost\C$\Users\%USERNAME%\AppData\Roaming\…`. Pour lancer le service comme lui, `explorer.exe <chemin de Trofeo.Display.exe>`, avec son accord.
 - Le service ne démarre pas encore tout seul avec Windows (plan 6) : Alex lance `src\Trofeo.Display\bin\Release\net10.0-windows10.0.19041.0\Trofeo.Display.exe` lui-même.

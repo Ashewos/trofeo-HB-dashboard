@@ -12,9 +12,4 @@
     <ProjectReference Include="..\..\src\Trofeo.Core\Trofeo.Core.csproj" />
   </ItemGroup>
 
-  <!-- Sous Linux, SkiaSharp a besoin de sa bibliothèque native. -->
-  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.0" />
-  </ItemGroup>
-
 </Project>

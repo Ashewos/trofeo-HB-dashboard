@@ -6,4 +6,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
+
+  <!-- Sous Linux, permet de construire les projets net10.0-windows (tests compris) sans les packs Windows. -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
 </Project>
