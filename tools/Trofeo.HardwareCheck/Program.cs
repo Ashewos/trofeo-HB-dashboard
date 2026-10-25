@@ -38,6 +38,12 @@ for (var i = 0; i < args.Length; i++)
             i += 2;
             mode = "set-secret";
             break;
+        case "--clear-secret" when i + 2 < args.Length && !args[i + 1].StartsWith("--") && !args[i + 2].StartsWith("--"):
+            secretScope = args[i + 1];
+            secretKey = args[i + 2];
+            i += 2;
+            mode = "clear-secret";
+            break;
         case "--city" when i + 1 < args.Length && !args[i + 1].StartsWith("--"):
             var words = args.Skip(i + 1).TakeWhile(a => !a.StartsWith("--")).ToArray();
             cityName = string.Join(' ', words);
@@ -47,7 +53,7 @@ for (var i = 0; i < args.Length; i++)
         default:
             Console.Error.WriteLine(
                 "Usage : Trofeo.HardwareCheck [--orientation <0|180>] [--fps] [--recovery]"
-                + " | --set-secret <portée> <clé> (valeur sur l'entrée standard) | --city <nom>");
+                + " | --set-secret <portée> <clé> (valeur sur l'entrée standard) | --clear-secret <portée> <clé> | --city <nom>");
             return 2;
     }
 }
@@ -58,6 +64,7 @@ return mode switch
     "fps" => RunFps(rotation),
     "recovery" => RunRecovery(rotation),
     "set-secret" => RunSetSecret(secretScope!, secretKey!),
+    "clear-secret" => RunClearSecret(secretScope!, secretKey!),
     "city" => RunCity(cityName!),
     _ => RunOrientation(rotation),
 };
@@ -176,7 +183,7 @@ static int RunRecovery(int rotation)
     }
     catch (UsbBusyException)
     {
-        Console.WriteLine("Écran utilisé par un autre programme (fermez TRCC).");
+        Console.WriteLine("Écran utilisé par un autre programme (ferme TRCC).");
         return 1;
     }
 
@@ -247,7 +254,7 @@ static int RunSetSecret(string scope, string key)
     }
 
     value = TrimOneNewline(value);
-    if (string.IsNullOrEmpty(value))
+    if (string.IsNullOrWhiteSpace(value))
     {
         Console.Error.WriteLine("Valeur vide : rien n'a été enregistré.");
         return 1;
@@ -264,6 +271,27 @@ static int RunSetSecret(string scope, string key)
     }
 
     Console.WriteLine($"Secret {scope}/{key} enregistré.");
+    return 0;
+}
+
+/// <summary>
+/// Efface un secret du coffre du service (<c>Set(clé, null)</c>). Sert aussi à faire confiance à nouveau à la console
+/// UniFi après le renouvellement de son certificat (clé <c>unifi.certSha256.&lt;hôte en minuscules&gt;</c>, portée
+/// <c>network</c>). Seul le nom de la clé est affiché, jamais une valeur.
+/// </summary>
+static int RunClearSecret(string scope, string key)
+{
+    try
+    {
+        new DpapiSecretVault(Path.Combine(AppPaths.SettingsDir, "secrets.dat")).Scope(scope).Set(key, null);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
+    {
+        Console.Error.WriteLine($"Coffre inaccessible : {ex.Message}");
+        return 1;
+    }
+
+    Console.WriteLine($"Secret {scope}/{key} effacé.");
     return 0;
 }
 
