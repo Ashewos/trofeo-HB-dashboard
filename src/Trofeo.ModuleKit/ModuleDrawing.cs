@@ -127,6 +127,45 @@ public static class ModuleDrawing
     }
 
     /// <summary>
+    /// Barre dans le style du thème, <see cref="Theme.Track"/> pour la piste. <see cref="ThemeShape.Rounded"/> : <see cref="DrawBar(SKCanvas, SKRect, float, SKColor, SKColor)"/>.
+    /// <see cref="ThemeShape.Pixel"/> : angles vifs, segments pleins de 0,75 × hauteur séparés de 0,25 × hauteur
+    /// (autant de segments entiers que la largeur en contient, le reste à droite est laissé vide),
+    /// <c>round(fraction × nombre)</c> segments remplis (arrondi loin de zéro), sans anticrénelage, coordonnées arrondies au pixel.
+    /// </summary>
+    public static void DrawBar(SKCanvas canvas, SKRect rect, float fraction, SKColor fill, Theme theme)
+    {
+        if (theme.Shape != ThemeShape.Pixel)
+        {
+            DrawBar(canvas, rect, fraction, fill, theme.Track);
+            return;
+        }
+
+        if (rect.Width <= 0f || rect.Height <= 0f) return;
+
+        var segment = rect.Height * 0.75f;
+        var gap = rect.Height * 0.25f;
+        var pitch = segment + gap;
+        var count = (int)MathF.Floor((rect.Width + gap) / pitch);
+        if (count <= 0) return;
+
+        var clamped = float.IsNaN(fraction) ? 0f : Math.Clamp(fraction, 0f, 1f);
+        var filled = (int)MathF.Round(clamped * count, MidpointRounding.AwayFromZero);
+        var top = MathF.Round(rect.Top);
+        var bottom = MathF.Round(rect.Bottom);
+
+        using var paint = new SKPaint { IsAntialias = false, Style = SKPaintStyle.Fill };
+        for (var i = 0; i < count; i++)
+        {
+            var left = MathF.Round(rect.Left + i * pitch);
+            var right = MathF.Round(rect.Left + i * pitch + segment);
+            if (right <= left || bottom <= top) continue;
+
+            paint.Color = i < filled ? fill : theme.Track;
+            canvas.DrawRect(new SKRect(left, top, right, bottom), paint);
+        }
+    }
+
+    /// <summary>
     /// Message d'action (ex. « Réglages requis ») en <see cref="Theme.Warning"/>, centré dans
     /// <paramref name="area"/> sur au plus 3 lignes. Taille 24 × <paramref name="textScale"/>, réduite
     /// par pas de 2 jusqu'à 16 × <paramref name="textScale"/> si le texte ne tient pas.

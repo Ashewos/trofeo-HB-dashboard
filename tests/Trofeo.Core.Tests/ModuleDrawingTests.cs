@@ -199,6 +199,105 @@ public class ModuleDrawingTests
     }
 
     [Fact]
+    public void DrawBar_Pixel_DrawsWholeSegments()
+    {
+        using var bitmap = new SKBitmap(120, 12);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.Transparent);
+        var fill = new SKColor(0, 255, 0);
+        var track = new SKColor(255, 0, 0);
+        var theme = Themes.Classique with { Shape = ThemeShape.Pixel, Track = track };
+
+        ModuleDrawing.DrawBar(canvas, new SKRect(0, 0, 120, 12), 0.5f, fill, theme);
+
+        // 10 segments de 9 px séparés de 3 px : le segment n occupe x = 12 n … 12 n + 8.
+        for (var i = 0; i < 5; i++) Assert.Equal(fill, bitmap.GetPixel(12 * i + 4, 6));
+        for (var i = 5; i < 10; i++) Assert.Equal(track, bitmap.GetPixel(12 * i + 4, 6));
+        Assert.Equal(fill, bitmap.GetPixel(0, 0));
+        Assert.Equal(fill, bitmap.GetPixel(8, 11));
+        Assert.Equal(0, bitmap.GetPixel(10, 6).Alpha);
+        Assert.Equal(track, bitmap.GetPixel(64, 6));
+    }
+
+    [Fact]
+    public void DrawBar_Pixel_LeavesRemainderEmptyOnTheRight()
+    {
+        using var bitmap = new SKBitmap(128, 12);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.Transparent);
+        var theme = Themes.Classique with { Shape = ThemeShape.Pixel, Track = new SKColor(255, 0, 0) };
+
+        ModuleDrawing.DrawBar(canvas, new SKRect(0, 0, 128, 12), 1f, new SKColor(0, 255, 0), theme);
+
+        // 128 px contiennent 10 segments (le 11e demanderait 129 px) : tout ce qui est à droite du 10e reste vide.
+        Assert.Equal(new SKColor(0, 255, 0), bitmap.GetPixel(12 * 9 + 8, 6));
+        Assert.Equal(0, bitmap.GetPixel(12 * 9 + 9, 6).Alpha);
+        Assert.Equal(0, bitmap.GetPixel(125, 6).Alpha);
+    }
+
+    [Theory]
+    [InlineData(0.04f, 0)]
+    [InlineData(0.05f, 1)]
+    [InlineData(0f, 0)]
+    [InlineData(1f, 10)]
+    [InlineData(7f, 10)]
+    [InlineData(-3f, 0)]
+    [InlineData(float.NaN, 0)]
+    public void DrawBar_Pixel_Rounding(float fraction, int expectedFilled)
+    {
+        using var bitmap = new SKBitmap(120, 12);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.Transparent);
+        var fill = new SKColor(0, 255, 0);
+        var track = new SKColor(255, 0, 0);
+        var theme = Themes.Classique with { Shape = ThemeShape.Pixel, Track = track };
+
+        ModuleDrawing.DrawBar(canvas, new SKRect(0, 0, 120, 12), fraction, fill, theme);
+
+        var filled = 0;
+        for (var i = 0; i < 10; i++)
+        {
+            var pixel = bitmap.GetPixel(12 * i + 4, 6);
+            Assert.True(pixel == fill || pixel == track);
+            if (pixel == fill) filled++;
+        }
+        Assert.Equal(expectedFilled, filled);
+    }
+
+    [Fact]
+    public void DrawBar_Pixel_EmptyRect_DrawsNothing()
+    {
+        using var bitmap = new SKBitmap(20, 12);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.Transparent);
+        var theme = Themes.Classique with { Shape = ThemeShape.Pixel };
+
+        ModuleDrawing.DrawBar(canvas, new SKRect(0, 0, 0, 12), 1f, new SKColor(0, 255, 0), theme);
+        // Trop étroit pour un seul segment (9 px) : rien non plus.
+        ModuleDrawing.DrawBar(canvas, new SKRect(0, 0, 5, 12), 1f, new SKColor(0, 255, 0), theme);
+
+        Assert.Equal(0, CountPixels(bitmap, p => p.Alpha != 0));
+    }
+
+    [Fact]
+    public void DrawBar_Rounded_UsesThemeTrack()
+    {
+        using var bitmap = new SKBitmap(200, 40);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.Transparent);
+        var track = new SKColor(10, 20, 30, 128);
+        var theme = Themes.Classique with { Shape = ThemeShape.Rounded, Track = track };
+
+        ModuleDrawing.DrawBar(canvas, new SKRect(10, 10, 190, 30), 0f, new SKColor(255, 0, 0), theme);
+
+        var center = bitmap.GetPixel(100, 20);
+        Assert.Equal(track.Alpha, center.Alpha);
+        Assert.InRange(center.Red, track.Red - 2, track.Red + 2);
+        Assert.InRange(center.Green, track.Green - 2, track.Green + 2);
+        Assert.InRange(center.Blue, track.Blue - 2, track.Blue + 2);
+    }
+
+    [Fact]
     public void DrawActionMessage_LongMessage_StaysInsideArea()
     {
         var theme = Themes.Classique;
