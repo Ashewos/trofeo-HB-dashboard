@@ -16,7 +16,7 @@ public sealed class ImageBackground : IBackground
     /// <summary>Taille à laquelle le fichier a été décodé (réduite pour une grande image). Pour les tests.</summary>
     internal SKSizeI DecodedSize { get; }
 
-    /// <summary>Rend null, avec un avertissement, si le fichier manque ou est illisible.</summary>
+    /// <summary>Rend null, avec un avertissement, si le fichier manque ou est illisible. Ne lève jamais.</summary>
     public static ImageBackground? TryLoad(string path, Action<string>? warn)
     {
         using var codec = BackgroundSupport.OpenCodec(path, warn);
@@ -28,8 +28,9 @@ public sealed class ImageBackground : IBackground
         {
             image = BackgroundSupport.DecodeCover(codec, out decoded);
         }
-        catch (Exception e) when (e is IOException or OutOfMemoryException or InvalidOperationException)
+        catch (Exception)
         {
+            // SkiaSharp lève une Exception ordinaire quand l'allocation échoue : jamais de plantage pour un fond.
             image = null;
             decoded = default;
         }

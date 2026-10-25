@@ -53,49 +53,57 @@ public sealed class AnimatedBackground : IBackground
         _until = TimeSpan.FromMilliseconds(_durations[0]);
     }
 
-    /// <summary>Rend null, avec un avertissement, si le fichier manque ou est illisible.</summary>
+    /// <summary>
+    /// Surface maximale d'une image animée : 4096 × 4096 px (16 777 216). Le tampon de décodage reste en mémoire toute la
+    /// lecture (4 octets par pixel, 64 Mo au plus) ; au-delà, le fichier est refusé comme illisible.
+    /// </summary>
+    internal const long MaxPixels = 4096L * 4096L;
+
+    /// <summary>Rend null, avec un avertissement, si le fichier manque ou est illisible. Ne lève jamais.</summary>
     public static AnimatedBackground? TryLoad(string path, Action<string>? warn)
     {
         var codec = BackgroundSupport.OpenCodec(path, warn);
         if (codec is null) return null;
 
+        AnimatedBackground? background = null;
         try
         {
             if (codec.FrameCount <= 1)
             {
                 var still = BackgroundSupport.DecodeCover(codec, out _);
-                if (still is null)
-                {
-                    warn?.Invoke(BackgroundSupport.Unreadable(path));
-                    return null;
-                }
-                return new AnimatedBackground(still);
+                if (still is not null) return new AnimatedBackground(still);
             }
-
-            var frames = codec.FrameInfo;
-            var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-            var buffer = new SKBitmap(info);
-            var screen = new SKBitmap(BackgroundSupport.ScreenInfo);
-            var background = new AnimatedBackground(codec, buffer, screen, frames);
-            codec = null; // l'instance en est propriétaire
-
-            if (!background.ShowFrame(0))
+            else if ((long)codec.Info.Width * codec.Info.Height <= MaxPixels)
             {
-                background.Dispose();
-                warn?.Invoke(BackgroundSupport.Unreadable(path));
-                return null;
+                var frames = codec.FrameInfo;
+                var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                SKBitmap? buffer = null, screen = null;
+                try
+                {
+                    buffer = new SKBitmap(info);
+                    screen = new SKBitmap(BackgroundSupport.ScreenInfo);
+                    background = new AnimatedBackground(codec, buffer, screen, frames);
+                    codec = null; // l'instance en est propriétaire (avec le tampon et l'écran)
+                    buffer = screen = null;
+                }
+                finally
+                {
+                    buffer?.Dispose();
+                    screen?.Dispose();
+                }
+
+                if (background.ShowFrame(0)) return background;
             }
-            return background;
         }
-        catch (Exception e) when (e is IOException or OutOfMemoryException or InvalidOperationException)
+        catch (Exception)
         {
-            warn?.Invoke(BackgroundSupport.Unreadable(path));
-            return null;
+            // SkiaSharp lève une Exception ordinaire quand l'allocation échoue : jamais de plantage pour un fond.
         }
-        finally
-        {
-            codec?.Dispose();
-        }
+
+        background?.Dispose();
+        codec?.Dispose();
+        warn?.Invoke(BackgroundSupport.Unreadable(path));
+        return null;
     }
 
     public bool IsAnimated => _codec is not null;
@@ -131,15 +139,16 @@ public sealed class AnimatedBackground : IBackground
     {
         if (!Decode(index)) return false;
 
-        // Le tampon et l'image d'écran sont réutilisés ; l'image Skia précédente (qui pointe sur les mêmes pixels, sans copie) est libérée avant d'être écrasée.
-        if (_current is not null) _current.Dispose();
-        _current = null!;
+        // Le tampon et l'image d'écran sont réutilisés (mêmes adresses de pixels). La nouvelle image Skia est construite
+        // avant de libérer l'ancienne : en cas d'exception, Current reste valable.
         using (var source = SKImage.FromPixels(_buffer!.PeekPixels()))
         {
             _canvas!.Clear(SKColors.Black);
             BackgroundSupport.DrawCover(_canvas, source);
         }
-        _current = SKImage.FromPixels(_screen!.PeekPixels());
+        var next = SKImage.FromPixels(_screen!.PeekPixels());
+        _current?.Dispose();
+        _current = next;
         return true;
     }
 

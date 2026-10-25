@@ -387,8 +387,18 @@ public sealed class BackgroundTests : IDisposable
         var path = WriteGif("many.gif", Enumerable.Repeat(5, 12).ToArray(), colors);
         using var bg = AnimatedBackground.TryLoad(path, null)!;
 
-        Assert.Equal(2, bg.BitmapCount);
-        for (int ms = 0; ms < 3000; ms += 70) bg.Advance(TimeSpan.FromMilliseconds(ms));
+        // Chaque image recadrée est écrite dans les mêmes pixels (pas de nouveau bitmap de 3,5 Mo par image).
+        var address = bg.Current.PeekPixels().GetPixels();
+        Assert.NotEqual(IntPtr.Zero, address);
+        int changes = 0;
+        for (int ms = 0; ms < 3000; ms += 70)
+        {
+            if (!bg.Advance(TimeSpan.FromMilliseconds(ms))) continue;
+            changes++;
+            Assert.Equal(address, bg.Current.PeekPixels().GetPixels());
+            Assert.Equal(2, bg.BitmapCount);
+        }
+        Assert.True(changes > 10);
         Assert.Equal(2, bg.BitmapCount);
     }
 
@@ -450,6 +460,20 @@ public sealed class BackgroundTests : IDisposable
         Assert.Null(bg.UntilNextFrame);
         Assert.False(bg.Advance(TimeSpan.FromSeconds(10)));
         AssertNear(Blue, Pixel(bg.Current, 960, 231));
+    }
+
+    [Fact]
+    public void Animated_HugeFrame_IsRefusedBeforeAllocating()
+    {
+        // Écran logique de 10 000 × 10 000 (> 4096 × 4096) : refusé sans allouer le tampon de décodage (400 Mo).
+        var path = Path.Combine(_dir, "enorme.gif");
+        TinyGif.WritePatches(path, [(Red, 0, 0, 4, 4), (Green, 0, 0, 2, 2)], [10, 10], screenSize: 10000);
+        var warnings = new List<string>();
+
+        var bg = AnimatedBackground.TryLoad(path, warnings.Add);
+
+        Assert.Null(bg);
+        Assert.Equal([$"Fond d'écran illisible : {path}. Fond du thème utilisé."], warnings);
     }
 
     [Fact]

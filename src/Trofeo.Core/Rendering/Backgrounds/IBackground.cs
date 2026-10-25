@@ -81,9 +81,9 @@ internal static class BackgroundSupport
                 return codec;
             }
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception)
         {
-            // Fichier verrouillé ou chemin invalide : traité comme illisible.
+            // Fichier verrouillé, chemin invalide, échec d'allocation : traité comme illisible.
         }
 
         codec?.Dispose();

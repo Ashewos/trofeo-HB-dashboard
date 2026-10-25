@@ -21,7 +21,7 @@ internal static class TinyGif
     /// quel (élimination « ne pas disposer ») : l'image dépend alors de la précédente (RequiredFrame ≥ 0).
     /// </summary>
     public static void WritePatches(string path, IReadOnlyList<(SKColor Color, int X, int Y, int W, int H)> frames,
-        IReadOnlyList<int> delaysCs)
+        IReadOnlyList<int> delaysCs, int screenSize = Size)
     {
         if (frames.Count != delaysCs.Count) throw new ArgumentException("Un délai par image.");
 
@@ -35,7 +35,7 @@ internal static class TinyGif
         void U16(int v) { ms.WriteByte((byte)(v & 0xFF)); ms.WriteByte((byte)(v >> 8)); }
 
         Bytes("GIF89a"u8.ToArray());
-        U16(Size); U16(Size);
+        U16(screenSize); U16(screenSize); // écran logique (les images restent minuscules)
         Bytes((byte)(0x80 | ((bits - 1) << 4) | (bits - 1)), 0, 0); // table globale, taille 2^bits
         for (int i = 0; i < (1 << bits); i++)
         {
