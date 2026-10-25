@@ -27,14 +27,15 @@ public static class ClaudeMascot
         ['w'] = Text,
     };
 
-    // La pose de repos : yeux en colonnes 6 et 11 (rangées 3 et 4), bras en rangées 4 et 5, pattes en rangées 8 et 9.
+    // La pose de repos : yeux en colonnes 5 et 10 (rangées 3 et 4), centrés sur le corps (colonnes 2 à 13),
+    // bras en rangées 4 et 5, pattes en rangées 8 et 9.
     private static readonly string[] RestRows =
     [
         "................",
         "..oooooooooooo..",
         "..oooooooooooo..",
-        "..ooookooookoo..",
-        "ooooookooookoooo",
+        "..oookooookooo..",
+        "oooookooookooooo",
         "oooooooooooooooo",
         "..oooooooooooo..",
         "..oooooooooooo..",
@@ -109,7 +110,7 @@ public static class ClaudeMascot
     {
         Pose At(int fromRow, int toRow, Ease ease) => new(120,
         [
-            .. Figure(leftArm: false, rightArm: false),
+            .. Figure(),
             new Layer(OverheadDumbbell(), new SKPointI(BodyX + 5, BodyY + fromRow), new SKPointI(BodyX + 5, BodyY + toRow)),
         ], ease);
 
@@ -165,8 +166,8 @@ public static class ClaudeMascot
     {
         const int steps = 10;
         Sprite[] dots = [Particles.Dot(Accent), Particles.Dot(Warning), Particles.Dot(Orange), Particles.Dot(Text)];
-        var area = new SKRectI(0, 0, 24, 6);
-        var origin = new SKPointI(BodyX + 8, BodyY + 1);
+        var area = new SKRectI(0, 0, 24, 7);
+        var origin = new SKPointI(BodyX + 8, BodyY);
 
         var poses = Enumerable.Range(0, steps).Select(step =>
         {
@@ -207,14 +208,14 @@ public static class ClaudeMascot
         var layers = new List<Layer> { Still(new Sprite(rows, Palette), x, BodyY) };
         if (eyes == Eyes.Open)
         {
-            // Colonnes 6 et 11 au repos, rangées 3 et 4.
-            layers.Add(Still(Px("k", "k"), x + 6 + look, BodyY + 3));
-            layers.Add(Still(Px("k", "k"), x + 11 + look, BodyY + 3));
+            // Colonnes 5 et 10 au repos, rangées 3 et 4.
+            layers.Add(Still(Px("k", "k"), x + 5 + look, BodyY + 3));
+            layers.Add(Still(Px("k", "k"), x + 10 + look, BodyY + 3));
         }
         else
         {
-            // Yeux fermés : une rangée horizontale de 2 pixels par œil, au niveau de la rangée basse des yeux.
-            layers.Add(Still(Px("kk"), x + 5, BodyY + 4));
+            // Yeux fermés : une rangée horizontale de 2 pixels par œil (colonnes 4-5 et 10-11), à la rangée basse des yeux.
+            layers.Add(Still(Px("kk"), x + 4, BodyY + 4));
             layers.Add(Still(Px("kk"), x + 10, BodyY + 4));
         }
 

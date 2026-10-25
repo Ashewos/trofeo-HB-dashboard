@@ -197,7 +197,8 @@ public sealed class MascotDefinitionTests
     {
         Sprite[] dots = [Particles.Dot(SKColors.Red)];
         var area = new SKRectI(0, 0, 24, 6);
-        var origin = new SKPointI(12, 6);
+        var origin = new SKPointI(12, 5);
+
         var first = Particles.Burst(dots, 24, 3, origin, area, 0, 10, Ease.OutQuad);
         Assert.NotEmpty(first);
         Assert.All(first, layer => Assert.Equal(origin, layer.From));
@@ -206,18 +207,88 @@ public sealed class MascotDefinitionTests
         var previous = Particles.Burst(dots, 24, 3, origin, area, 4, 10, Ease.OutQuad);
         var next = Particles.Burst(dots, 24, 3, origin, area, 5, 10, Ease.OutQuad);
         Assert.All(next, layer => Assert.Contains(previous, other => other.To == layer.From));
+
+        // Avec un seul pas, la pose va de l'origine à la cible : ce sont les cibles du tirage (même graine).
+        var targets = Particles.Burst(dots, 24, 3, origin, area, 0, 1, Ease.OutQuad).Select(l => l.To).ToList();
+        Assert.Equal(24, targets.Count);
+
+        // À la dernière pose, les particules encore là arrivent exactement sur leur cible.
+        var last = Particles.Burst(dots, 24, 3, origin, area, 9, 10, Ease.OutQuad);
+        Assert.NotEmpty(last);
+        Assert.All(last, layer => Assert.Contains(layer.To, targets));
+
+        // Profil OutQuad : au premier tiers du clip (3 poses sur 9), plus de la moitié du chemin est faite.
+        var third = Particles.Burst(dots, 24, 3, origin, area, 2, 9, Ease.OutQuad);
+        Assert.Equal(24, third.Count);
+        static int Distance(SKPointI a, SKPointI b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
+        var done = third.Sum(layer => Distance(origin, layer.To));
+        var total = targets.Sum(target => Distance(origin, target));
+        Assert.True(done > total / 2.0, $"{done} sur {total} au premier tiers.");
     }
 
     [Fact]
     public void Burst_KeepsEverySpriteInsideTheArea()
     {
+        // Le départ est dans la zone : tout le trajet, image entière, y reste.
         var heart = new Sprite(["h.h", "hhh", ".h."], new Dictionary<char, SKColor> { ['h'] = SKColors.HotPink });
         var area = new SKRectI(0, 0, 24, 6);
         for (var step = 0; step < 10; step++)
         {
-            foreach (var layer in Particles.Burst([heart], 6, 11, new SKPointI(10, 4), area, step, 10, Ease.OutQuad))
+            var layers = Particles.Burst([heart], 6, 11, new SKPointI(10, 3), area, step, 10, Ease.OutQuad);
+            Assert.All(layers, layer =>
             {
-                Assert.True(Inside(Box(heart, layer.To), new SKRectI(0, 0, 24, 8)));
+                Assert.True(Inside(Box(heart, layer.From), area), $"départ {layer.From}");
+                Assert.True(Inside(Box(heart, layer.To), area), $"arrivée {layer.To}");
+            });
+        }
+    }
+
+    [Fact]
+    public void Burst_Hearts_DoNotOverlapAtArrival()
+    {
+        var heart = new Sprite(["h.h", "hhh", ".h."], new Dictionary<char, SKColor> { ['h'] = SKColors.HotPink });
+        var area = new SKRectI(0, 0, 24, 6);
+        var arrivals = Particles.Burst([heart], 6, 20_261_026, new SKPointI(10, 3), area, 0, 1, Ease.OutQuad)
+            .Select(layer => Box(heart, layer.To)).ToList();
+        Assert.Equal(6, arrivals.Count);
+        for (var i = 0; i < arrivals.Count; i++)
+        {
+            for (var j = i + 1; j < arrivals.Count; j++)
+            {
+                Assert.False(arrivals[i].IntersectsWith(arrivals[j]), $"cœurs {i} et {j} se chevauchent.");
+            }
+        }
+    }
+
+    [Fact]
+    public void Claude_Rest_EyesAreCenteredOnTheBody()
+    {
+        // Corps en colonnes 2 à 13 : yeux en colonnes 5 et 10 (index du corps), rangée 3 (haut de l'œil).
+        var eyes = ClaudeMascot.Definition.Rest.Layers.Where(l => l.Sprite.Width == 1 && l.Sprite.Height == 2).Select(l => l.From).ToList();
+        Assert.Equal([new SKPointI(4 + 5, 6 + 3), new SKPointI(4 + 10, 6 + 3)], eyes);
+    }
+
+    [Fact]
+    public void Claude_Press_KeepsTheSideArms()
+    {
+        // À chaque pose du développé, les bras du corps (rangées 4 et 5, colonnes 0-1 et 14-15) sont dessinés.
+        var press = ClaudeMascot.Definition.Clips[MascotState.Working].Single(c => c.Name == "développé");
+        foreach (var pose in press.Poses)
+        {
+            using var bitmap = new SKBitmap(24, 16);
+            using (var canvas = new SKCanvas(bitmap))
+            {
+                canvas.Clear(SKColors.Transparent);
+                foreach (var layer in pose.Layers)
+                {
+                    layer.Sprite.Draw(canvas, layer.From.X, layer.From.Y, 1);
+                }
+            }
+
+            foreach (var column in new[] { 0, 1, 14, 15 })
+            {
+                Assert.NotEqual(0, bitmap.GetPixel(4 + column, 6 + 4).Alpha);
+                Assert.NotEqual(0, bitmap.GetPixel(4 + column, 6 + 5).Alpha);
             }
         }
     }

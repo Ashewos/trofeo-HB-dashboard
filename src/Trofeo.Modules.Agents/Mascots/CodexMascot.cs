@@ -155,7 +155,7 @@ public static class CodexMascot
 
     // ---------------------------------------------------------------- Terminé
 
-    // Six cœurs de 3 × 3 et dix étincelles qui montent en ralentissant.
+    // Six cœurs de 3 × 3 (un par bande, alternés haut et bas) et dix étincelles qui montent en ralentissant.
     private static Clip Hearts()
     {
         const int steps = 10;
@@ -167,7 +167,7 @@ public static class CodexMascot
         [
             Cloud(),
             .. Prompt(),
-            .. Particles.Burst([heart], 6, 20_261_026, new SKPointI(BodyX + 6, BodyY - 2), area, step, steps, Ease.OutQuad),
+            .. Particles.Burst([heart], 6, 20_261_026, new SKPointI(BodyX + 6, BodyY - 3), area, step, steps, Ease.OutQuad),
             .. Particles.Burst([spark], 10, 20_261_027, new SKPointI(BodyX + 7, BodyY - 1), area, step, steps, Ease.OutQuad),
         ]));
         return new Clip("cœurs", [.. poses]);
