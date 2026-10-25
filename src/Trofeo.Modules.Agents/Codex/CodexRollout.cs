@@ -22,6 +22,9 @@ public sealed class CodexRollout
     // Un task_started, task_complete ou turn_aborted a été vu depuis le dernier Reset. Sinon (fin de fichier qui a coupé
     // le début d'un long tour), on ne sait pas si une tâche est ouverte et on se fie à la fraîcheur du dernier événement.
     private bool _turnSeen;
+    // Moment du dernier événement d'activité (response_item, ou event_msg autre que token_count) : session_meta,
+    // turn_context et token_count ne disent pas que l'agent travaille.
+    private DateTimeOffset? _lastWorkAt;
     // Le dernier événement est une demande d'approbation ou de réponse à l'utilisateur.
     private bool _waiting;
 
@@ -74,14 +77,16 @@ public sealed class CodexRollout
         Quotas = null;
         _taskOpen = false;
         _turnSeen = false;
+        _lastWorkAt = null;
         _waiting = false;
     }
 
     /// <summary>
     /// Ce que fait la session à l'instant <paramref name="now"/> : elle attend l'utilisateur si une demande
     /// d'approbation est le dernier événement ; elle travaille si le dernier événement a moins de 10 minutes et que
-    /// la tâche est ouverte (<c>task_started</c> sans fin depuis) ou que l'on n'a vu aucun début ni fin de tâche (le
-    /// début d'un long tour a pu sortir de la partie lue) ; sinon elle est inactive.
+    /// la tâche est ouverte (<c>task_started</c> sans fin depuis) ; sans aucun début ni fin de tâche vus (le début d'un
+    /// long tour a pu sortir de la partie lue), c'est un événement d'activité de moins de 10 minutes qui compte ;
+    /// sinon elle est inactive.
     /// </summary>
     public AgentActivity Activity(DateTimeOffset now)
     {
@@ -90,8 +95,8 @@ public sealed class CodexRollout
             return AgentActivity.Waiting;
         }
 
-        var open = !_turnSeen || _taskOpen;
-        return open && LastEventAt is { } last && now - last < WorkingMaxSilence ? AgentActivity.Working : AgentActivity.Idle;
+        var last = _turnSeen ? (_taskOpen ? LastEventAt : null) : _lastWorkAt;
+        return last is { } moment && now - moment < WorkingMaxSilence ? AgentActivity.Working : AgentActivity.Idle;
     }
 
     /// <summary>Prend en compte une ligne de la transcription. Une ligne vide, illisible ou inconnue est ignorée.</summary>
@@ -113,7 +118,8 @@ public sealed class CodexRollout
             }
 
             var at = Time(Str(root, "timestamp"));
-            var outcome = Str(root, "type") switch
+            var type = Str(root, "type");
+            var outcome = type switch
             {
                 "session_meta" => ApplyMeta(payload, at),
                 "turn_context" => ApplyTurnContext(payload),
@@ -127,6 +133,12 @@ public sealed class CodexRollout
                 if (at is { } moment && (LastEventAt is not { } last || moment > last))
                 {
                     LastEventAt = moment;
+                }
+
+                if (at is { } worked && type is ("response_item" or "event_msg") && outcome != Outcome.Passive
+                    && (_lastWorkAt is not { } lastWork || worked > lastWork))
+                {
+                    _lastWorkAt = worked;
                 }
 
                 // Un relevé de jetons (ou la ligne de méta) ne répond pas à la demande : l'attente continue.

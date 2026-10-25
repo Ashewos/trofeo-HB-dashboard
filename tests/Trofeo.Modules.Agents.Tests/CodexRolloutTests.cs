@@ -258,6 +258,34 @@ public sealed class CodexRolloutTests
     }
 
     [Fact]
+    public void Activity_OnlyMetaContextAndTokenCount_IsIdle()
+    {
+        var rollout = Build(Meta(seconds: 0));
+        Assert.Equal(AgentActivity.Idle, rollout.Activity(T0.AddSeconds(5)));
+
+        rollout.Apply(CodexTestLines.Line("turn_context", T0.AddSeconds(1), """{"model":"gpt-5-codex"}"""));
+        rollout.Apply(Event("token_count", 2, ",\"info\":null"));
+        Assert.Equal(AgentActivity.Idle, rollout.Activity(T0.AddSeconds(5)));
+    }
+
+    [Fact]
+    public void Activity_MetaThenFunctionCall_IsWorking()
+    {
+        var rollout = Build(Meta(seconds: 0), Call("shell", """{"command":"ls"}""", 3));
+
+        Assert.Equal(AgentActivity.Working, rollout.Activity(T0.AddSeconds(5)));
+        Assert.Equal(AgentActivity.Idle, rollout.Activity(T0.AddMinutes(11)));
+    }
+
+    [Fact]
+    public void Activity_RecentTokenCountAfterOldWork_IsIdle()
+    {
+        var rollout = Build(Call("shell", """{"command":"ls"}""", 0), Event("token_count", 15 * 60, ",\"info\":null"));
+
+        Assert.Equal(AgentActivity.Idle, rollout.Activity(T0.AddMinutes(16)));
+    }
+
+    [Fact]
     public void Activity_NoTurnBoundarySeen_ApprovalStillWaits()
     {
         var rollout = Build(Call("shell", """{"command":"ls"}""", 0), Event("exec_approval_request", 1));
