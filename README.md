@@ -170,7 +170,14 @@ Données météo : [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0).
 
 Mascottes : redessins de fan de Clawd (Anthropic) et du pet Codex (OpenAI). Projet non affilié à Anthropic, OpenAI ni Thermalright.
 
-La police Barlow Semi Condensed est distribuée sous licence SIL Open Font License 1.1 (voir `src/Trofeo.Core/Assets/Fonts/OFL.txt`).
+Polices embarquées, toutes sous licence SIL Open Font License 1.1 (le texte de chaque licence est dans `src/Trofeo.Core/Assets/Fonts/` et copié à côté du programme) :
+
+- Barlow Semi Condensed : `OFL-BarlowSemiCondensed.txt` ;
+- Manrope : `OFL-Manrope.txt` ;
+- Pixelify Sans : `OFL-PixelifySans.txt` ;
+- VT323 : `OFL-VT323.txt`.
+
+Manrope et Pixelify Sans, publiées en police variable, sont embarquées en une graisse fixe (Medium et Regular).
 
 ## Licence
 

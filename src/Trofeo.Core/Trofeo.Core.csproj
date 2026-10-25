@@ -14,7 +14,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\Fonts\*.ttf" LogicalName="Trofeo.Core.Assets.Fonts.%(Filename)%(Extension)" />
-    <EmbeddedResource Include="Assets\Fonts\OFL.txt" LogicalName="Trofeo.Core.Assets.Fonts.OFL.txt" />
+    <!-- Les textes de licence OFL suivent les polices dans le dossier de sortie (Assets/Fonts). -->
+    <Content Include="Assets\Fonts\OFL-*.txt" Link="Assets\Fonts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
