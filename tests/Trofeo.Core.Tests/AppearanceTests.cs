@@ -86,6 +86,16 @@ public sealed class AppearanceTests
     }
 
     [Fact]
+    public void Resolve_FontEqualToThemeFont_StillReplacesFeedTypeface()
+    {
+        var def = Resolve(new AppearanceSettings("pixel", Font: "Pixelify Sans"));
+
+        Assert.Equal(1f, def.Theme.FeedScale);
+        Assert.Same(def.Theme.Typeface, def.Theme.FeedTypeface);
+        Assert.Equal("Pixelify Sans", def.Theme.FeedTypeface.FamilyName);
+    }
+
+    [Fact]
     public void Resolve_MissingFont_KeepsThemeUntouchedWithWarning()
     {
         var warnings = new List<string>();

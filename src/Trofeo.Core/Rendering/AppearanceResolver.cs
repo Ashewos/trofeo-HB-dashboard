@@ -6,7 +6,7 @@ public static class AppearanceResolver
     /// <summary>
     /// Thème inconnu : Classique, avec un avertissement. Opacité bornée à [0, 1] ; NaN : celle du thème, avec un avertissement.
     /// Police : <see cref="FontResolver"/> ; si elle est trouvée, <c>Typeface</c> et <c>FeedTypeface</c> la prennent et
-    /// <c>FeedScale</c> revient à 1. Si elle est introuvable, le thème reste tel quel.
+    /// <c>FeedScale</c> revient à 1. Si elle est introuvable, le thème reste tel quel ; si c'est la police du thème elle-même, le fil la prend aussi.
     /// </summary>
     public static ThemeDefinition Resolve(AppearanceSettings settings, ISystemFonts fonts, Action<string>? warn = null)
     {
@@ -27,8 +27,15 @@ public static class AppearanceResolver
 
         if (!string.IsNullOrWhiteSpace(settings.Font))
         {
-            var face = FontResolver.Resolve(settings.Font, definition.Theme.Typeface, fonts, warn);
-            if (!ReferenceEquals(face, definition.Theme.Typeface))
+            // FontResolver rend le repli et avertit quand la police est introuvable : l'avertissement distingue
+            // « introuvable » de « trouvée, et c'est justement celle du thème » (instance embarquée partagée).
+            var notFound = false;
+            var face = FontResolver.Resolve(settings.Font, definition.Theme.Typeface, fonts, message =>
+            {
+                notFound = true;
+                warn?.Invoke(message);
+            });
+            if (!notFound)
                 definition = definition with { Theme = definition.Theme with { Typeface = face, FeedTypeface = face, FeedScale = 1f } };
         }
 
