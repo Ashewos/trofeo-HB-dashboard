@@ -4,7 +4,7 @@ Un tableau de bord modulaire pour l'écran LCD USB **Thermalright Trofeo Vision 
 
 On place des modules sur un damier de 16 × 4 cases : heure et météo, monitoring du PC, réseau, musique en cours, sessions Claude Code ou Codex… Chacun choisit les modules qu'il garde, leur taille, le thème et le fond d'écran.
 
-> 🚧 **Projet en construction.** Les fondations et les quatre modules de données sont faits : Heure et météo, Monitoring PC, En écoute et Réseau. Les modules Claude Code et Codex, ainsi que le logiciel de réglage, arrivent dans les prochaines versions.
+> 🚧 **Projet en construction.** Les fondations et six modules sont faits : Heure et météo, Monitoring PC, En écoute, Réseau, Claude Code et Codex. Le logiciel de réglage, les thèmes et le fond d'écran arrivent dans les prochaines versions.
 
 ## Ce qui marche aujourd'hui
 
@@ -16,23 +16,17 @@ On place des modules sur un damier de 16 × 4 cases : heure et météo, monitori
   - écran figé par un autre programme.
 - Renvoi de l'image chaque seconde, sinon l'écran repasse au logo Thermalright au bout d'environ 3 s.
 - Orientation 0° ou 180°, selon le sens de montage.
-- Quatre modules de données, placés par défaut dans les colonnes 8 à 15 :
+- Six modules. Par défaut, Claude Code occupe les colonnes 0 à 7 et les quatre modules de données les colonnes 8 à 15 :
   - **Heure et météo** : date, heure en 24 h ou 12 h, météo du lieu choisi ;
   - **Monitoring PC** : CPU, GPU, mémoire et températures ;
   - **En écoute** : titre, pochette et progression du média en cours dans Windows ;
-  - **Réseau** : débit instantané de la carte réseau du PC, d'une Freebox ou d'une console UniFi.
+  - **Réseau** : débit instantané de la carte réseau du PC, d'une Freebox ou d'une console UniFi ;
+  - **Claude Code** : un onglet par session ouverte (appli desktop ou terminal), au nom du projet, avec un point orange, jaune ou gris selon ce que fait la session, le flux de son activité, une mascotte animée, des confettis à la fin d'une réponse et un drapeau quand Claude te pose une question ;
+  - **Codex** : le même module pour Codex, avec sa mascotte en pixel art. Il n'est pas dans la disposition par défaut : ajoute-le à la main dans `layout.json` (type `"codex"`, 8 × 4 cases conseillées).
+- Raccourcis clavier globaux pour changer d'onglet : `Ctrl+Alt+←` et `Ctrl+Alt+→` pour l'onglet précédent ou suivant, `Ctrl+Alt+1` à `Ctrl+Alt+9` pour aller directement à un onglet. Une combinaison déjà prise par une autre application est simplement laissée de côté (elle est notée dans le journal).
 - Icône dans la zone de notification, qui indique l'état de l'écran.
 
 ## Ce qui arrive
-
-| Module | Contenu |
-|---|---|
-| Claude Code | Sessions en onglets, flux en direct, mascotte animée, contexte, quotas 5 h et hebdo |
-| Codex | Le même module pour Codex, avec sa mascotte en pixel art |
-
-Les colonnes 0 à 7 sont gardées pour Claude Code.
-
-Également prévus :
 
 - un logiciel de réglage en `.exe`, avec un mode « émuler » pour voir l'affichage sans l'écran ;
 - les thèmes Classique, Liquid Glass et Pixel ;
@@ -62,7 +56,7 @@ dotnet test
 dotnet run -c Release --project src/Trofeo.Display
 ```
 
-Le service s'installe dans la zone de notification. La disposition est enregistrée dans `%AppData%\trofeo-HB-dashboard\layout.json`, et le journal dans `%AppData%\trofeo-HB-dashboard\logs\display.log`. Un `layout.json` écrit par la première version ne garde que le module Heure ; pour obtenir les quatre modules par défaut, supprime le fichier pendant que le service est arrêté, il est recréé au prochain lancement.
+Le service s'installe dans la zone de notification. La disposition est enregistrée dans `%AppData%\trofeo-HB-dashboard\layout.json`, et le journal dans `%AppData%\trofeo-HB-dashboard\logs\display.log`. Un `layout.json` écrit par une version précédente ne contient pas Claude Code ; pour obtenir les cinq modules par défaut, supprime le fichier pendant que le service est arrêté, il est recréé au prochain lancement (tes réglages de météo, de réseau ou de raccourcis sont alors à refaire).
 
 L'outil `tools/Trofeo.HardwareCheck` sert à vérifier un écran :
 
@@ -71,13 +65,32 @@ L'outil `tools/Trofeo.HardwareCheck` sert à vérifier un écran :
 - `--recovery` : teste la reprise d'un écran figé ;
 - `--set-secret <portée> <clé>` : enregistre un secret (mot de passe, jeton) dans le coffre du service. La valeur se lit sur l'entrée standard, saisie masquée au clavier, et n'est jamais affichée. Une valeur vide ou faite d'espaces est refusée (code de sortie 1) ;
 - `--clear-secret <portée> <clé>` : efface un secret du coffre et affiche le nom de la clé effacée, jamais une valeur. Pour faire de nouveau confiance à une console UniFi dont le certificat a été renouvelé, efface son empreinte mémorisée avec `--clear-secret network unifi.certSha256.<hôte en minuscules>` (l'hôte de `layout.json` écrit en minuscules, avec son port s'il y en a un), puis relance le service : la prochaine connexion mémorise le nouveau certificat ;
-- `--city <nom>` : affiche les cinq villes proposées par Open-Meteo, avec leurs coordonnées, pour régler la météo.
+- `--city <nom>` : affiche les cinq villes proposées par Open-Meteo, avec leurs coordonnées, pour régler la météo ;
+- `--claude-statusline install <chemin de Trofeo.StatusLine.exe>`, `uninstall` ou `status` : branche, débranche ou décrit la barre d'état de Claude Code (voir plus bas).
 
 En attendant le logiciel de réglage, les modules se règlent à la main dans `layout.json`, service arrêté :
 
 - **Météo** : dans les réglages du module Heure, `"location":{"name":"Lyon","latitude":45.76,"longitude":4.84}`, avec les coordonnées données par `--city`.
 - **Freebox** : dans les réglages du module Réseau, `"source":"freebox"`. Au premier lancement, le module demande d'appuyer sur la flèche de la Freebox pour autoriser le dashboard.
 - **UniFi** : `"source":"unifi","unifi":{"host":"192.168.1.1"}`, puis la clé API de la console avec `--set-secret network unifi.apiKey`.
+
+## Quotas de Claude Code
+
+Le module lit les sessions Claude Code sans rien installer. Pour afficher en plus les quotas (fenêtre de 5 h et hebdomadaire), il faut brancher `Trofeo.StatusLine.exe` comme barre d'état de Claude Code : Claude lui envoie ses chiffres à chaque mise à jour de la barre, il les garde dans `~/.claude/trofeo-HB-dashboard/statusline`, et le module les relit. Tant qu'aucune session ne fait tourner la barre d'état, le module affiche « Quotas indisponibles ».
+
+Lance ces commandes **dans ton propre terminal**, pas dans un terminal de l'appli Claude : l'appli Claude empaquetée redirige les écritures vers une copie privée du dossier de réglages, et le `settings.json` modifié ne serait pas le vrai. Après `dotnet build -c Release`, depuis la racine du dépôt :
+
+```powershell
+tools\Trofeo.HardwareCheck\bin\Release\net10.0-windows10.0.19041.0\Trofeo.HardwareCheck.exe --claude-statusline install "$PWD\src\Trofeo.StatusLine\bin\Release\net10.0\Trofeo.StatusLine.exe"
+```
+
+`$PWD` donne le chemin complet de `Trofeo.StatusLine.exe`, qui doit rester à sa place tant que la barre d'état est branchée.
+
+- La commande écrit dans `settings.json` (dans `%CLAUDE_CONFIG_DIR%` s'il est défini, sinon `~/.claude`) et en garde une copie d'origine, `settings.json.trofeo-bak`. Le fichier est réécrit sans ses éventuels commentaires, qui restent dans la copie.
+- Si tu avais déjà une barre d'état, elle est conservée : Trofeo.StatusLine la précède dans un tube et lui passe les mêmes données, donc elle s'affiche toujours. Si cette barre se termine par un commentaire shell (`# …`), la commande te prévient : retire ce commentaire.
+- Si tu déplaces `Trofeo.StatusLine.exe`, relance la même commande avec le nouveau chemin : elle met à jour la commande sans rien casser.
+- `--claude-statusline status` dit si elle est branchée et où se trouve `settings.json`.
+- Pour la retirer : `Trofeo.HardwareCheck.exe --claude-statusline uninstall`. Ta barre d'état d'origine est alors restaurée.
 
 ## Températures du processeur
 
@@ -97,6 +110,7 @@ La ligne d'aide disparaît dès que la température arrive, et ne s'affiche pas 
 | `src/Trofeo.Device` | Protocole USB de l'écran (WinUSB) |
 | `src/Trofeo.Display` | Le service d'affichage, dans la zone de notification |
 | `src/Trofeo.Modules.*` | Les modules |
+| `src/Trofeo.StatusLine` | La barre d'état de Claude Code (quotas) et son installation |
 | `docs/superpowers` | Conception et plans de développement |
 
 Les modules sont intégrés au logiciel. Pour en proposer un nouveau, ouvre une pull request avec un projet `Trofeo.Modules.<Nom>` qui implémente `IModuleFactory` et `IModule`.
@@ -114,6 +128,8 @@ Le protocole de l'écran a été compris grâce à ces projets :
 Les relevés de capteurs viennent de [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0), qui s'appuie sur le pilote [PawnIO](https://pawnio.eu/) pour les températures du processeur.
 
 Données météo : [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0).
+
+Mascottes : redessins de fan de Clawd (Anthropic) et du pet Codex (OpenAI). Projet non affilié à Anthropic, OpenAI ni Thermalright.
 
 La police Barlow Semi Condensed est distribuée sous licence SIL Open Font License 1.1 (voir `src/Trofeo.Core/Assets/Fonts/OFL.txt`).
 
