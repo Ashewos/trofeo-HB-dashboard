@@ -34,6 +34,7 @@ public sealed class SensorHub(Func<ISensorReader> localFactory, ISnapshotStream 
     private bool _disposed;
     private ITimer? _timer;
     private long? _helperAt;
+    private long _startedAt;
     private ISensorReader? _reader; // protégé par _readGate
     private SensorSnapshot? _latest;
 
@@ -68,6 +69,7 @@ public sealed class SensorHub(Func<ISensorReader> localFactory, ISnapshotStream 
     private void Start()
     {
         _helperAt = null; // un ancien silence ou un ancien relevé ne doit pas peser sur la nouvelle session
+        _startedAt = time.GetTimestamp();
         helper.Received += OnHelperSnapshot;
         _timer = time.CreateTimer(_ => ReadLocal(), null, LocalPeriod, LocalPeriod);
     }
@@ -115,10 +117,16 @@ public sealed class SensorHub(Func<ISensorReader> localFactory, ISnapshotStream 
         Publish(snapshot);
     }
 
+    /// <summary>
+    /// L'assistant a parlé il y a moins de 3 s, ou la session a moins de 3 s : au démarrage, on lui laisse le temps
+    /// de se connecter avant d'ouvrir LibreHardwareMonitor dans le service.
+    /// </summary>
     private bool HelperIsActive()
     {
         lock (_gate)
-            return _helperAt is { } at && time.GetElapsedTime(at) < HelperTimeout;
+            return _helperAt is { } at
+                ? time.GetElapsedTime(at) < HelperTimeout
+                : time.GetElapsedTime(_startedAt) < HelperTimeout;
     }
 
     private void ReadLocal()
@@ -128,7 +136,14 @@ public sealed class SensorHub(Func<ISensorReader> localFactory, ISnapshotStream 
         SensorSnapshot? snapshot = null;
         try
         {
-            if (HelperIsActive()) return;
+            if (HelperIsActive())
+            {
+                // L'assistant a pris le relais : le lecteur local rend ses pilotes et sa mémoire.
+                _reader?.Dispose();
+                _reader = null;
+                return;
+            }
+
             lock (_gate)
                 if (_users == 0) return;
 

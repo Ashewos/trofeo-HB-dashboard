@@ -43,6 +43,9 @@ public class SensorHubTests
 
         public int LocalReads => Readers.Sum(r => r.Reads);
         public void Advance(int seconds) => Time.Advance(TimeSpan.FromSeconds(seconds));
+
+        /// <summary>Les 2 premières secondes, laissées à l'assistant : la lecture locale suivante tombe à 3 s.</summary>
+        public void PassGrace() { Advance(1); Advance(1); }
     }
 
     private static SensorSnapshot FromHelper() =>
@@ -68,6 +71,10 @@ public class SensorHubTests
         var rig = new Rig();
         using var lease = rig.Hub.Acquire();
         Assert.Empty(rig.Readers); // lecteur créé à la première utilisation seulement
+
+        rig.Advance(1);
+        rig.Advance(1);
+        Assert.Empty(rig.Readers); // 3 s laissées à l'assistant pour se manifester
 
         rig.Advance(1);
         Assert.Equal(1, rig.LocalReads);
@@ -102,6 +109,41 @@ public class SensorHubTests
     }
 
     [Fact]
+    public void Hub_HelperAnswersWithinGrace_NeverOpensLocalReader()
+    {
+        var rig = new Rig();
+        using var lease = rig.Hub.Acquire();
+
+        rig.Advance(1);
+        rig.Advance(1);
+        rig.Helper.Send(FromHelper()); // le tube se connecte en moins de 3 s au démarrage
+        rig.Advance(1);
+        rig.Helper.Send(FromHelper());
+        rig.Advance(1);
+
+        Assert.Empty(rig.Readers); // LibreHardwareMonitor n'est jamais ouvert dans le service
+        Assert.Equal("helper", rig.Hub.Latest!.CpuName);
+    }
+
+    [Fact]
+    public void Hub_HelperReturns_ReleasesLocalReader()
+    {
+        var rig = new Rig();
+        using var lease = rig.Hub.Acquire();
+        rig.Advance(3);
+        Assert.Single(rig.Readers);
+        Assert.False(rig.Readers[0].Disposed);
+
+        rig.Helper.Send(FromHelper());
+        rig.Advance(1);
+
+        Assert.True(rig.Readers[0].Disposed); // les pilotes et la mémoire du lecteur local sont rendus
+        rig.Helper.Send(FromHelper());
+        rig.Advance(1);
+        Assert.Single(rig.Readers);
+    }
+
+    [Fact]
     public void Hub_HelperSilent_FallsBackToLocal()
     {
         var rig = new Rig();
@@ -128,6 +170,7 @@ public class SensorHubTests
         var rig = new Rig();
         var first = rig.Hub.Acquire();
         var second = rig.Hub.Acquire();
+        rig.PassGrace();
         rig.Advance(1);
         Assert.Equal(1, rig.LocalReads);
 
@@ -156,6 +199,7 @@ public class SensorHubTests
         rig.Hub.Acquire().Dispose();
         using var again = rig.Hub.Acquire();
 
+        rig.PassGrace();
         rig.Advance(1);
 
         Assert.Equal(1, rig.LocalReads);
@@ -168,6 +212,7 @@ public class SensorHubTests
         var rig = new Rig(fails: n => n <= 2);
         using var lease = rig.Hub.Acquire();
 
+        rig.PassGrace();
         rig.Advance(1);
         rig.Advance(1);
         Assert.Equal(0, rig.Updates);
@@ -185,6 +230,7 @@ public class SensorHubTests
         rig.Hub.Updated += (_, _) => throw new InvalidOperationException("abonné défaillant");
         using var lease = rig.Hub.Acquire();
 
+        rig.PassGrace();
         rig.Advance(1);
         rig.Advance(1);
 
@@ -196,6 +242,7 @@ public class SensorHubTests
     {
         var rig = new Rig();
         var lease = rig.Hub.Acquire();
+        rig.PassGrace();
         rig.Advance(1);
 
         rig.Hub.Dispose();
