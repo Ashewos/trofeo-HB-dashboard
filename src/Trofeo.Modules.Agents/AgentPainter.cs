@@ -401,7 +401,7 @@ internal sealed class AgentPainter
 
             var fields = new List<(string Label, string Value)>
             {
-                ("Contexte", detail?.ContextPercent is { } context && !double.IsNaN(context) ? AgentText.Percent(DisplayPercent(context)) : NoValue),
+                ("Contexte", detail?.ContextPercent is { } context && !double.IsNaN(context) ? AgentText.Percent(context) : NoValue),
                 ("Durée", detail?.TaskStartedAt is { } started ? AgentText.Duration((detail.TaskFinishedAt ?? _ctx.Now) - started) : NoValue),
             };
             if (_ctx.Size.Columns >= 7)
@@ -450,7 +450,7 @@ internal sealed class AgentPainter
             var bar = _layout.Bar;
             var expired = window?.ResetsAt is { } at && at <= _ctx.Now;
             var known = window is not null && !expired && !double.IsNaN(window.UsedPercent);
-            var percent = known ? DisplayPercent(window!.UsedPercent) : 0d;
+            var percent = known ? DisplayQuotaPercent(window!.UsedPercent) : 0d;
             var half = width / 2f;
 
             var baseline = BaselineFor(20f, bar.Top + 14f * _scale);
@@ -469,11 +469,11 @@ internal sealed class AgentPainter
             }
         }
 
-        // Les sources conservent les valeurs consommées ; seul le rendu Codex les convertit en restant.
-        private double DisplayPercent(double used)
+        // Le contexte reste consommé ; seuls les quotas Codex sont convertis en restant.
+        private double DisplayQuotaPercent(double used)
         {
             var bounded = Math.Clamp(used, 0d, 100d);
-            return _scene.Flavor.DisplayRemainingPercent ? 100d - bounded : bounded;
+            return _scene.Flavor.DisplayRemainingQuotaPercent ? 100d - bounded : bounded;
         }
     }
 }

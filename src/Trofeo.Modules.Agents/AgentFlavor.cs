@@ -4,6 +4,6 @@ namespace Trofeo.Modules.Agents;
 /// <param name="NoSessionText">Texte quand l'outil n'a aucune session ouverte.</param>
 /// <param name="NotInstalledText">Message d'action quand l'outil n'est pas installé sur le PC.</param>
 /// <param name="Mascot">La mascotte de l'outil.</param>
-/// <param name="DisplayRemainingPercent">Afficher le contexte et les quotas restants plutôt que consommés.</param>
+/// <param name="DisplayRemainingQuotaPercent">Afficher les quotas restants plutôt que consommés ; le contexte reste utilisé.</param>
 public sealed record AgentFlavor(string NoSessionText, string NotInstalledText, MascotDefinition Mascot,
-    bool DisplayRemainingPercent = false);
+    bool DisplayRemainingQuotaPercent = false);

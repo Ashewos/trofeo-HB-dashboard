@@ -46,9 +46,9 @@ public sealed class RemainingPercentTests
     }
 
     [Theory]
-    [InlineData(true, "70 %", "80 %", "60 %")]
+    [InlineData(true, "30 %", "80 %", "60 %")]
     [InlineData(false, "30 %", "20 %", "40 %")]
-    public void Factories_SelectRemainingOnlyForCodex(bool codex, string context, string fiveHour, string weekly)
+    public void Factories_ContextStaysUsedAndOnlyCodexQuotasAreRemaining(bool codex, string context, string fiveHour, string weekly)
     {
         using var module = Create(codex, 30, new QuotaWindow(20, Now.AddHours(1)), new QuotaWindow(40, Now.AddDays(1)));
         using var bitmap = Draw(module, out var texts);
@@ -73,12 +73,13 @@ public sealed class RemainingPercentTests
     [InlineData(-5, "100 %")]
     [InlineData(105, "0 %")]
     [InlineData(77.5, "23 %")]
-    public void Codex_ConvertsAndBoundsAllThreePercentages(double used, string expected)
+    public void Codex_ConvertsOnlyQuotasAndKeepsUsedContext(double used, string expected)
     {
         using var module = Create(true, used, new QuotaWindow(used, null), new QuotaWindow(used, null));
         using var bitmap = Draw(module, out var texts);
 
-        Assert.Equal(3, texts.Count(t => t == expected));
+        Assert.Equal(2, texts.Count(t => t == expected));
+        Assert.Contains(AgentText.Percent(used), texts);
     }
 
     [Theory]

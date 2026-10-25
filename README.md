@@ -103,8 +103,8 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
   modifications de fichiers avec compteurs de lignes). Cette lecture ne réexécute jamais le JavaScript ni les commandes.
   Au démarrage, si le modèle est absent de la portion relue, le module recherche le dernier `turn_context` du même
   fichier (16 Mio au plus), sans rejouer son fil ni emprunter le modèle d'une autre conversation.
-  Pour Codex, le contexte et les quotas « 5 h » / « Hebdo » affichent la part **restante**, barres comprises
-  (30 % consommés donnent 70 % restants). Les heures de remise à zéro ne changent pas ; une valeur inconnue ou
+  Pour Codex, « Contexte » affiche la part **utilisée** ; seuls les quotas « 5 h » / « Hebdo » affichent la part
+  **restante**, barres comprises (30 % consommés donnent 70 % restants). Les heures de remise à zéro ne changent pas ; une valeur inconnue ou
   un quota périmé reste « — ». Le module Claude Code conserve son affichage de la part consommée.
 
 - **Freebox** : dans les réglages du module Réseau, `"source":"freebox"`. Au premier lancement, le module demande d'appuyer sur la flèche de la Freebox pour autoriser le dashboard.

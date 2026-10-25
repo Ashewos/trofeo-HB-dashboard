@@ -12,7 +12,7 @@ public sealed class CodexFactory(Func<ModuleContext, IAgentSource> createSource)
         "Aucune session Codex ouverte",
         "Codex n'est pas installé sur ce PC",
         CodexMascot.Definition,
-        DisplayRemainingPercent: true);
+        DisplayRemainingQuotaPercent: true);
 
     public ModuleDescriptor Descriptor { get; } = new(
         "codex",
