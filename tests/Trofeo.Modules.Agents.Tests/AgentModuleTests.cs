@@ -455,9 +455,15 @@ public sealed class AgentModuleTests
         public ManualResetEventSlim Release { get; } = new();
         public int Calls => Volatile.Read(ref _calls);
         public int MaxConcurrent { get; private set; }
+        public List<string?> SelectedIds { get; } = [];
 
         public AgentSnapshot Poll(string? selectedSessionId, DateTimeOffset now)
         {
+            lock (SelectedIds)
+            {
+                SelectedIds.Add(selectedSessionId);
+            }
+
             var now2 = Interlocked.Increment(ref _concurrent);
             MaxConcurrent = Math.Max(MaxConcurrent, now2);
             Interlocked.Increment(ref _calls);
@@ -469,7 +475,7 @@ public sealed class AgentModuleTests
                     Release.Wait(TimeSpan.FromSeconds(10));
                 }
 
-                return new AgentSnapshot(true, [], null, null);
+                return new AgentSnapshot(true, [Session("a", AgentActivity.Idle, 30), Session("b", AgentActivity.Idle, 10), Session("c", AgentActivity.Idle, 20)], null, null);
             }
             finally
             {
@@ -505,6 +511,104 @@ public sealed class AgentModuleTests
 
         Assert.Equal(0, rig.Source.Polls);
         Assert.Equal(1, rig.Source.Disposed);
+    }
+
+    [Fact]
+    public async Task Command_DuringARunningPoll_IsNotLost_ThePollIsRedoneWithTheNewTab()
+    {
+        var source = new BlockingSource();
+        var time = new FakeTimeProvider(Start);
+        var background = new List<Action>();
+        using var module = new AgentModule(new ClaudeCodeFactory(_ => source).Descriptor,
+            new AgentFlavor("a", "b", ClaudeMascot.Definition), source, new AgentSettings(), time, new FakeModuleLog(), new Random(1))
+        {
+            RunInBackground = background.Add,
+        };
+        await module.StartAsync(CancellationToken.None); // sélection : b
+        source.Block = true;
+
+        var running = Task.Run(module.PollNow);          // demande « b » et reste bloqué dans la source
+        Assert.True(source.Entered.Wait(TimeSpan.FromSeconds(5)));
+        Assert.True(module.HandleCommand(new ModuleCommand(ModuleCommandKind.NextTab))); // c
+        background.Single()();                           // le sondage immédiat de la commande : sauté, un sondage court déjà
+        Assert.Equal(2, source.Calls);
+        source.Block = false;
+        source.Release.Set();
+        await running;
+
+        Assert.Equal(3, source.Calls);                   // refait à la fin du sondage bloqué
+        Assert.Equal([null, "b", "c"], source.SelectedIds);
+        Assert.Equal(1, source.MaxConcurrent);
+    }
+
+    [Fact]
+    public async Task Command_WithoutARunningPoll_PollsOnce()
+    {
+        var source = new BlockingSource();
+        var time = new FakeTimeProvider(Start);
+        var background = new List<Action>();
+        using var module = new AgentModule(new ClaudeCodeFactory(_ => source).Descriptor,
+            new AgentFlavor("a", "b", ClaudeMascot.Definition), source, new AgentSettings(), time, new FakeModuleLog(), new Random(1))
+        {
+            RunInBackground = background.Add,
+        };
+        await module.StartAsync(CancellationToken.None);
+
+        module.HandleCommand(new ModuleCommand(ModuleCommandKind.NextTab));
+        background.Single()();
+
+        Assert.Equal(2, source.Calls); // pas de sondage de trop
+        Assert.Equal([null, "c"], source.SelectedIds);
+    }
+
+    [Fact]
+    public async Task Events_ASubscriberThatThrows_DoesNotStopThePollNorTheWake()
+    {
+        using var rig = Create();
+        rig.Source.Enqueue(Snapshot([Session("a", AgentActivity.Working)], PlainDetail));
+        var calls = 0;
+        rig.Module.Invalidated += (_, _) =>
+        {
+            calls++;
+            throw new InvalidOperationException("abonné fautif");
+        };
+        rig.Module.StatusChanged += (_, _) => throw new InvalidOperationException("abonné fautif");
+        await rig.Module.StartAsync(CancellationToken.None);
+
+        Tick(rig, TimeSpan.FromSeconds(8)); // des sondages et des réveils de la mascotte au travail continuent
+
+        Assert.True(calls > 3, $"seulement {calls} invalidations");
+        Assert.Equal(1 + 8, rig.Source.Polls);
+        Assert.Contains(rig.Log.Entries, e => e.Contains("abonné fautif", StringComparison.Ordinal));
+        Assert.Single(rig.Module.Snapshot!.Sessions);
+    }
+
+    [Fact]
+    public void Render_OfflineBeforeAnyPoll_DrawsNoSessionTextInsteadOfLoading()
+    {
+        using var rig = Create();
+        for (var i = 0; i < 3; i++)
+        {
+            rig.Source.EnqueueFailure(new IOException("disque absent"));
+            rig.Module.PollNow();
+        }
+
+        var texts = DrawnTexts(rig.Module, 8, 4);
+
+        Assert.Equal(ModuleHealth.Offline, rig.Module.Status.Health);
+        Assert.Null(rig.Module.Snapshot);
+        Assert.Contains("Aucune session Claude Code ouverte", texts);
+        Assert.DoesNotContain("Chargement…", texts);
+    }
+
+    [Fact]
+    public void Render_FailingOnceBeforeAnyPoll_StillSaysLoading()
+    {
+        using var rig = Create();
+        rig.Source.EnqueueFailure(new IOException("disque absent"));
+        rig.Module.PollNow();
+
+        Assert.Contains("Chargement…", DrawnTexts(rig.Module, 8, 4));
     }
 
     // --- Rafraîchissement ---

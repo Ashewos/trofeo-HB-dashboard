@@ -45,6 +45,7 @@ public sealed class AgentModule(ModuleDescriptor descriptor, AgentFlavor flavor,
     private (string Id, AgentActivity Activity)? _mascotSource;
     private int _failures;
     private int _polling;
+    private int _pollRequested;
     private int _sourceDisposed;
     private bool _started;
     private bool _disposed;
@@ -188,9 +189,11 @@ public sealed class AgentModule(ModuleDescriptor descriptor, AgentFlavor flavor,
             _manualAt = time.GetUtcNow();
         }
 
-        Invalidated?.Invoke(this, EventArgs.Empty);
+        Raise(Invalidated);
 
-        // Le détail de l'onglet choisi arrive avec ce sondage, sans attendre le tick.
+        // Le détail de l'onglet choisi arrive avec ce sondage, sans attendre le tick. Si un sondage court déjà (il a demandé
+        // l'ancien onglet), le drapeau le fait recommencer à sa fin.
+        Volatile.Write(ref _pollRequested, 1);
         RunInBackground(PollOnce);
         return true;
     }
@@ -200,61 +203,94 @@ public sealed class AgentModule(ModuleDescriptor descriptor, AgentFlavor flavor,
     /// <summary>Un sondage synchrone, pour les tests.</summary>
     internal void PollNow() => PollOnce();
 
-    /// <summary>Un sondage, ignoré si un autre court encore. Ne lève jamais.</summary>
+    /// <summary>
+    /// Un sondage, ignoré si un autre court encore ; s'il est demandé par une commande pendant un sondage en cours, ce dernier
+    /// est refait à sa fin (avec le nouvel onglet). Ne lève jamais.
+    /// </summary>
     private void PollOnce()
     {
-        if (Interlocked.CompareExchange(ref _polling, 1, 0) != 0)
+        do
         {
-            return;
-        }
-
-        try
-        {
-            if (Volatile.Read(ref _disposed))
+            if (Interlocked.CompareExchange(ref _polling, 1, 0) != 0)
             {
                 return;
             }
 
-            PollCore();
-        }
-        finally
-        {
-            Volatile.Write(ref _polling, 0);
-
-            // Libéré pendant le sondage : c'est à lui de libérer la source (la place reste prise, plus personne ne sondera).
-            if (Volatile.Read(ref _disposed) && Interlocked.CompareExchange(ref _polling, 1, 0) == 0)
+            try
             {
-                DisposeSource();
+                if (Volatile.Read(ref _disposed))
+                {
+                    return;
+                }
+
+                // Remis à zéro avant de lire l'onglet : une commande arrivée ensuite le remet à un et fait refaire un sondage.
+                Volatile.Write(ref _pollRequested, 0);
+                PollCore();
+            }
+            finally
+            {
+                Volatile.Write(ref _polling, 0);
+
+                // Libéré pendant le sondage : c'est à lui de libérer la source (la place reste prise, plus personne ne sondera).
+                if (Volatile.Read(ref _disposed) && Interlocked.CompareExchange(ref _polling, 1, 0) == 0)
+                {
+                    DisposeSource();
+                }
             }
         }
+        while (Volatile.Read(ref _pollRequested) != 0 && !Volatile.Read(ref _disposed));
     }
 
     private void PollCore()
     {
         var now = time.GetUtcNow();
-        bool statusChanged, changed;
+        AgentSnapshot? snapshot = null;
         try
         {
-            var snapshot = source.Poll(Volatile.Read(ref _shown).SelectedId, now);
-            (statusChanged, changed) = Publish(snapshot, now);
+            snapshot = source.Poll(Volatile.Read(ref _shown).SelectedId, now);
         }
         catch (Exception ex)
         {
             log.Error($"Lecture de l'état de {Descriptor.DisplayName} impossible : {ex.Message}");
-            (statusChanged, changed) = RegisterFailure();
         }
 
+        bool statusChanged, changed;
+        try
+        {
+            (statusChanged, changed) = snapshot is null ? RegisterFailure() : Publish(snapshot, now);
+        }
+        catch (Exception ex)
+        {
+            // Une erreur de notre côté (et non de la source) : journalisée, sans compter comme une panne de la source.
+            log.Error($"Mise à jour de {Descriptor.DisplayName} impossible : {ex.Message}");
+            (statusChanged, changed) = (false, false);
+        }
+
+        // Un abonné qui lève ne doit ni faire perdre l'autre événement ni empêcher de réarmer le réveil.
         if (statusChanged)
         {
-            StatusChanged?.Invoke(this, EventArgs.Empty);
+            Raise(StatusChanged);
         }
 
         if (changed)
         {
-            Invalidated?.Invoke(this, EventArgs.Empty);
+            Raise(Invalidated);
         }
 
         ArmWake();
+    }
+
+    /// <summary>Lève un événement ; l'exception d'un abonné est journalisée et ne remonte pas.</summary>
+    private void Raise(EventHandler? handler)
+    {
+        try
+        {
+            handler?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            log.Error($"Un abonné de {Descriptor.DisplayName} a échoué : {ex.Message}");
+        }
     }
 
     /// <summary>Publie un relevé réussi : onglet, état du module, mascotte et signature. Rend ce qui a changé.</summary>
@@ -446,7 +482,7 @@ public sealed class AgentModule(ModuleDescriptor descriptor, AgentFlavor flavor,
 
     private void OnWake()
     {
-        Invalidated?.Invoke(this, EventArgs.Empty);
+        Raise(Invalidated);
         ArmWake();
     }
 

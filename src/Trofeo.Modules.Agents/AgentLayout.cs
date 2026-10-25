@@ -4,7 +4,7 @@ using Trofeo.ModuleKit;
 namespace Trofeo.Modules.Agents;
 
 /// <summary>
-/// Les zones du module : colonne des onglets, en-tête, corps (flux ou vue d'ensemble), barre du bas et carré de la mascotte.
+/// Les zones du module : colonne des onglets, en-tête, corps (flux ou vue d'ensemble), barre du bas et zone de la mascotte (96 × 64 px).
 /// <paramref name="TabCapacity"/> et <paramref name="FeedCapacity"/> sont les nombres de lignes entières qui tiennent.
 /// </summary>
 internal sealed record AgentLayoutResult(
@@ -15,6 +15,9 @@ internal static class AgentLayout
 {
     internal const float Margin = 16f;
     internal const float BarHeight = 64f;
+
+    /// <summary>Largeur de la zone de la mascotte : 96 × 64 donne des pixels de sprite de 4 pour une scène de 24 × 16.</summary>
+    internal const float MascotWidth = 96f;
     internal const float WideTabsWidth = 200f;
     internal const float NarrowTabsWidth = 132f;
     internal const float TabHeight = 46f;
@@ -47,7 +50,7 @@ internal static class AgentLayout
         var header = new SKRect(contentLeft, top, right, headerBottom);
         var body = new SKRect(contentLeft, headerBottom, right, barTop);
         var bar = new SKRect(left, barTop, right, bottom);
-        var mascot = new SKRect(left, barTop, Math.Min(right, left + BarHeight * textScale), bottom);
+        var mascot = new SKRect(left, barTop, Math.Min(right, left + MascotWidth * textScale), bottom);
 
         var tabStep = (TabHeight + TabGap) * textScale;
         var tabCapacity = (int)Math.Floor((tabs.Height + TabGap * textScale) / tabStep + 1e-4);

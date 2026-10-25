@@ -231,7 +231,8 @@ internal sealed class AgentPainter
 
             if (_scene.Snapshot is null)
             {
-                Centered(Loading);
+                // Hors ligne avant tout relevé réussi : il n'y a rien à attendre, on n'affiche pas un chargement sans fin.
+                Centered(_scene.Status.Health == ModuleHealth.Offline ? _scene.Flavor.NoSessionText : Loading);
             }
             else if (sessions.Count == 0)
             {

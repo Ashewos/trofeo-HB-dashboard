@@ -22,8 +22,11 @@ public sealed class AgentLayoutTests
         Assert.Equal(6, layout.TabCapacity);
         Assert.Equal(200f, layout.Tabs.Width);
         Assert.Equal(64f, layout.Bar.Height);
-        Assert.Equal(64f, layout.Mascot.Width);
+        // 96 × 64 px : des pixels de sprite de 4 pour la scène de 24 × 16.
+        Assert.Equal(96f, layout.Mascot.Width);
         Assert.Equal(64f, layout.Mascot.Height);
+        Assert.Equal(layout.Bar.Left, layout.Mascot.Left);
+        Assert.Equal(layout.Bar.Bottom, layout.Mascot.Bottom);
     }
 
     [Fact]
@@ -65,6 +68,8 @@ public sealed class AgentLayoutTests
 
         Assert.Equal(240f, large.Tabs.Width, 0.01f);
         Assert.Equal(76.8f, large.Bar.Height, 0.01f);
+        Assert.Equal(115.2f, large.Mascot.Width, 0.01f);
+        Assert.Equal(76.8f, large.Mascot.Height, 0.01f);
         Assert.True(large.TabCapacity < normal.TabCapacity);
         Assert.True(large.FeedCapacity < normal.FeedCapacity);
     }
