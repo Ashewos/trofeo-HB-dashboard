@@ -71,6 +71,8 @@ public sealed class AnimatedBackground : IBackground
             if (codec.FrameCount <= 1)
             {
                 var still = BackgroundSupport.DecodeCover(codec, out _);
+                codec.Dispose(); // une image fixe ne garde pas le fichier ouvert
+                codec = null;
                 if (still is not null) return new AnimatedBackground(still);
             }
             else if ((long)codec.Info.Width * codec.Info.Height <= MaxPixels)

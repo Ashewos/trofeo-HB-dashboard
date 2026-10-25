@@ -477,6 +477,36 @@ public sealed class BackgroundTests : IDisposable
     }
 
     [Fact]
+    public void Animated_SingleFrame_ClosesTheFile()
+    {
+        if (!OperatingSystem.IsLinux()) return; // la liste des fichiers ouverts vient de /proc
+
+        var path = WriteGif("close.gif", [10], Blue);
+        using var bg = AnimatedBackground.TryLoad(path, null)!;
+
+        Assert.DoesNotContain(OpenFiles(), f => f == path);
+    }
+
+    [Fact]
+    public void Animated_Playing_HoldsTheFileUntilDisposed()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        var path = WriteGif("open.gif", [10, 10], Red, Green);
+        var bg = AnimatedBackground.TryLoad(path, null)!;
+        Assert.Contains(OpenFiles(), f => f == path); // garde-fou : le détecteur voit bien un fichier ouvert
+
+        bg.Dispose();
+        Assert.DoesNotContain(OpenFiles(), f => f == path);
+    }
+
+    private static List<string> OpenFiles() =>
+        Directory.EnumerateFileSystemEntries("/proc/self/fd")
+            .Select(fd => { try { return new FileInfo(fd).LinkTarget; } catch (IOException) { return null; } })
+            .OfType<string>()
+            .ToList();
+
+    [Fact]
     public void Animated_Missing_Warns()
     {
         var path = Path.Combine(_dir, "absent.gif");
