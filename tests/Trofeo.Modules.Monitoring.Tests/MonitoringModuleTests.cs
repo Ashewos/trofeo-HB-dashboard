@@ -113,7 +113,7 @@ public class MonitoringModuleTests
         var feed = new FakeFeed { Latest = Full(cpuTemp: false, elevated: false) };
         using var module = Create(feed, Clock());
 
-        Assert.Equal("Temp. CPU : installe le pilote (voir le README)", module.CurrentTitle());
+        Assert.Equal("Temp. CPU : installe le pilote", module.CurrentTitle());
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public class MonitoringModuleTests
         var feed = new FakeFeed { Latest = Full(cpuTemp: false, elevated: false) };
         using var module = Create(feed, Clock(), """{"title":"Mon PC"}""");
 
-        Assert.Equal("Temp. CPU : installe le pilote (voir le README)", module.CurrentTitle());
+        Assert.Equal("Temp. CPU : installe le pilote", module.CurrentTitle());
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public class MonitoringModuleTests
         using var module = Create(feed, Clock(), """{"rows":["gpu","ram","vram","cpu"]}""");
 
         Assert.Equal("Core Ultra 7 265K · RTX 5070", module.CurrentTitle(drawnRows: 3));
-        Assert.Equal("Temp. CPU : installe le pilote (voir le README)", module.CurrentTitle(drawnRows: 4));
+        Assert.Equal("Temp. CPU : installe le pilote", module.CurrentTitle(drawnRows: 4));
     }
 
     [Fact]

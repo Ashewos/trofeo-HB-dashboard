@@ -14,7 +14,7 @@ public sealed class MonitoringModule : IModule
     private static readonly TimeSpan OfflineAfter = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan HealthPeriod = TimeSpan.FromSeconds(1);
 
-    internal const string DriverHint = "Temp. CPU : installe le pilote (voir le README)";
+    internal const string DriverHint = "Temp. CPU : installe le pilote";
 
     // Dimensions des colonnes d'une ligne, avant multiplication par l'échelle de texte.
     private const float LabelSize = 22f;

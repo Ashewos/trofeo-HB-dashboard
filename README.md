@@ -81,7 +81,7 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
 
 ## Températures du processeur
 
-Sans réglage, le module Monitoring affiche la ligne « Temp. CPU : installe le pilote (voir le README) ». Windows ne laisse lire ces températures qu'à un programme élevé, grâce à un pilote. Pour les activer :
+Sans réglage, le module Monitoring affiche la ligne « Temp. CPU : installe le pilote ». Windows ne laisse lire ces températures qu'à un programme élevé, grâce à un pilote. Pour les activer :
 
 1. Installer PawnIO : `winget install --id namazso.PawnIO`.
 2. Ouvrir un terminal en administrateur et lancer `Trofeo.SensorHelper.exe install`. Après `dotnet build -c Release`, l'exécutable se trouve dans `src/Trofeo.SensorHelper/bin/Release/`, sous le dossier de la version de Windows ciblée ; l'option `--pawnio <installateur>` installe PawnIO au passage. Cela crée la tâche planifiée `\trofeo-HB-dashboard\Capteurs`, qui relève les capteurs à chaque ouverture de session et les transmet au service. Le service lui-même reste sans droits d'administrateur.
