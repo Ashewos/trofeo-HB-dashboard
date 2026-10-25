@@ -144,6 +144,10 @@ public sealed class StatusLineCommandTests : IDisposable
     [Fact]
     public void Install_ReadOnlySettings_ReportsWriteErrorWithoutStackTrace()
     {
+        // Sous Linux, renommer un fichier par-dessus un fichier en lecture seule réussit : l'échec d'écriture n'existe que sous
+        // Windows. xUnit 2 n'a pas de saut dynamique, on sort donc tout de suite.
+        if (!OperatingSystem.IsWindows()) return;
+
         WriteSettings("{}");
         File.SetAttributes(SettingsPath, FileAttributes.ReadOnly);
 
@@ -181,6 +185,10 @@ public sealed class StatusLineCommandTests : IDisposable
     [Fact]
     public void Uninstall_ReadOnlySettings_ReportsWriteError()
     {
+        // Sous Linux, renommer un fichier par-dessus un fichier en lecture seule réussit : l'échec d'écriture n'existe que sous
+        // Windows. xUnit 2 n'a pas de saut dynamique, on sort donc tout de suite.
+        if (!OperatingSystem.IsWindows()) return;
+
         Run("install", _exe);
         File.SetAttributes(SettingsPath, FileAttributes.ReadOnly);
 
