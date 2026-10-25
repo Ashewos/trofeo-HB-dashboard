@@ -92,6 +92,20 @@ public sealed class ClaudeSessionDirectoryTests : IDisposable
     }
 
     [Fact]
+    public void Directory_ReusedPidNewSession_IsRechecked()
+    {
+        var directory = NewDirectory();
+        Write("5.json", Session(5, "ancienne"));
+        Assert.Empty(directory.Read()); // le processus 5 est vu mort
+
+        // Windows redonne le numéro 5 à un nouveau Claude Code, qui réécrit le même fichier avec une autre session.
+        _alive.Add(5);
+        Write("5.json", Session(5, "nouvelle"));
+
+        Assert.Equal(["nouvelle"], directory.Read().Select(s => s.SessionId));
+    }
+
+    [Fact]
     public void Directory_ChangeOfSameSizeAndSameWriteTime_IsSeen()
     {
         _alive.Add(5);

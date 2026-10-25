@@ -392,6 +392,21 @@ public sealed partial class ClaudeSourceTests : IDisposable
     }
 
     [Fact]
+    public void ContextWindow_CaptureModelWithSuffix_MatchesTranscriptModel()
+    {
+        var cwd = AddSession(10, "sess-a", "projet-a", "busy", StartMs);
+        File.WriteAllLines(TranscriptPath(cwd, "sess-a"), [Prompt("Salut"), ReadCall("t1", "/src/Foo.cs")]);
+        // La barre d'état rapporte l'identifiant avec son suffixe, la transcription sans.
+        StatusLineFile.Write(ClaudeHome.StatusLineDir(_home),
+            new StatusLineRecord(Now.AddMinutes(-20), "sess-autre", "claude-opus-5-5[1m]", 1_000_000, 3, null, null));
+        using var source = NewSource();
+
+        var detail = source.Poll("sess-a", Now).Selected!;
+
+        Assert.Equal(170_449 / 1_000_000d * 100, detail.ContextPercent!.Value, 3);
+    }
+
+    [Fact]
     public void Source_Context_IgnoresWindowCapturedForAnotherModel()
     {
         var cwd = AddSession(10, "sess-a", "projet-a", "busy", StartMs);

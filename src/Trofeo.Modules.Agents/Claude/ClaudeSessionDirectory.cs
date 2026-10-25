@@ -21,11 +21,12 @@ public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> i
     // Dernière lecture réussie par fichier : elle ne sert que de repli quand le fichier, en cours d'écriture, ne s'analyse pas.
     private readonly Dictionary<string, CachedFile> _cache = new(StringComparer.Ordinal);
 
-    // DeadPid : le numéro de processus qu'on a vu mort pour ce fichier. Tant que le fichier relu porte le même numéro, on ne
-    // revérifie pas (un fichier orphelin ferait sinon lever Process.GetProcessById à chaque relevé).
+    // Dead : le numéro de processus et la session qu'on a vus morts pour ce fichier. Tant que le fichier relu porte les mêmes,
+    // on ne revérifie pas (un fichier orphelin ferait sinon lever Process.GetProcessById à chaque relevé). Un numéro redonné
+    // par Windows à un nouveau Claude Code arrive avec une autre session : il est revérifié.
     private sealed record CachedFile(ClaudeSessionFile Session)
     {
-        public int? DeadPid { get; set; }
+        public (int Pid, string SessionId)? Dead { get; set; }
     }
 
     /// <summary>Les sessions interactives vivantes, une seule par identifiant (la plus récemment active), sans ordre garanti.</summary>
@@ -52,7 +53,7 @@ public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> i
         {
             var entry = ReadFile(path);
             if (entry?.Session is { } session && (session.Kind is null || session.Kind == "interactive")
-                && entry.DeadPid != session.Pid && CheckAlive(session.Pid) is { } alive)
+                && entry.Dead != (session.Pid, session.SessionId) && CheckAlive(session.Pid) is { } alive)
             {
                 if (alive)
                 {
@@ -60,7 +61,7 @@ public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> i
                 }
                 else
                 {
-                    entry.DeadPid = session.Pid;
+                    entry.Dead = (session.Pid, session.SessionId);
                 }
             }
         }
@@ -110,8 +111,8 @@ public sealed class ClaudeSessionDirectory(string sessionsDir, Func<int, bool> i
             return cached;
         }
 
-        // Le verdict « mort » ne vaut que pour le même numéro de processus.
-        var entry = new CachedFile(session) { DeadPid = cached?.DeadPid == session.Pid ? session.Pid : null };
+        // Le verdict « mort » ne vaut que pour le même numéro de processus et la même session.
+        var entry = new CachedFile(session) { Dead = cached?.Dead == (session.Pid, session.SessionId) ? (session.Pid, session.SessionId) : null };
         _cache[path] = entry;
         return entry;
     }

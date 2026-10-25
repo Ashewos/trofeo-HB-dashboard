@@ -184,7 +184,10 @@ public sealed class ClaudeSource(string claudeHome, Func<int, bool> isProcessAli
             return null;
         }
 
-        return captures.FirstOrDefault(c => c.ContextWindowSize is > 0 && string.Equals(c.ModelId, model, StringComparison.Ordinal))
+        // La barre d'état peut rapporter « claude-opus-5-5[1m] » là où la transcription écrit « claude-opus-5-5 ».
+        var wanted = ModelNames.WithoutSuffix(model);
+        return captures.FirstOrDefault(c => c.ContextWindowSize is > 0
+                && string.Equals(ModelNames.WithoutSuffix(c.ModelId), wanted, StringComparison.OrdinalIgnoreCase))
             ?.ContextWindowSize;
     }
 

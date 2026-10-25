@@ -191,9 +191,73 @@ public sealed class StatusLineInstallerTests : IDisposable
     [Fact]
     public void Install_AlreadyInstalled_IgnoresCase()
     {
-        WriteSettings("""{"statusLine":{"type":"command","command":"\"d:/a/TROFEO.STATUSLINE.exe\""}}""");
+        WriteSettings("""{"statusLine":{"type":"command","command":"\"c:/X/TROFEO.STATUSLINE.exe\""}}""");
+        var before = File.ReadAllBytes(SettingsPath);
 
         Assert.Equal(StatusLineInstallResult.AlreadyInstalled, Installer().Install(Exe));
+        Assert.Equal(before, File.ReadAllBytes(SettingsPath));
+    }
+
+    [Fact]
+    public void Install_MovedExe_RewritesPathKeepsChain()
+    {
+        const string moved = "D:/ailleurs/Trofeo.StatusLine.exe";
+        WriteSettings("""{"statusLine":{"type":"command","command":"bash ~/sl.sh","padding":1}}""");
+        Installer().Install(Exe);
+        var previousBefore = File.ReadAllBytes(PreviousPath);
+        var backupBefore = File.ReadAllBytes(BackupPath);
+
+        var result = Installer().Install(moved);
+
+        Assert.Equal(StatusLineInstallResult.Updated, result);
+        var statusLine = ReadSettings()["statusLine"]!;
+        Assert.Equal("\"D:/ailleurs/Trofeo.StatusLine.exe\" --tee | ( bash ~/sl.sh )", (string?)statusLine["command"]);
+        Assert.Equal(1, (int?)statusLine["padding"]);
+        Assert.Equal(previousBefore, File.ReadAllBytes(PreviousPath));
+        Assert.Equal(backupBefore, File.ReadAllBytes(BackupPath));
+        Assert.Empty(Directory.GetFiles(_home, "*.tmp"));
+
+        Assert.Equal(StatusLineInstallResult.Uninstalled, Installer().Uninstall());
+        Assert.Equal("bash ~/sl.sh", (string?)ReadSettings()["statusLine"]!["command"]);
+        Assert.Equal(1, (int?)ReadSettings()["statusLine"]!["padding"]);
+    }
+
+    [Fact]
+    public void Install_MovedExe_WithoutChain_RewritesPath()
+    {
+        Installer().Install(Exe);
+
+        var result = Installer().Install(@"D:\ailleurs\Trofeo.StatusLine.exe");
+
+        Assert.Equal(StatusLineInstallResult.Updated, result);
+        Assert.Equal("\"D:/ailleurs/Trofeo.StatusLine.exe\"", (string?)ReadSettings()["statusLine"]!["command"]);
+    }
+
+    [Fact]
+    public void Install_SameExe_AlreadyInstalledNoWrite()
+    {
+        WriteSettings("""{"statusLine":{"type":"command","command":"bash ~/sl.sh"}}""");
+        Installer().Install(Exe);
+        var before = File.ReadAllBytes(SettingsPath);
+        var writtenAt = File.GetLastWriteTimeUtc(SettingsPath);
+
+        Assert.Equal(StatusLineInstallResult.AlreadyInstalled, Installer().Install(Exe));
+
+        Assert.Equal(before, File.ReadAllBytes(SettingsPath));
+        Assert.Equal(writtenAt, File.GetLastWriteTimeUtc(SettingsPath));
+    }
+
+    [Fact]
+    public void Install_HandEditedUnquotedCommand_AlreadyInstalledNoWrite()
+    {
+        // Notre marque, mais pas de chemin entre guillemets en tête : on ne devine pas.
+        const string edited = """{"statusLine":{"type":"command","command":"echo Trofeo.StatusLine | cat"}}""";
+        WriteSettings(edited);
+        var before = File.ReadAllBytes(SettingsPath);
+
+        Assert.Equal(StatusLineInstallResult.AlreadyInstalled, Installer().Install(@"D:\ailleurs\Trofeo.StatusLine.exe"));
+        Assert.Equal(before, File.ReadAllBytes(SettingsPath));
+        Assert.False(File.Exists(PreviousPath));
     }
 
     [Theory]

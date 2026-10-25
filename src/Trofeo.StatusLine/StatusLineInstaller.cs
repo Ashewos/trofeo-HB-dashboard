@@ -5,8 +5,11 @@ using System.Text.Json.Nodes;
 
 namespace Trofeo.StatusLine;
 
-/// <summary>Résultat d'une installation ou d'une désinstallation de la commande de barre d'état.</summary>
-public enum StatusLineInstallResult { Installed, AlreadyInstalled, Uninstalled, NotInstalled, InvalidSettings }
+/// <summary>
+/// Résultat d'une installation ou d'une désinstallation de la commande de barre d'état. <c>Updated</c> : la commande était
+/// déjà la nôtre mais pointait vers un autre exécutable ; seul le chemin a été réécrit.
+/// </summary>
+public enum StatusLineInstallResult { Installed, AlreadyInstalled, Uninstalled, NotInstalled, InvalidSettings, Updated }
 
 /// <summary>
 /// Branche (ou débranche) <c>Trofeo.StatusLine.exe</c> dans le <c>settings.json</c> de Claude Code, de façon réversible.
@@ -40,7 +43,7 @@ public sealed class StatusLineInstaller(string claudeHome)
     public StatusLineInstallResult Install(string exePath)
     {
         if (!TryReadSettings(out var root)) return StatusLineInstallResult.InvalidSettings;
-        if (IsOurs(root["statusLine"])) return StatusLineInstallResult.AlreadyInstalled;
+        if (IsOurs(root["statusLine"])) return RefreshExePath(root, NormalizeExePath(exePath));
 
         // Sauvegardes : copie du fichier d'origine la première fois seulement ; ancien nœud à chaque installation.
         if (File.Exists(SettingsPath) && !File.Exists(BackupPath)) File.Copy(SettingsPath, BackupPath);
@@ -50,6 +53,24 @@ public sealed class StatusLineInstaller(string claudeHome)
         root["statusLine"] = BuildStatusLine(previous, NormalizeExePath(exePath));
         WriteAtomic(SettingsPath, root);
         return StatusLineInstallResult.Installed;
+    }
+
+    /// <summary>
+    /// Notre commande est déjà là : si l'exécutable a changé de place, on remplace seulement le premier segment entre
+    /// guillemets (le tube vers l'ancienne commande et les autres champs restent). Une commande qui ne commence pas par un
+    /// segment entre guillemets a été modifiée à la main : on ne devine pas.
+    /// </summary>
+    private StatusLineInstallResult RefreshExePath(JsonObject root, string exe)
+    {
+        var statusLine = (JsonObject)root["statusLine"]!; // IsOurs a vérifié qu'il porte une commande
+        var command = CommandOf(statusLine)!;
+        var end = command.StartsWith('"') ? command.IndexOf('"', 1) : -1;
+        if (end < 0) return StatusLineInstallResult.AlreadyInstalled;
+        if (string.Equals(command[1..end], exe, StringComparison.OrdinalIgnoreCase)) return StatusLineInstallResult.AlreadyInstalled;
+
+        statusLine["command"] = $"\"{exe}\"" + command[(end + 1)..];
+        WriteAtomic(SettingsPath, root);
+        return StatusLineInstallResult.Updated;
     }
 
     public StatusLineInstallResult Uninstall()

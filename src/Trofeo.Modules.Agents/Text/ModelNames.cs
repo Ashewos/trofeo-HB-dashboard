@@ -56,6 +56,21 @@ public static partial class ModelNames
             : Capitalize(parts[0]) + " " + string.Join('.', parts.Skip(1));
     }
 
+    /// <summary>
+    /// L'identifiant sans son suffixe final entre crochets (« claude-opus-5-5[1m] » devient « claude-opus-5-5 »), pour
+    /// comparer l'identifiant d'une transcription à celui de la barre d'état. Sans suffixe, rend l'identifiant tel quel.
+    /// </summary>
+    internal static string WithoutSuffix(string? modelId)
+    {
+        var id = (modelId ?? "").Trim();
+        if (id.EndsWith(']') && id.LastIndexOf('[') is var open and > 0)
+        {
+            id = id[..open].TrimEnd();
+        }
+
+        return id;
+    }
+
     private static string Capitalize(string word) =>
         char.ToUpper(word[0], CultureInfo.InvariantCulture) + word[1..];
 }
