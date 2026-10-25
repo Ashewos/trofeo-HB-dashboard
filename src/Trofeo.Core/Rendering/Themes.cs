@@ -1,23 +1,115 @@
 using SkiaSharp;
+using Trofeo.Core.Layout;
 using Trofeo.ModuleKit;
 
 namespace Trofeo.Core.Rendering;
 
-/// <summary>Thèmes fournis avec l'application.</summary>
+/// <summary>Thèmes fournis avec l'application (valeurs de la maquette <c>themes-v3.html</c>).</summary>
 public static class Themes
 {
-    private static readonly Lazy<Theme> ClassiqueTheme = new(() => new Theme(
-        Id: "classique",
-        Background: SKColor.Parse("#0E1116"),
-        Panel: SKColor.Parse("#111317"),
-        PanelOpacity: 0.86f,
-        CornerRadius: 14f,
-        Text: SKColor.Parse("#ECEEF0"),
-        TextMuted: SKColor.Parse("#8C929C"),
-        Accent: SKColor.Parse("#7FD1C7"),
-        Warning: SKColor.Parse("#F2B84B"),
-        Typeface: FontLoader.Load("BarlowSemiCondensed-Regular.ttf")));
+    // Opacité (0 à 1) en octet, arrondie loin de zéro.
+    private static SKColor Alpha(string hex, double opacity) =>
+        SKColor.Parse(hex).WithAlpha((byte)Math.Round(opacity * 255, MidpointRounding.AwayFromZero));
 
-    /// <summary>Thème par défaut : fond sombre, accent turquoise, Barlow Semi Condensed.</summary>
-    public static Theme Classique => ClassiqueTheme.Value;
+    private static readonly Lazy<ThemeDefinition> ClassiqueLazy = new(() => new ThemeDefinition(
+        new Theme(
+            Id: "classique",
+            Background: SKColor.Parse("#0E1116"),
+            Panel: SKColor.Parse("#111317"),
+            PanelOpacity: 0.86f,
+            CornerRadius: 14f,
+            Text: SKColor.Parse("#ECEEF0"),
+            TextMuted: SKColor.Parse("#8C929C"),
+            Accent: SKColor.Parse("#7FD1C7"),
+            Warning: SKColor.Parse("#F2B84B"),
+            Typeface: EmbeddedFonts.Find(EmbeddedFonts.Barlow)!),
+        GridSpacing.Default,
+        new PanelLook(PanelKind.Matte) { Outline = Alpha("#FFFFFF", 0.06) },
+        new ThemeBackground(SKColor.Parse("#0E1116"), false)));
+
+    private static readonly Lazy<ThemeDefinition> LiquidGlassLazy = new(() =>
+    {
+        var manrope = EmbeddedFonts.Find(EmbeddedFonts.Manrope)!;
+        return new ThemeDefinition(
+            new Theme(
+                Id: "liquid-glass",
+                Background: SKColor.Parse("#241A3D"),
+                Panel: SKColor.Parse("#101220"),
+                PanelOpacity: 0.22f,
+                CornerRadius: 30f,
+                Text: SKColor.Parse("#FFFFFF"),
+                TextMuted: Alpha("#FFFFFF", 0.72),
+                Accent: SKColor.Parse("#FFFFFF"),
+                Warning: SKColor.Parse("#FFD56B"),
+                Typeface: manrope)
+            {
+                Shape = ThemeShape.Rounded,
+                Highlight = SKColor.Parse("#FFFFFF"),
+                Surface = Alpha("#FFFFFF", 0.22),
+                Track = Alpha("#FFFFFF", 0.22),
+                FeedTypeface = manrope,
+                FeedScale = 1f,
+            },
+            GridSpacing.Default,
+            new PanelLook(PanelKind.Glass)
+            {
+                Outline = Alpha("#FFFFFF", 0.22),
+                BlurSigma = 26f,
+                Saturation = 1.7f,
+                SheenTop = Alpha("#FFFFFF", 0.18),
+                SheenMid = Alpha("#FFFFFF", 0.04),
+                SheenBottom = Alpha("#FFFFFF", 0.08),
+                TopLight = Alpha("#FFFFFF", 0.55),
+                DropShadow = Alpha("#000000", 0.18),
+            },
+            new ThemeBackground(SKColor.Parse("#241A3D"), true));
+    });
+
+    private static readonly Lazy<ThemeDefinition> PixelLazy = new(() => new ThemeDefinition(
+        new Theme(
+            Id: "pixel",
+            Background: SKColor.Parse("#17142A"),
+            Panel: SKColor.Parse("#17142A"),
+            PanelOpacity: 1f,
+            CornerRadius: 0f,
+            Text: SKColor.Parse("#F4EEDE"),
+            TextMuted: SKColor.Parse("#8F86B8"),
+            Accent: SKColor.Parse("#7CE0A3"),
+            Warning: SKColor.Parse("#FFD27A"),
+            Typeface: EmbeddedFonts.Find(EmbeddedFonts.Pixelify)!)
+        {
+            Shape = ThemeShape.Pixel,
+            Highlight = SKColor.Parse("#FFD27A"),
+            Surface = SKColor.Parse("#2E2850"),
+            Track = SKColor.Parse("#2E2850"),
+            FeedTypeface = EmbeddedFonts.Find(EmbeddedFonts.Vt323)!,
+            FeedScale = 1.24f,
+        },
+        new GridSpacing(18, 20),
+        new PanelLook(PanelKind.Pixel)
+        {
+            Border = SKColor.Parse("#2E2850"),
+            BorderWidth = 4,
+            PixelShadow = Alpha("#0A0814", 0.6),
+        },
+        new ThemeBackground(SKColor.Parse("#17142A"), true)));
+
+    private static readonly Lazy<IReadOnlyList<ThemeDefinition>> AllLazy = new(() =>
+        new[] { ClassiqueLazy.Value, LiquidGlassLazy.Value, PixelLazy.Value });
+
+    /// <summary>Thème par défaut : fond sombre, accent turquoise, Barlow Semi Condensed. Même instance que <c>ClassiqueDefinition.Theme</c>.</summary>
+    public static Theme Classique => ClassiqueLazy.Value.Theme;
+
+    public static ThemeDefinition ClassiqueDefinition => ClassiqueLazy.Value;
+
+    public static ThemeDefinition LiquidGlass => LiquidGlassLazy.Value;
+
+    public static ThemeDefinition Pixel => PixelLazy.Value;
+
+    /// <summary>Les trois thèmes : Classique, Liquid Glass, Pixel.</summary>
+    public static IReadOnlyList<ThemeDefinition> All => AllLazy.Value;
+
+    /// <summary>Thème par identifiant (casse ignorée) ; null si inconnu.</summary>
+    public static ThemeDefinition? Find(string? id) =>
+        id is null ? null : All.FirstOrDefault(t => string.Equals(t.Theme.Id, id, StringComparison.OrdinalIgnoreCase));
 }
