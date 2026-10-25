@@ -62,14 +62,15 @@ dotnet test
 dotnet run -c Release --project src/Trofeo.Display
 ```
 
-Le service s'installe dans la zone de notification. La disposition est enregistrée dans `%AppData%\trofeo-HB-dashboard\layout.json`, et le journal dans `%AppData%\trofeo-HB-dashboard\logs\display.log`.
+Le service s'installe dans la zone de notification. La disposition est enregistrée dans `%AppData%\trofeo-HB-dashboard\layout.json`, et le journal dans `%AppData%\trofeo-HB-dashboard\logs\display.log`. Un `layout.json` écrit par la première version ne garde que le module Heure ; pour obtenir les quatre modules par défaut, supprime le fichier pendant que le service est arrêté, il est recréé au prochain lancement.
 
 L'outil `tools/Trofeo.HardwareCheck` sert à vérifier un écran :
 
 - `--orientation 0` ou `--orientation 180` : affiche une mire pour trouver le bon sens ;
 - `--fps` : mesure le débit réel ;
 - `--recovery` : teste la reprise d'un écran figé ;
-- `--set-secret <portée> <clé>` : enregistre un secret (mot de passe, jeton) dans le coffre du service. La valeur se lit sur l'entrée standard, saisie masquée au clavier, et n'est jamais affichée ;
+- `--set-secret <portée> <clé>` : enregistre un secret (mot de passe, jeton) dans le coffre du service. La valeur se lit sur l'entrée standard, saisie masquée au clavier, et n'est jamais affichée. Une valeur vide ou faite d'espaces est refusée (code de sortie 1) ;
+- `--clear-secret <portée> <clé>` : efface un secret du coffre et affiche le nom de la clé effacée, jamais une valeur. Pour faire de nouveau confiance à une console UniFi dont le certificat a été renouvelé, efface son empreinte mémorisée avec `--clear-secret network unifi.certSha256.<hôte en minuscules>` (l'hôte est écrit comme dans `layout.json`, avec son port s'il y en a un), puis relance le service : la prochaine connexion mémorise le nouveau certificat ;
 - `--city <nom>` : affiche les cinq villes proposées par Open-Meteo, avec leurs coordonnées, pour régler la météo.
 
 En attendant le logiciel de réglage, les modules se règlent à la main dans `layout.json`, service arrêté :
@@ -80,12 +81,12 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
 
 ## Températures du processeur
 
-Sans réglage, le module Monitoring affiche la ligne « Temp. CPU : installez le pilote ». Windows ne laisse lire ces températures qu'à un programme élevé, grâce à un pilote. Pour les activer :
+Sans réglage, le module Monitoring affiche la ligne « Temp. CPU : installe le pilote (voir le README) ». Windows ne laisse lire ces températures qu'à un programme élevé, grâce à un pilote. Pour les activer :
 
 1. Installer PawnIO : `winget install --id namazso.PawnIO`.
 2. Ouvrir un terminal en administrateur et lancer `Trofeo.SensorHelper.exe install`. Après `dotnet build -c Release`, l'exécutable se trouve dans `src/Trofeo.SensorHelper/bin/Release/`, sous le dossier de la version de Windows ciblée ; l'option `--pawnio <installateur>` installe PawnIO au passage. Cela crée la tâche planifiée `\trofeo-HB-dashboard\Capteurs`, qui relève les capteurs à chaque ouverture de session et les transmet au service. Le service lui-même reste sans droits d'administrateur.
 
-La ligne d'aide disparaît dès que la température arrive.
+La ligne d'aide disparaît dès que la température arrive, et ne s'affiche pas quand l'assistant tourne déjà.
 
 ## Organisation du code
 
@@ -98,7 +99,7 @@ La ligne d'aide disparaît dès que la température arrive.
 | `src/Trofeo.Modules.*` | Les modules |
 | `docs/superpowers` | Conception et plans de développement |
 
-Les modules sont intégrés au logiciel. Pour en proposer un nouveau, ouvrez une pull request avec un projet `Trofeo.Modules.<Nom>` qui implémente `IModuleFactory` et `IModule`.
+Les modules sont intégrés au logiciel. Pour en proposer un nouveau, ouvre une pull request avec un projet `Trofeo.Modules.<Nom>` qui implémente `IModuleFactory` et `IModule`.
 
 ## Crédits
 
