@@ -24,9 +24,23 @@ public static class EmbeddedFonts
     /// <summary>Les quatre familles, dans cet ordre.</summary>
     public static IReadOnlyList<string> Families { get; } = Sources.Select(s => s.Family).ToArray();
 
-    /// <summary>Police embarquée par nom de famille (casse ignorée) ; null si ce n'en est pas une. Chargée une fois, gardée.</summary>
-    public static SKTypeface? Find(string family) =>
-        family is not null && Cache.TryGetValue(family, out var face) ? face.Value : null;
+    /// <summary>Police embarquée par nom de famille (casse ignorée) ; null si ce n'en est pas une, ou si sa ressource manque ou est illisible. Chargée une fois, gardée.</summary>
+    public static SKTypeface? Find(string family)
+    {
+        if (family is null || !Cache.TryGetValue(family, out var face))
+            return null;
+
+        // Une ressource absente ou illisible ne doit jamais faire planter le service : la police est
+        // alors traitée comme absente (le Lazy garde l'exception, chaque appel rend donc null).
+        try
+        {
+            return face.Value;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>Polices installées sur le PC. Remplaçable en test.</summary>
