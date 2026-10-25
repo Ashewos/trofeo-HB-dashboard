@@ -172,13 +172,14 @@ public class NowPlayingModuleTests
     private const int Margin = 30;
     private static readonly Theme Theme = Themes.Classique;
 
-    private static SKBitmap Render(NowPlayingModule module, SKRectI rect, GridSize size, float scale = 1f)
+    private static SKBitmap Render(NowPlayingModule module, SKRectI rect, GridSize size, float scale = 1f, Theme? theme = null)
     {
+        theme ??= Theme;
         var bitmap = new SKBitmap(GridGeometry.Width + 2 * Margin, GridGeometry.Height + 2 * Margin);
         using var canvas = new SKCanvas(bitmap);
-        canvas.Clear(Theme.Background);
+        canvas.Clear(theme.Background);
         var bounds = new SKRect(rect.Left + Margin, rect.Top + Margin, rect.Right + Margin, rect.Bottom + Margin);
-        module.Render(canvas, new ModuleRenderContext(bounds, size, Theme, scale, Start.AddSeconds(10)));
+        module.Render(canvas, new ModuleRenderContext(bounds, size, theme, scale, Start.AddSeconds(10)));
         return bitmap;
     }
 
@@ -386,5 +387,58 @@ public class NowPlayingModuleTests
                 Assert.NotEqual(Red, bitmap.GetPixel(x, y));
         Assert.NotNull(InkBounds(bitmap, inside));
         Assert.Equal(0, CountOutside(bitmap, inside));
+    }
+
+    // --- Thème : barre de progression ---
+
+    private static readonly SKColor TestTrack = new(0x00, 0x80, 0x00);
+
+    private static (int Count, int Top, int Bottom) TrackPixels(SKBitmap bitmap)
+    {
+        int count = 0, top = int.MaxValue, bottom = -1;
+        for (var y = 0; y < bitmap.Height; y++)
+            for (var x = 0; x < bitmap.Width; x++)
+                if (bitmap.GetPixel(x, y) == TestTrack)
+                {
+                    count++;
+                    top = Math.Min(top, y);
+                    bottom = Math.Max(bottom, y);
+                }
+        return (count, top, bottom);
+    }
+
+    [Fact]
+    public async Task NowPlaying_ProgressUsesThemeTrack()
+    {
+        var source = new FakeSource { Current = Playing(position: 10, duration: 200) };
+        var (module, _) = Create(source, Clock());
+        using var _m = module;
+        await module.StartAsync(CancellationToken.None);
+        var rect = GridGeometry.ModuleRect(8, 0, 4, 2);
+
+        using var rounded = Render(module, rect, new GridSize(4, 2), theme: Theme with { Track = TestTrack });
+        using var pixel = Render(module, rect, new GridSize(4, 2), theme: Theme with { Track = TestTrack, Shape = ThemeShape.Pixel });
+
+        // Barre arrondie : la piste du thème, 8 px de haut (extrémités anticrénelées).
+        var (roundedCount, roundedTop, roundedBottom) = TrackPixels(rounded);
+        Assert.True(roundedCount > 1000, $"{roundedCount} pixels de piste");
+        Assert.InRange(roundedBottom - roundedTop + 1, 6, 8);
+
+        // Barre Pixel : 12 px de haut, en segments (la piste est coupée de vides sur la ligne du milieu).
+        var (pixelCount, pixelTop, pixelBottom) = TrackPixels(pixel);
+        Assert.True(pixelCount > 1000, $"{pixelCount} pixels de piste");
+        Assert.Equal(12, pixelBottom - pixelTop + 1);
+        var middle = (pixelTop + pixelBottom) / 2;
+        var runs = 0;
+        var inside = false;
+        for (var x = 0; x < pixel.Width; x++)
+        {
+            var c = pixel.GetPixel(x, middle);
+            var on = c == TestTrack || c == Theme.Accent;
+            if (on && !inside) runs++;
+            inside = on;
+        }
+
+        Assert.True(runs > 5, $"{runs} segments seulement");
     }
 }

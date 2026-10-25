@@ -31,9 +31,6 @@ public sealed class NowPlayingModule : IModule
     private const float CompactGap = 4f;
     private const float EmptySize = 24f;
 
-    /// <summary>Opacité de la piste de la barre : environ 8 % du texte.</summary>
-    private const byte TrackAlpha = 0x14;
-
     /// <summary>Opacité du carré qui remplace une pochette absente : 25 %.</summary>
     private const byte PlaceholderAlpha = 0x40;
 
@@ -284,8 +281,8 @@ public sealed class NowPlayingModule : IModule
 
         var position = MediaTimeline.Current(snapshot, ctx.Now);
         var fraction = snapshot.Duration > TimeSpan.Zero ? (float)(position.TotalSeconds / snapshot.Duration.TotalSeconds) : 0f;
-        ModuleDrawing.DrawBar(canvas, new SKRect(left, y, left + width, y + barHeight), fraction,
-            theme.Accent, theme.Text.WithAlpha(TrackAlpha));
+        ModuleDrawing.DrawBar(canvas, ModuleDrawing.BarRect(new SKRect(left, y, left + width, y + barHeight), theme), fraction,
+            theme.Accent, theme);
         y += barHeight + gap;
 
         // Durée connue : temps écoulé à gauche et durée totale à droite ; sinon (direct) le temps écoulé seul.

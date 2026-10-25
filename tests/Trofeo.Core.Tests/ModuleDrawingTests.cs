@@ -432,4 +432,23 @@ public class ModuleDrawingTests
                 if (predicate(bitmap.GetPixel(x, y))) count++;
         return count;
     }
+
+    [Fact]
+    public void BarRect_Pixel_IsOneAndAHalfTimesTallCenteredOnTheSameLine()
+    {
+        var theme = Themes.Classique with { Shape = ThemeShape.Pixel };
+
+        var rect = ModuleDrawing.BarRect(new SKRect(10, 100, 210, 108), theme);
+
+        Assert.Equal(new SKRect(10, 98, 210, 110), rect);
+        Assert.Equal(new SKRect(0, 8.5f, 50, 16.5f), ModuleDrawing.BarRect(new SKRect(0, 10, 50, 15), theme)); // 5 × 1,5 = 7,5 → 8, centrée sur 12,5
+    }
+
+    [Fact]
+    public void BarRect_Rounded_IsUnchanged()
+    {
+        var rect = new SKRect(10, 100, 210, 108);
+
+        Assert.Equal(rect, ModuleDrawing.BarRect(rect, Themes.Classique));
+    }
 }

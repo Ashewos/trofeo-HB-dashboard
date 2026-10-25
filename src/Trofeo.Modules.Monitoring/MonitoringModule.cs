@@ -29,9 +29,6 @@ public sealed class MonitoringModule : IModule
     /// <summary>À partir de cette fraction la barre passe en <see cref="Theme.Warning"/>.</summary>
     private const float WarnFraction = 0.9f;
 
-    /// <summary>Opacité de la piste des barres : environ 8 % du texte.</summary>
-    private const byte TrackAlpha = 0x14;
-
     private readonly MonitoringSettings _settings;
     private readonly ISensorFeed _feed;
     private readonly TimeProvider _time;
@@ -130,7 +127,6 @@ public sealed class MonitoringModule : IModule
         var rowHeight = MonitoringRows.RowHeight * scale;
         var rowGap = MonitoringRows.RowGap * scale;
         var bottom = bounds.Bottom - MonitoringRows.PaddingY * scale;
-        var track = theme.Text.WithAlpha(TrackAlpha);
 
         for (var i = 0; i < rowIds.Count; i++)
         {
@@ -145,7 +141,8 @@ public sealed class MonitoringModule : IModule
             {
                 var barHeight = BarHeight * scale;
                 var rect = new SKRect(barLeft, mid - barHeight / 2f, barRight, mid + barHeight / 2f);
-                ModuleDrawing.DrawBar(canvas, rect, fraction, fraction >= WarnFraction ? theme.Warning : theme.Accent, track);
+                ModuleDrawing.DrawBar(canvas, ModuleDrawing.BarRect(rect, theme), fraction,
+                    fraction >= WarnFraction ? theme.Warning : theme.Accent, theme);
             }
 
             // Sans barre, la valeur peut s'étendre sur la place qu'elle aurait prise (« 1450 tr/min »).

@@ -7,8 +7,8 @@ namespace Trofeo.Modules.Agents;
 internal sealed record AgentScene(
     AgentSnapshot? Snapshot, string? SelectedId, ModuleStatus Status, AgentSettings Settings, AgentFlavor Flavor, MascotAnimator Animator);
 
-/// <summary>Un texte dessiné : tel qu'il apparaît (ellipsé), sa ligne de base et sa couleur. Réservé aux tests.</summary>
-internal sealed record DrawnRun(string Text, float Baseline, SKColor Color);
+/// <summary>Un texte dessiné : tel qu'il apparaît (ellipsé), sa ligne de base, sa couleur, sa police et sa taille en pixels. Réservé aux tests.</summary>
+internal sealed record DrawnRun(string Text, float Baseline, SKColor Color, SKTypeface Typeface, float Size);
 
 /// <summary>
 /// Dessine le module : onglets, en-tête, fil d'activité ou vue d'ensemble, barre du bas et mascotte. Sans état entre deux
@@ -66,6 +66,7 @@ internal sealed class AgentPainter
         private readonly Theme _theme;
         private readonly float _scale;
         private readonly Dictionary<float, SKFont> _fonts = [];
+        private readonly Dictionary<float, SKFont> _feedFonts = [];
 
         public Frame(SKCanvas canvas, ModuleRenderContext ctx, AgentScene scene, AgentLayoutResult layout, List<string>? texts, List<DrawnRun>? runs)
         {
@@ -82,6 +83,11 @@ internal sealed class AgentPainter
         public void Dispose()
         {
             foreach (var font in _fonts.Values)
+            {
+                font.Dispose();
+            }
+
+            foreach (var font in _feedFonts.Values)
             {
                 font.Dispose();
             }
@@ -113,6 +119,30 @@ internal sealed class AgentPainter
             return font;
         }
 
+        /// <summary>
+        /// Police du fil d'activité : <see cref="Theme.FeedTypeface"/> à <paramref name="size"/> × <see cref="Theme.FeedScale"/>
+        /// (1 si l'agrandissement n'est pas un nombre fini positif). Si la ligne de texte dépasse alors la hauteur d'une ligne
+        /// du fil, la taille est réduite pour qu'elle y tienne : deux lignes ne se chevauchent jamais.
+        /// </summary>
+        private SKFont FeedFont(float size)
+        {
+            if (!_feedFonts.TryGetValue(size, out var font))
+            {
+                var scale = float.IsFinite(_theme.FeedScale) && _theme.FeedScale > 0f ? _theme.FeedScale : 1f;
+                font = new SKFont(_theme.FeedTypeface, size * scale * _scale) { Subpixel = true };
+                var textHeight = font.Metrics.Descent - font.Metrics.Ascent;
+                var room = AgentLayout.FeedLineHeight * _scale;
+                if (textHeight > room && textHeight > 0f)
+                {
+                    font.Size *= room / textHeight;
+                }
+
+                _feedFonts[size] = font;
+            }
+
+            return font;
+        }
+
         private static SKColor Opacity(SKColor color, float factor) => color.WithAlpha((byte)Math.Round(color.Alpha * factor));
 
         private static int IndexOf(IReadOnlyList<AgentSessionSummary> sessions, string? id)
@@ -129,9 +159,9 @@ internal sealed class AgentPainter
         }
 
         /// <summary>Ligne de base qui centre verticalement, sur <paramref name="midY"/>, un texte de taille <paramref name="size"/>.</summary>
-        private float BaselineFor(float size, float midY)
+        private float BaselineFor(float size, float midY, bool feed = false)
         {
-            var metrics = Font(size).Metrics;
+            var metrics = (feed ? FeedFont(size) : Font(size)).Metrics;
             return midY - (metrics.Ascent + metrics.Descent) / 2f;
         }
 
@@ -139,23 +169,23 @@ internal sealed class AgentPainter
         /// Dessine le texte (ellipsé à <paramref name="maxWidth"/>) centré verticalement sur <paramref name="midY"/>, taille
         /// <paramref name="size"/> (avant échelle). Rend la largeur dessinée.
         /// </summary>
-        private float Text(string text, float x, float midY, SKTextAlign align, float size, SKColor color, float maxWidth) =>
-            TextOnBaseline(text, x, BaselineFor(size, midY), align, size, color, maxWidth);
+        private float Text(string text, float x, float midY, SKTextAlign align, float size, SKColor color, float maxWidth, bool feed = false) =>
+            TextOnBaseline(text, x, BaselineFor(size, midY, feed), align, size, color, maxWidth, feed);
 
         /// <summary>Comme <see cref="Text"/>, sur une ligne de base donnée (pour aligner deux tailles côte à côte).</summary>
-        private float TextOnBaseline(string text, float x, float baseline, SKTextAlign align, float size, SKColor color, float maxWidth)
+        private float TextOnBaseline(string text, float x, float baseline, SKTextAlign align, float size, SKColor color, float maxWidth, bool feed = false)
         {
             if (maxWidth <= 0f || string.IsNullOrEmpty(text))
             {
                 return 0f;
             }
 
-            var font = Font(size);
+            var font = feed ? FeedFont(size) : Font(size);
             var fitted = ModuleDrawing.Ellipsize(text, font, maxWidth);
             using var paint = new SKPaint { Color = color, IsAntialias = true };
             ModuleDrawing.DrawText(_canvas, fitted, x, baseline, align, font, paint);
             _texts?.Add(fitted);
-            _runs?.Add(new DrawnRun(fitted, baseline, color));
+            _runs?.Add(new DrawnRun(fitted, baseline, color, font.Typeface, font.Size));
             return ModuleDrawing.MeasureText(fitted, font);
         }
 
@@ -205,10 +235,14 @@ internal sealed class AgentPainter
 
         private void DrawTab(SKRect rect, AgentSessionSummary session, bool shown)
         {
+            var pixel = _theme.Shape == ThemeShape.Pixel;
             if (shown)
             {
-                Fill(rect, Opacity(_theme.Text, 0.08f));
-                Fill(new SKRect(rect.Left, rect.Top, rect.Left + 3f * _scale, rect.Bottom), _theme.Accent);
+                Fill(rect, _theme.Surface);
+
+                // Pixel : trait de 4 px dans la couleur de mise en avant ; sinon trait de 3 px dans l'accent.
+                var marker = pixel ? 4f : 3f;
+                Fill(new SKRect(rect.Left, rect.Top, rect.Left + marker * _scale, rect.Bottom), pixel ? _theme.Highlight : _theme.Accent);
             }
 
             var dotColor = session.Activity switch
@@ -218,13 +252,21 @@ internal sealed class AgentPainter
                 _ => _theme.TextMuted,
             };
             var dotX = rect.Left + 18f * _scale;
-            using (var dot = new SKPaint { Color = dotColor, IsAntialias = true, Style = SKPaintStyle.Fill })
+            using (var dot = new SKPaint { Color = dotColor, IsAntialias = !pixel, Style = SKPaintStyle.Fill })
             {
-                _canvas.DrawCircle(dotX, rect.MidY, 6f * _scale, dot);
+                if (pixel)
+                {
+                    var half = 6f * _scale;
+                    _canvas.DrawRect(new SKRect(dotX - half, rect.MidY - half, dotX + half, rect.MidY + half), dot);
+                }
+                else
+                {
+                    _canvas.DrawCircle(dotX, rect.MidY, 6f * _scale, dot);
+                }
             }
 
             var nameX = dotX + 6f * _scale + 10f * _scale;
-            Text(session.ProjectName, nameX, rect.MidY, SKTextAlign.Left, 22f, _theme.Text, rect.Right - 8f * _scale - nameX);
+            Text(session.ProjectName, nameX, rect.MidY, SKTextAlign.Left, 22f, shown && pixel ? _theme.Highlight : _theme.Text, rect.Right - 8f * _scale - nameX);
         }
 
         // --- Contenu à droite des onglets ---
@@ -257,7 +299,7 @@ internal sealed class AgentPainter
                 if (detail.CurrentTask is { } task)
                 {
                     var header = _layout.Header;
-                    Text(task, header.Left, header.MidY, SKTextAlign.Left, 26f, _theme.Text, header.Width);
+                    Text(task, header.Left, header.MidY, SKTextAlign.Left, 26f, _theme.Highlight, header.Width);
                 }
 
                 if (_scene.Settings.View == AgentView.Overview)
@@ -309,8 +351,8 @@ internal sealed class AgentPainter
                     right -= Text("+" + entry.Added, right, mid, SKTextAlign.Right, 20f, Opacity(AddedColor, opacity), 90f * _scale) + gap;
                 }
 
-                Text(entry.Tool, body.Left, mid, SKTextAlign.Left, 22f, Opacity(_theme.Accent, opacity), toolWidth - 8f * _scale);
-                Text(entry.Target, body.Left + toolWidth, mid, SKTextAlign.Left, 22f, Opacity(_theme.Text, opacity), right - body.Left - toolWidth);
+                Text(entry.Tool, body.Left, mid, SKTextAlign.Left, 22f, Opacity(_theme.Accent, opacity), toolWidth - 8f * _scale, feed: true);
+                Text(entry.Target, body.Left + toolWidth, mid, SKTextAlign.Left, 22f, Opacity(_theme.Text, opacity), right - body.Left - toolWidth, feed: true);
             }
         }
 
@@ -341,8 +383,8 @@ internal sealed class AgentPainter
             var barRight = Math.Min(body.Right, barLeft + 220f * _scale);
             var barHeight = 8f * _scale;
             ModuleDrawing.DrawBar(_canvas,
-                new SKRect(barLeft, y + progressHeight / 2f - barHeight / 2f, barRight, y + progressHeight / 2f + barHeight / 2f),
-                (float)done / tasks.Count, _theme.Accent, Opacity(_theme.Text, 0.16f));
+                ModuleDrawing.BarRect(new SKRect(barLeft, y + progressHeight / 2f - barHeight / 2f, barRight, y + progressHeight / 2f + barHeight / 2f), _theme),
+                (float)done / tasks.Count, _theme.Accent, _theme);
             y += progressHeight;
 
             var rowHeight = 30f * _scale;
@@ -457,8 +499,8 @@ internal sealed class AgentPainter
             TextOnBaseline(known ? AgentText.Percent(window!.UsedPercent) : NoValue, left + width, baseline, SKTextAlign.Right, 20f, _theme.Text, half);
 
             var top = bar.Top + 27f * _scale;
-            ModuleDrawing.DrawBar(_canvas, new SKRect(left, top, left + width, top + 8f * _scale),
-                known ? (float)(window!.UsedPercent / 100d) : 0f, _theme.Accent, Opacity(_theme.Text, 0.16f));
+            ModuleDrawing.DrawBar(_canvas, ModuleDrawing.BarRect(new SKRect(left, top, left + width, top + 8f * _scale), _theme),
+                known ? (float)(window!.UsedPercent / 100d) : 0f, _theme.Accent, _theme);
 
             if (window?.ResetsAt is { } resetsAt)
             {

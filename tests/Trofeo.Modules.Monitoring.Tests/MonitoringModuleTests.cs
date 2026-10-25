@@ -374,4 +374,84 @@ public class MonitoringModuleTests
         Assert.Equal(3, module.VisibleRows(bounds, 1f).Count);
         Assert.Equal(new[] { "cpu", "gpu", "ram" }, module.VisibleRows(bounds, 1f));
     }
+
+    // --- Thème : barres ---
+
+    private static readonly SKColor TestTrack = new(0x00, 0x80, 0x00);
+
+    private static async Task<(SKBitmap Bitmap, Theme Theme)> RenderBars(ThemeShape shape)
+    {
+        var theme = Themes.Classique with { Shape = shape, Track = TestTrack };
+        var feed = new FakeFeed { Latest = Full() };
+        using var module = Create(feed, Clock(), """{"rows":["cpu"]}""");
+        await module.StartAsync(CancellationToken.None);
+        var bitmap = new SKBitmap(900, 500);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(theme.Background);
+        module.Render(canvas, new ModuleRenderContext(new SKRect(10, 10, 890, 490), new GridSize(6, 4), theme, 1f, Clock().GetUtcNow()));
+        return (bitmap, theme);
+    }
+
+    private static bool IsBar(SKColor c, Theme theme) => c == TestTrack || c == theme.Accent || c == theme.Warning;
+
+    private static (int X, int Y)? FirstTrackPixel(SKBitmap bitmap)
+    {
+        for (var y = 0; y < bitmap.Height; y++)
+            for (var x = 0; x < bitmap.Width; x++)
+                if (bitmap.GetPixel(x, y) == TestTrack) return (x, y);
+        return null;
+    }
+
+    private static int BarRuns(SKBitmap bitmap, Theme theme, int y, bool trackOnly = false)
+    {
+        var runs = 0;
+        var inside = false;
+        for (var x = 0; x < bitmap.Width; x++)
+        {
+            var c = bitmap.GetPixel(x, y);
+            var on = trackOnly ? c == TestTrack : IsBar(c, theme);
+            if (on && !inside) runs++;
+            inside = on;
+        }
+        return runs;
+    }
+
+    [Fact]
+    public async Task Monitoring_PixelTheme_BarsAreSegmented()
+    {
+        var (bitmap, theme) = await RenderBars(ThemeShape.Pixel);
+        using var _ = bitmap;
+
+        var first = FirstTrackPixel(bitmap);
+        Assert.NotNull(first);
+        var (x, y) = first.Value;
+        var top = y;
+        var bottom = y;
+        while (IsBar(bitmap.GetPixel(x, top - 1), theme)) top--;
+        while (IsBar(bitmap.GetPixel(x, bottom + 1), theme)) bottom++;
+
+        // 8 px d'ordinaire, 12 px en Pixel ; des segments séparés par des vides.
+        Assert.Equal(12, bottom - top + 1);
+        Assert.True(BarRuns(bitmap, theme, (top + bottom) / 2) > 5);
+    }
+
+    [Fact]
+    public async Task Monitoring_RoundedTheme_BarIsContinuous_AndUsesThemeTrack()
+    {
+        var (bitmap, theme) = await RenderBars(ThemeShape.Rounded);
+        using var _ = bitmap;
+
+        var first = FirstTrackPixel(bitmap);
+        Assert.NotNull(first);
+        var (x, y) = first.Value;
+        var top = y;
+        var bottom = y;
+        while (IsBar(bitmap.GetPixel(x, top - 1), theme)) top--;
+        while (IsBar(bitmap.GetPixel(x, bottom + 1), theme)) bottom++;
+
+        var middle = (top + bottom) / 2;
+        Assert.InRange(bottom - top + 1, 6, 8);
+        // La partie remplie finit sur un pixel anticrénelé : on suit la piste seule, d'un seul tenant.
+        Assert.Equal(1, BarRuns(bitmap, theme, middle, trackOnly: true));
+    }
 }

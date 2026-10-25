@@ -108,7 +108,7 @@ public sealed class ClockModule : IModule
 
         using var timeFont = new SKFont(ctx.Theme.Typeface, TimeSize * scale * layout.Fit);
         using var dateFont = new SKFont(ctx.Theme.Typeface, DateSize * scale * layout.Fit);
-        using var timePaint = new SKPaint { Color = ctx.Theme.Text, IsAntialias = true };
+        using var timePaint = new SKPaint { Color = ctx.Theme.Highlight, IsAntialias = true };
         using var datePaint = new SKPaint { Color = ctx.Theme.TextMuted, IsAntialias = true };
         canvas.DrawText(time, layout.Time.Left, layout.TimeBaseline, SKTextAlign.Left, timeFont, timePaint);
         canvas.DrawText(date, layout.Date.Left, layout.DateBaseline, SKTextAlign.Left, dateFont, datePaint);

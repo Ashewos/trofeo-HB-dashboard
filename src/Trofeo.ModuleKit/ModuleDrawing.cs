@@ -127,6 +127,18 @@ public static class ModuleDrawing
     }
 
     /// <summary>
+    /// Rectangle de la barre dans le style du thème. <see cref="ThemeShape.Rounded"/> : <paramref name="rect"/> tel quel.
+    /// <see cref="ThemeShape.Pixel"/> : 1,5 × sa hauteur arrondie à l'entier (8 → 12), centrée sur la même ligne.
+    /// </summary>
+    public static SKRect BarRect(SKRect rect, Theme theme)
+    {
+        if (theme.Shape != ThemeShape.Pixel || rect.Height <= 0f) return rect;
+
+        var height = MathF.Round(rect.Height * 1.5f, MidpointRounding.AwayFromZero);
+        return new SKRect(rect.Left, rect.MidY - height / 2f, rect.Right, rect.MidY + height / 2f);
+    }
+
+    /// <summary>
     /// Barre dans le style du thème, <see cref="Theme.Track"/> pour la piste. <see cref="ThemeShape.Rounded"/> : <see cref="DrawBar(SKCanvas, SKRect, float, SKColor, SKColor)"/>.
     /// <see cref="ThemeShape.Pixel"/> : angles vifs, segments pleins de 0,75 × hauteur séparés de 0,25 × hauteur
     /// (autant de segments entiers que la largeur en contient, le reste à droite est laissé vide),

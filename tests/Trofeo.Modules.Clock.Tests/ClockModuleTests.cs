@@ -170,6 +170,25 @@ public class ClockModuleTests
         Assert.False(rightColumnDrawn);
     }
 
+    [Fact]
+    public void Clock_TimeUsesHighlight()
+    {
+        var time = At(14, 32, 0);
+        using var module = Create(time);
+        var highlight = new SKColor(0xFF, 0x00, 0xFF);
+        var theme = TestTheme with { Highlight = highlight };
+        using var bitmap = new SKBitmap(600, 240);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(Bg);
+
+        module.Render(canvas, new ModuleRenderContext(new SKRect(0, 0, 600, 240), new GridSize(4, 2), theme, 1f, time.GetUtcNow()));
+
+        // L'heure est en Highlight (rien en Text) ; la date reste en TextMuted.
+        Assert.True(CountPixels(bitmap, highlight) > 200);
+        Assert.Equal(0, CountPixels(bitmap, theme.Text));
+        Assert.True(CountPixels(bitmap, theme.TextMuted) > 50);
+    }
+
     // --- Météo ---
 
     [Fact]

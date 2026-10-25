@@ -740,13 +740,14 @@ public sealed class AgentModuleTests
 
     // --- Dessin (sélection et textes) ---
 
-    private static SKBitmap RenderOn(AgentModule module, SKRectI rect, GridSize size, float scale, DateTimeOffset? now = null, int margin = 30)
+    private static SKBitmap RenderOn(AgentModule module, SKRectI rect, GridSize size, float scale, DateTimeOffset? now = null, int margin = 30, Theme? theme = null)
     {
+        theme ??= Themes.Classique;
         var bitmap = new SKBitmap(GridGeometry.Width + 2 * margin, GridGeometry.Height + 2 * margin);
         using var canvas = new SKCanvas(bitmap);
-        canvas.Clear(Themes.Classique.Background);
+        canvas.Clear(theme.Background);
         var bounds = new SKRect(rect.Left + margin, rect.Top + margin, rect.Right + margin, rect.Bottom + margin);
-        module.Render(canvas, new ModuleRenderContext(bounds, size, Themes.Classique, scale, now ?? Start));
+        module.Render(canvas, new ModuleRenderContext(bounds, size, theme, scale, now ?? Start));
         return bitmap;
     }
 
@@ -877,12 +878,12 @@ public sealed class AgentModuleTests
         return rig;
     }
 
-    private static List<DrawnRun> DrawnRuns(AgentModule module, int columns, int rows)
+    private static List<DrawnRun> DrawnRuns(AgentModule module, int columns, int rows, Theme? theme = null)
     {
         var runs = new List<DrawnRun>();
         module.Painter.DrawnRuns = runs;
         var rect = GridGeometry.ModuleRect(0, 0, columns, rows);
-        using var bitmap = RenderOn(module, rect, new GridSize(columns, rows), 1f);
+        using var bitmap = RenderOn(module, rect, new GridSize(columns, rows), 1f, theme: theme);
         module.Painter.DrawnRuns = null;
         return runs;
     }
@@ -1328,5 +1329,224 @@ public sealed class AgentModuleTests
         Assert.IsType<AgentModule>(claude);
         Assert.IsType<AgentModule>(codex);
         Assert.Equal(ModuleHealth.Online, claude.Status.Health);
+    }
+
+    // --- Thème : onglet actif, points, titre, fil, barres ---
+
+    private static readonly SKColor TestHighlight = new(0xFF, 0x00, 0xFF);
+    private static readonly SKColor TestSurface = new(0x20, 0x30, 0x40);
+    private static readonly SKColor TestTrack = new(0x00, 0x80, 0x00);
+
+    private static Theme ThemeOf(ThemeShape shape) => Themes.Classique with
+    {
+        Shape = shape, Highlight = TestHighlight, Surface = TestSurface, Track = TestTrack,
+    };
+
+    /// <summary>Un seul onglet (donc le premier, actif) : le rectangle de l'onglet dans le bitmap rendu sur (8 × 4).</summary>
+    private static async Task<(SKBitmap Bitmap, SKRect Tab)> RenderActiveTab(Theme theme, AgentActivity activity = AgentActivity.Idle)
+    {
+        var rig = await Started(Snapshot([Session("a", activity)], Detail("a")));
+        rig.Module.PollNow();
+        var rect = GridGeometry.ModuleRect(0, 0, 8, 4);
+        var bitmap = RenderOn(rig.Module, rect, new GridSize(8, 4), 1f, theme: theme);
+        rig.Dispose();
+        var layout = AgentLayout.Compute(new SKRect(rect.Left + 30, rect.Top + 30, rect.Right + 30, rect.Bottom + 30), new GridSize(8, 4), 1f);
+        var tab = new SKRect(layout.Tabs.Left, layout.Tabs.Top, layout.Tabs.Right, layout.Tabs.Top + AgentLayout.TabHeight);
+        return (bitmap, tab);
+    }
+
+    [Fact]
+    public async Task Agents_PixelTheme_ActiveTabHasHighlightMarker()
+    {
+        var (bitmap, tab) = await RenderActiveTab(ThemeOf(ThemeShape.Pixel));
+        using var _ = bitmap;
+        var y = (int)tab.MidY - 12;
+
+        // Trait de 4 px dans la couleur de mise en avant (x = 0 à 3), puis le fond de l'onglet.
+        for (var dx = 0; dx < 4; dx++)
+        {
+            Assert.Equal(TestHighlight, bitmap.GetPixel((int)tab.Left + dx, y));
+        }
+
+        Assert.Equal(TestSurface, bitmap.GetPixel((int)tab.Left + 4, y));
+        Assert.Equal(TestSurface, bitmap.GetPixel((int)tab.Left + 8, (int)tab.Top + 1));
+        Assert.Equal(TestHighlight, bitmap.GetPixel((int)tab.Left + 3, (int)tab.Top));
+        Assert.Equal(TestHighlight, bitmap.GetPixel((int)tab.Left + 3, (int)tab.Bottom - 1));
+    }
+
+    [Fact]
+    public async Task Agents_RoundedTheme_ActiveTabKeepsThreePixelAccentMarker()
+    {
+        var theme = ThemeOf(ThemeShape.Rounded);
+        var (bitmap, tab) = await RenderActiveTab(theme);
+        using var _ = bitmap;
+        var y = (int)tab.MidY - 12;
+
+        for (var dx = 0; dx < 3; dx++)
+        {
+            Assert.Equal(theme.Accent, bitmap.GetPixel((int)tab.Left + dx, y));
+        }
+
+        Assert.Equal(TestSurface, bitmap.GetPixel((int)tab.Left + 3, y));
+    }
+
+    [Fact]
+    public async Task Agents_PixelTheme_StatusDotIsSquare_RoundedIsRound()
+    {
+        var pixel = ThemeOf(ThemeShape.Pixel);
+        var rounded = ThemeOf(ThemeShape.Rounded);
+        var (pixelBitmap, tab) = await RenderActiveTab(pixel);
+        var (roundedBitmap, _) = await RenderActiveTab(rounded);
+        using var _1 = pixelBitmap;
+        using var _2 = roundedBitmap;
+
+        // Coin du carré de 12 px centré sur (gauche + 18, milieu) ; un disque de même diamètre n'y arrive pas.
+        var x = (int)tab.Left + 18 - 6;
+        var y = (int)tab.MidY - 6;
+        Assert.Equal(pixel.TextMuted, pixelBitmap.GetPixel(x, y));
+        Assert.Equal(pixel.TextMuted, pixelBitmap.GetPixel(x + 11, y + 11));
+        Assert.NotEqual(rounded.TextMuted, roundedBitmap.GetPixel(x, y));
+    }
+
+    [Fact]
+    public async Task Agents_PixelTheme_ActiveTabNameIsHighlight_RoundedKeepsText()
+    {
+        foreach (var (shape, expected) in new[] { (ThemeShape.Pixel, TestHighlight), (ThemeShape.Rounded, Themes.Classique.Text) })
+        {
+            using var rig = await StartedWithFeed(new AgentSettings(), ThreeEntries());
+
+            var runs = DrawnRuns(rig.Module, 8, 4, ThemeOf(shape));
+
+            Assert.Equal(expected, Run(runs, "projet-a").Color);
+        }
+    }
+
+    [Fact]
+    public async Task Agents_TaskTitleUsesHighlight()
+    {
+        using var rig = await StartedWithFeed(new AgentSettings(), ThreeEntries());
+
+        var runs = DrawnRuns(rig.Module, 8, 4, ThemeOf(ThemeShape.Rounded));
+
+        Assert.Equal(TestHighlight, Run(runs, "Faire le truc").Color);
+    }
+
+    [Fact]
+    public async Task Agents_FeedUsesFeedTypeface()
+    {
+        var theme = Themes.Pixel.Theme;
+        Assert.NotSame(theme.Typeface, theme.FeedTypeface);
+        using var rig = await StartedWithFeed(new AgentSettings(), [new FeedEntry("Edit", "dernier.cs", 12, 3)]);
+
+        var runs = DrawnRuns(rig.Module, 8, 4, theme);
+
+        var tool = Run(runs, "Edit");
+        var target = Run(runs, "dernier.cs");
+        Assert.Same(theme.FeedTypeface, tool.Typeface);
+        Assert.Same(theme.FeedTypeface, target.Typeface);
+        Assert.Equal(22f * theme.FeedScale, tool.Size, 0.01f);
+        Assert.Equal(22f * theme.FeedScale, target.Size, 0.01f);
+
+        // Le reste (titre, compteurs, onglets) garde la police du thème.
+        Assert.Same(theme.Typeface, Run(runs, "Faire le truc").Typeface);
+        Assert.Same(theme.Typeface, Run(runs, "+12").Typeface);
+        Assert.Same(theme.Typeface, Run(runs, "projet-a").Typeface);
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    public async Task Agents_FeedScaleNotUsable_FallsBackToOne(float scale)
+    {
+        var theme = Themes.Classique with { FeedScale = scale };
+        using var rig = await StartedWithFeed(new AgentSettings(), [new FeedEntry("Edit", "dernier.cs")]);
+
+        var runs = DrawnRuns(rig.Module, 8, 4, theme);
+
+        Assert.Equal(22f, Run(runs, "dernier.cs").Size, 0.01f);
+    }
+
+    [Theory]
+    [InlineData(1.24f)]
+    [InlineData(2.5f)]
+    public async Task Agents_FeedWithBigFont_StaysInsideItsRow(float feedScale)
+    {
+        var theme = Themes.Pixel.Theme with { FeedScale = feedScale };
+        using var rig = await StartedWithFeed(new AgentSettings(), ThreeEntries());
+
+        var runs = DrawnRuns(rig.Module, 8, 4, theme);
+
+        // Chaque ligne du fil occupe [haut, haut + 34] ; la boîte du texte (montée + descente) y reste entière.
+        var rect = GridGeometry.ModuleRect(0, 0, 8, 4);
+        var layout = AgentLayout.Compute(new SKRect(rect.Left + 30, rect.Top + 30, rect.Right + 30, rect.Bottom + 30), new GridSize(8, 4), 1f);
+        // Le plus récent est en haut (ligne 0), puis le milieu (1), puis le plus ancien (2) ; l'outil et la cible partagent la ligne.
+        var lines = new[] { (Newest, 0), (Middle, 1), (Oldest, 2) };
+        foreach (var (target, slot) in lines)
+        {
+            var rowTop = layout.Body.Top + slot * AgentLayout.FeedLineHeight;
+            var row = runs.Where(r => Math.Abs(r.Baseline - Run(runs, target).Baseline) < 0.01f).ToList();
+            Assert.Equal(2, row.Count);
+            foreach (var run in row)
+            {
+                using var font = new SKFont(run.Typeface, run.Size);
+                Assert.True(run.Baseline + font.Metrics.Ascent >= rowTop - 0.01f, $"{run.Text} dépasse en haut");
+                Assert.True(run.Baseline + font.Metrics.Descent <= rowTop + AgentLayout.FeedLineHeight + 0.01f, $"{run.Text} dépasse en bas");
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Agents_PixelTheme_QuotaBarIsSegmentedAndTaller()
+    {
+        var theme = ThemeOf(ThemeShape.Pixel);
+        using var rig = await Started(Snapshot([Session("a", AgentActivity.Working)], Detail("a"),
+            new AgentQuotas(new QuotaWindow(42, Start.AddHours(2)), new QuotaWindow(77.5, Start.AddDays(3)), Start)));
+        rig.Module.PollNow();
+        var rect = GridGeometry.ModuleRect(0, 0, 8, 4);
+        using var bitmap = RenderOn(rig.Module, rect, new GridSize(8, 4), 1f, theme: theme);
+        var layout = AgentLayout.Compute(new SKRect(rect.Left + 30, rect.Top + 30, rect.Right + 30, rect.Bottom + 30), new GridSize(8, 4), 1f);
+
+        // Pistes à la couleur Track (rien d'autre ne l'emploie en bas de l'écran) : 12 px de haut, centrées sur la ligne de 8 px.
+        var bar = layout.Bar;
+        var xs = Enumerable.Range((int)bar.Left, (int)bar.Width).Where(x => Enumerable.Range((int)bar.Top, (int)bar.Height).Any(y => bitmap.GetPixel(x, y) == TestTrack)).ToList();
+        Assert.NotEmpty(xs);
+        var column = xs[0];
+        var ys = Enumerable.Range((int)bar.Top, (int)bar.Height).Where(y => bitmap.GetPixel(column, y) == TestTrack).ToList();
+        Assert.Equal(12, ys.Count);
+        Assert.Equal((int)MathF.Round(bar.Top + 27f + 4f - 6f), ys[0]);
+
+        // Segmentée : des interruptions le long de la barre.
+        var row = ys[5];
+        var runs = 0;
+        var inside = false;
+        for (var x = (int)bar.Left; x < (int)bar.Right; x++)
+        {
+            var c = bitmap.GetPixel(x, row);
+            var on = c == TestTrack || c == theme.Accent;
+            if (on && !inside) runs++;
+            inside = on;
+        }
+
+        Assert.True(runs > 5, $"{runs} segments seulement");
+    }
+
+    [Fact]
+    public async Task Agents_ClassiqueQuotaBar_UsesThemeTrackRounded()
+    {
+        var theme = ThemeOf(ThemeShape.Rounded);
+        using var rig = await Started(Snapshot([Session("a", AgentActivity.Working)], Detail("a"),
+            new AgentQuotas(new QuotaWindow(0, Start.AddHours(2)), new QuotaWindow(0, Start.AddDays(3)), Start)));
+        rig.Module.PollNow();
+        var rect = GridGeometry.ModuleRect(0, 0, 8, 4);
+        using var bitmap = RenderOn(rig.Module, rect, new GridSize(8, 4), 1f, theme: theme);
+        var layout = AgentLayout.Compute(new SKRect(rect.Left + 30, rect.Top + 30, rect.Right + 30, rect.Bottom + 30), new GridSize(8, 4), 1f);
+
+        var bar = layout.Bar;
+        var x = (int)bar.Right - 40;
+        var y = (int)(bar.Top + 27f + 4f);
+
+        Assert.Equal(TestTrack, bitmap.GetPixel(x, y));
     }
 }
