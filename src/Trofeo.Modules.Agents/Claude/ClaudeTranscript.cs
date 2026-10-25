@@ -71,9 +71,9 @@ public sealed class ClaudeTranscript
                     break;
             }
         }
-        catch (JsonException)
+        catch (Exception e) when (e is JsonException or InvalidOperationException)
         {
-            // Ligne tronquée ou abîmée : on passe à la suivante.
+            // Ligne tronquée ou abîmée (y compris une chaîne à substitut UTF-16 isolé, que GetString refuse) : on passe à la suivante.
         }
     }
 
@@ -91,7 +91,7 @@ public sealed class ClaudeTranscript
             return;
         }
 
-        if (IsTrue(root, "isMeta"))
+        if (IsTrue(root, "isMeta") || IsTrue(root, "isCompactSummary"))
         {
             return;
         }
@@ -105,8 +105,9 @@ public sealed class ClaudeTranscript
             _ => null,
         };
 
-        // Les enveloppes de commandes (<command-name>…) et les rappels du système commencent par « < ».
-        if (text is null || text.Trim().StartsWith('<'))
+        // Les enveloppes de commandes (<command-name>…) et les rappels du système commencent par « < » ;
+        // « [Request interrupted… » est la trace d'une interruption, pas une demande.
+        if (text is null || text.Trim().StartsWith('<') || text.Trim().StartsWith("[Request interrupted", StringComparison.Ordinal))
         {
             return;
         }

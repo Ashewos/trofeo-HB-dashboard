@@ -82,6 +82,23 @@ public class ClaudeTranscriptTests
     }
 
     [Fact]
+    public void Prompt_Interruption_Ignored()
+    {
+        var t = Apply(Prompt("Vraie demande"), Prompt("  [Request interrupted by user]"), Prompt("[Request interrupted by user for tool use]"));
+
+        Assert.Equal("Vraie demande", t.CurrentTask);
+    }
+
+    [Fact]
+    public void Prompt_CompactSummary_Ignored()
+    {
+        var t = Apply(Prompt("Vraie demande"),
+            Prompt("This session is being continued from a previous conversation...", extra: "\"isCompactSummary\":true,"));
+
+        Assert.Equal("Vraie demande", t.CurrentTask);
+    }
+
+    [Fact]
     public void Prompt_ToolResult_NotATask()
     {
         var t = Apply(Result("toolu_1", """{"type":"text"}"""),
@@ -274,6 +291,8 @@ public class ClaudeTranscriptTests
     [InlineData("{\"type\":\"last-prompt\",\"lastPrompt\":\"x\"}")]
     [InlineData("{\"type\":\"user\",\"message\":\"pas un objet\"}")]
     [InlineData("{\"type\":\"assistant\",\"message\":{\"content\":\"du texte\"}}")]
+    [InlineData("{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"t\",\"name\":\"Bash\",\"input\":{\"command\":\"a\\ud83d\"}}]}}")]
+    [InlineData("{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"\\ude00\"},\"timestamp\":\"2026-10-25T09:55:52.511Z\"}")]
     public void BadLine_Ignored(string line)
     {
         var t = new ClaudeTranscript();

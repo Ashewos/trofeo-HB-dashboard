@@ -63,6 +63,16 @@ public sealed class ClaudeTaskListTests : IDisposable
     }
 
     [Fact]
+    public void TaskList_LoneSurrogate_FileSkipped()
+    {
+        File.WriteAllText(Path.Combine(_dir, "1.json"),
+            "{\"id\":\"1\",\"subject\":\"coupé \\ud83d\",\"status\":\"pending\"}");
+        Write("2.json", "pending", "Valide");
+
+        Assert.Equal([new AgentTask("Valide", AgentTaskState.Pending)], ClaudeTaskList.Read(_dir));
+    }
+
+    [Fact]
     public void TaskList_RealExample_Parses()
     {
         File.WriteAllText(Path.Combine(_dir, "1.json"),

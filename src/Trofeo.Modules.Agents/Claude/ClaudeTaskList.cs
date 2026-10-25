@@ -77,7 +77,7 @@ public static class ClaudeTaskList
             var text = ToolTargets.OneLine(state == AgentTaskState.InProgress && !string.IsNullOrWhiteSpace(active) ? active : subject);
             return text.Length == 0 ? null : new AgentTask(text, state.Value);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
         {
             return null;
         }
