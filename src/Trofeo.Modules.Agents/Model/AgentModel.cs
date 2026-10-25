@@ -25,9 +25,11 @@ public sealed record AgentSessionSummary(string Id, string ProjectName, AgentAct
 /// <summary>
 /// Détail de la session choisie. <paramref name="Feed"/> va du plus ancien au plus récent, 50 entrées au plus ;
 /// <paramref name="Tasks"/> est vide quand l'agent n'a pas de liste.
+/// <paramref name="TaskFinishedAt"/> fige la durée d'un traitement terminé ; null conserve le chronomètre en cours.
 /// </summary>
 public sealed record AgentSessionDetail(string Id, string? CurrentTask, DateTimeOffset? TaskStartedAt,
-    IReadOnlyList<FeedEntry> Feed, IReadOnlyList<AgentTask> Tasks, string? Model, double? ContextPercent);
+    IReadOnlyList<FeedEntry> Feed, IReadOnlyList<AgentTask> Tasks, string? Model, double? ContextPercent,
+    DateTimeOffset? TaskFinishedAt = null);
 
 /// <summary>
 /// Photo de l'état d'un outil. <paramref name="Installed"/> : l'outil est présent sur le PC (son dossier existe).

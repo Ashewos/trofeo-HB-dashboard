@@ -6,18 +6,20 @@ namespace Trofeo.Modules.Agents;
 /// <summary>
 /// Source Codex : les transcriptions <c>sessions/AAAA/MM/JJ/rollout-*.jsonl</c> des trois derniers jours, modifiées il y
 /// a moins de 2 h (les 12 plus récentes), lues par la fin puis seulement les octets ajoutés. Ne contacte rien en ligne
-/// et ne lit que ces fichiers. Appelée depuis un seul thread à la fois.
+/// et l'index local facultatif des titres. Exclut les sous-agents internes. Appelée depuis un seul thread à la fois.
 /// </summary>
 /// <param name="codexHome">Le dossier de configuration de Codex (voir <see cref="CodexHome.Resolve"/>).</param>
 /// <param name="time">Donne le fuseau local, qui nomme les dossiers de jour.</param>
 public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSource
 {
     private const int MaxFiles = 12;
+    private const int MaxCandidates = 128;
     private const int DaysScanned = 3;
     private const int HeadBytes = 64 * 1024;
     private static readonly TimeSpan MaxAge = TimeSpan.FromHours(2);
 
     private readonly string _sessionsDir = Path.Combine(codexHome, "sessions");
+    private readonly CodexTitles _titles = new(codexHome);
     // ProjectNames remonte l'arborescence sur le disque : un seul calcul par dossier de travail.
     private readonly Dictionary<string, string> _projectNames = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FileState> _files = new(StringComparer.Ordinal);
@@ -46,16 +48,27 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
         }
 
         var tracked = Candidates(now);
+        _titles.Refresh();
         var sessions = new List<(AgentSessionSummary Summary, CodexRollout Rollout)>();
         foreach (var candidate in tracked)
         {
             try
             {
                 var rollout = Update(candidate.File.FullName);
+                if (rollout.IsInternal)
+                {
+                    continue;
+                }
+
                 var id = rollout.SessionId ?? Path.GetFileNameWithoutExtension(candidate.File.Name);
                 var startedAt = rollout.StartedAt ?? new DateTimeOffset(candidate.File.CreationTimeUtc, TimeSpan.Zero);
-                sessions.Add((new AgentSessionSummary(id, ProjectName(rollout.Cwd), rollout.Activity(now), startedAt,
+                var title = _titles.Find(id) ?? rollout.Title ?? ProjectName(rollout.Cwd);
+                sessions.Add((new AgentSessionSummary(id, title, rollout.Activity(now), startedAt,
                     rollout.LastEventAt ?? candidate.WrittenAt), rollout));
+                if (sessions.Count == MaxFiles)
+                {
+                    break;
+                }
             }
             catch (Exception)
             {
@@ -69,11 +82,24 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
             return byStart != 0 ? byStart : string.CompareOrdinal(a.Summary.Id, b.Summary.Id);
         });
 
+        // Deux conversations peuvent légitimement partager un titre ou un dossier : rendre leurs onglets distincts.
+        var duplicates = sessions.GroupBy(s => s.Summary.ProjectName, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet(StringComparer.Ordinal);
+        for (var i = 0; i < sessions.Count; i++)
+        {
+            var (summary, rollout) = sessions[i];
+            if (duplicates.Contains(summary.ProjectName))
+            {
+                var suffix = summary.Id.Length > 6 ? summary.Id[^6..] : summary.Id;
+                sessions[i] = (summary with { ProjectName = $"{summary.ProjectName} · {suffix}" }, rollout);
+            }
+        }
+
         AgentSessionDetail? selected = null;
         if (selectedSessionId is not null && sessions.FirstOrDefault(s => s.Summary.Id == selectedSessionId) is { Rollout: { } chosen })
         {
             selected = new AgentSessionDetail(selectedSessionId, chosen.CurrentTask, chosen.TaskStartedAt,
-                [.. chosen.Feed], [.. chosen.Tasks], chosen.Model, chosen.ContextPercent);
+                [.. chosen.Feed], [.. chosen.Tasks], chosen.Model, chosen.ContextPercent, chosen.TaskFinishedAt);
         }
 
         var quotas = sessions.Select(s => s.Rollout.Quotas).Where(q => q is not null).MaxBy(q => q!.CapturedAt);
@@ -90,7 +116,8 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
 
     /// <summary>
     /// Les transcriptions à suivre : celles des dossiers des 3 derniers jours (date locale) modifiées il y a moins de
-    /// 2 h, les 12 plus récentes en premier. Ne parcourt que ces 3 dossiers, jamais tout <c>sessions</c>.
+    /// 2 h, par date décroissante (128 candidats au plus, pour retenir 12 conversations après exclusion des sous-agents).
+    /// Ne parcourt que ces 3 dossiers, jamais tout <c>sessions</c>.
     /// </summary>
     private List<Candidate> Candidates(DateTimeOffset now)
     {
@@ -118,7 +145,8 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
             }
         }
 
-        return found.OrderByDescending(c => c.WrittenAt).ThenBy(c => c.File.FullName, StringComparer.Ordinal).Take(MaxFiles).ToList();
+        // Le quota porte sur les conversations, pas sur les sous-agents plus récents qui les masqueraient.
+        return found.OrderByDescending(c => c.WrittenAt).ThenBy(c => c.File.FullName, StringComparer.Ordinal).Take(MaxCandidates).ToList();
     }
 
     /// <summary>
@@ -158,6 +186,11 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
             foreach (var line in lines)
             {
                 ApplyLine(state.Rollout, line);
+            }
+
+            if (restarted && state.Rollout.Model is null && !state.Rollout.IsInternal)
+            {
+                state.Rollout.RestoreModel(CodexModelHistory.ReadLatest(path));
             }
 
             if (state.Rollout.SessionId is not null)

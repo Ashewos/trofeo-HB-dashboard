@@ -5,7 +5,7 @@ namespace Trofeo.Modules.Agents;
 
 /// <summary>
 /// État d'une session Codex déduit de sa transcription (<c>sessions/AAAA/MM/JJ/rollout-*.jsonl</c>), ligne après ligne.
-/// Le format est celui décrit par la communauté et n'est pas vérifié : un champ manquant ou d'un autre type est ignoré,
+/// Accepte les événements historiques et les messages de Codex Desktop : un champ manquant ou d'un autre type est ignoré,
 /// jamais une erreur. Pas de verrou : à utiliser depuis un seul thread.
 /// </summary>
 public sealed class CodexRollout
@@ -43,8 +43,21 @@ public sealed class CodexRollout
     /// <summary>La dernière demande de l'utilisateur (sa première ligne non vide).</summary>
     public string? CurrentTask { get; private set; }
 
+    /// <summary>Première demande lisible, repli du titre quand l'index des conversations est absent.</summary>
+    public string? Title { get; private set; }
+
+    /// <summary>Les sessions de sous-agents internes ne sont pas des conversations utilisateur.</summary>
+    public bool IsInternal { get; private set; }
+
     /// <summary>Le moment de cette demande.</summary>
     public DateTimeOffset? TaskStartedAt { get; private set; }
+
+    /// <summary>Fin du dernier traitement, pour figer la durée tant qu'aucun nouveau tour ne démarre.</summary>
+    public DateTimeOffset? TaskFinishedAt { get; private set; }
+
+    private string? _lastUserMessage;
+    private DateTimeOffset? _lastUserAt;
+    private bool _lastUserShown;
 
     /// <summary>Les derniers outils utilisés, du plus ancien au plus récent, 50 au plus.</summary>
     public IReadOnlyList<FeedEntry> Feed => _feed;
@@ -54,6 +67,9 @@ public sealed class CodexRollout
 
     /// <summary>Le modèle du dernier <c>turn_context</c>.</summary>
     public string? Model { get; private set; }
+
+    /// <summary>Récupération historique au démarrage, sans remplacer le modèle d'un événement plus récent.</summary>
+    internal void RestoreModel(string? model) => Model ??= model;
 
     /// <summary>La part de la fenêtre de contexte remplie au dernier relevé de jetons, dans [0, 100].</summary>
     public double? ContextPercent { get; private set; }
@@ -69,7 +85,13 @@ public sealed class CodexRollout
         StartedAt = null;
         LastEventAt = null;
         CurrentTask = null;
+        Title = null;
+        IsInternal = false;
         TaskStartedAt = null;
+        TaskFinishedAt = null;
+        _lastUserMessage = null;
+        _lastUserAt = null;
+        _lastUserShown = false;
         _feed.Clear();
         _tasks = [];
         Model = null;
@@ -124,7 +146,7 @@ public sealed class CodexRollout
                 "session_meta" => ApplyMeta(payload, at),
                 "turn_context" => ApplyTurnContext(payload),
                 "event_msg" => ApplyEvent(payload, at),
-                "response_item" => ApplyItem(payload),
+                "response_item" => ApplyItem(payload, at),
                 _ => Outcome.Ignored,
             };
 
@@ -161,6 +183,7 @@ public sealed class CodexRollout
     {
         SessionId = Str(payload, "id") ?? SessionId;
         Cwd = Str(payload, "cwd") ?? Cwd;
+        IsInternal = Obj(payload, "source") is { } source && source.TryGetProperty("subagent", out _);
         StartedAt = Time(Str(payload, "timestamp")) ?? at ?? StartedAt;
         return Outcome.Passive;
     }
@@ -179,22 +202,23 @@ public sealed class CodexRollout
             case null:
                 return Outcome.Ignored;
             case "user_message":
-                {
-                    var firstLine = (Str(payload, "message") ?? "").Split('\n').Select(line => line.Trim())
-                        .FirstOrDefault(line => line.Length > 0);
-                    if (firstLine is not null)
-                    {
-                        CurrentTask = ToolTargets.OneLine(firstLine);
-                        TaskStartedAt = at;
-                    }
-
-                    break;
-                }
+                ApplyUserMessage(Str(payload, "message"), at, showInFeed: false);
+                break;
             case "task_started":
+                TaskStartedAt = EventTime(payload, "started_at") ?? (TaskFinishedAt is not null ? at : TaskStartedAt ?? at);
+                TaskFinishedAt = null;
                 _taskOpen = true;
                 _turnSeen = true;
                 break;
             case "task_complete" or "turn_aborted":
+                TaskStartedAt = EventTime(payload, "started_at") ?? TaskStartedAt;
+                TaskFinishedAt = EventTime(payload, "completed_at") ?? at;
+                if (TaskFinishedAt is { } end && Num(payload, "duration_ms") is { } duration
+                    && duration is >= 0 and <= 315_360_000_000 && duration <= (end - DateTimeOffset.MinValue).TotalMilliseconds)
+                {
+                    // Desktop fournit aussi la durée exacte, même si le début du tour est hors de la partie relue.
+                    TaskStartedAt = end - TimeSpan.FromMilliseconds(duration);
+                }
                 _taskOpen = false;
                 _turnSeen = true;
                 break;
@@ -278,19 +302,26 @@ public sealed class CodexRollout
             : null;
     }
 
-    private Outcome ApplyItem(JsonElement payload)
+    private Outcome ApplyItem(JsonElement payload, DateTimeOffset? at)
     {
         switch (Str(payload, "type"))
         {
             case null:
                 return Outcome.Ignored;
+            case "message":
+                return ApplyMessage(payload, at);
             case "function_call":
                 ApplyFunctionCall(payload);
                 break;
             case "custom_tool_call":
-                if (Str(payload, "name") == "apply_patch" && Str(payload, "input") is { } patch)
+                var customName = Str(payload, "name");
+                if (customName is "apply_patch" or "functions.apply_patch" && Str(payload, "input") is { } patch)
                 {
                     AddPatch(patch);
+                }
+                else if (customName is "exec" or "functions.exec" && Str(payload, "input") is { } script)
+                {
+                    ApplyToolScript(script);
                 }
 
                 break;
@@ -302,9 +333,124 @@ public sealed class CodexRollout
         return Outcome.Event;
     }
 
+    private Outcome ApplyMessage(JsonElement payload, DateTimeOffset? at)
+    {
+        var role = Str(payload, "role");
+        if (role is not ("user" or "assistant") || !payload.TryGetProperty("content", out var content)
+            || content.ValueKind != JsonValueKind.Array)
+        {
+            return Outcome.Passive;
+        }
+
+        var text = string.Join('\n', content.EnumerateArray()
+            .Where(part => Str(part, "type") is "input_text" or "output_text" or "text")
+            .Select(part => Str(part, "text")).Where(part => !string.IsNullOrWhiteSpace(part)));
+        if (role == "user")
+        {
+            return ApplyUserMessage(text, at, showInFeed: true) ? Outcome.Event : Outcome.Passive;
+        }
+
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            AddFeed(new FeedEntry("Codex", ToolTargets.OneLine(text)));
+        }
+
+        return Outcome.Event;
+    }
+
+    private bool ApplyUserMessage(string? text, DateTimeOffset? at, bool showInFeed)
+    {
+        var prompt = UserPrompt(text);
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return false;
+        }
+
+        // Certaines versions écrivent à la fois event_msg/user_message et response_item/message.
+        var duplicate = _lastUserMessage == prompt && at is { } moment && _lastUserAt is { } previous
+            && (moment - previous).Duration() < TimeSpan.FromSeconds(1);
+        if (duplicate)
+        {
+            if (showInFeed && !_lastUserShown)
+            {
+                AddFeed(new FeedEntry("Vous", ToolTargets.OneLine(prompt)));
+                _lastUserShown = true;
+            }
+
+            return false;
+        }
+
+        _lastUserMessage = prompt;
+        _lastUserAt = at;
+        _lastUserShown = showInFeed;
+        CurrentTask = ToolTargets.OneLine(prompt.Split('\n').First(line => !string.IsNullOrWhiteSpace(line)));
+        Title ??= CurrentTask;
+        if (!_taskOpen || TaskStartedAt is null)
+        {
+            TaskStartedAt = at;
+        }
+
+        TaskFinishedAt = null;
+        if (showInFeed)
+        {
+            AddFeed(new FeedEntry("Vous", ToolTargets.OneLine(prompt)));
+        }
+
+        return true;
+    }
+
+    /// <summary>Écarte le contexte injecté dans un message utilisateur sans écarter la demande qui le suit.</summary>
+    private static string? UserPrompt(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        text = text.Trim();
+        const string request = "## My request:";
+        var requestAt = text.IndexOf(request, StringComparison.Ordinal);
+        if (requestAt >= 0)
+        {
+            return text[(requestAt + request.Length)..].Trim();
+        }
+
+        foreach (var tag in new[] { "environment_context", "permissions instructions", "collaboration_mode", "in-app-browser-context" })
+        {
+            if (text.StartsWith("<" + tag, StringComparison.Ordinal))
+            {
+                var closing = "</" + tag + ">";
+                var end = text.IndexOf(closing, StringComparison.Ordinal);
+                return end < 0 ? null : UserPrompt(text[(end + closing.Length)..]);
+            }
+        }
+
+        if (text.StartsWith("# AGENTS.md instructions", StringComparison.Ordinal)
+            || text.StartsWith("<INSTRUCTIONS>", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return text;
+    }
+
+    private static DateTimeOffset? EventTime(JsonElement payload, string name)
+    {
+        if (Num(payload, name) is { } unix && unix is > -62_135_596_800 and < 253_402_300_799)
+        {
+            return DateTimeOffset.FromUnixTimeSeconds((long)unix);
+        }
+
+        return Time(Str(payload, name));
+    }
+
     private void ApplyFunctionCall(JsonElement payload)
     {
         var name = Str(payload, "name");
+        if (name?.StartsWith("functions.", StringComparison.Ordinal) == true)
+        {
+            name = name["functions.".Length..];
+        }
         switch (name)
         {
             case null:
@@ -312,7 +458,8 @@ public sealed class CodexRollout
             case "shell" or "exec_command" or "local_shell":
                 {
                     var args = Arguments(payload);
-                    AddFeed(new FeedEntry("Shell", ToolTargets.OneLine(args is { } a ? ShellCommand(a) : null)));
+                    var command = args is { } a ? ShellCommand(a) : null;
+                    AddFeed(new FeedEntry(ShellLabel(args is { } obj ? Str(obj, "shell") : null, command), ToolTargets.OneLine(command)));
                     return;
                 }
             case "apply_patch":
@@ -338,6 +485,43 @@ public sealed class CodexRollout
                 AddFeed(new FeedEntry(ToolTargets.OneLine(name), ""));
                 return;
         }
+    }
+
+    private void ApplyToolScript(string script)
+    {
+        foreach (var call in CodexToolScript.Read(script))
+        {
+            switch (call.Name)
+            {
+                case "exec_command":
+                    AddFeed(new FeedEntry(ShellLabel(call.Shell, call.Text, usePlatformDefault: true), ToolTargets.OneLine(call.Text ?? "Commande dynamique")));
+                    break;
+                case "apply_patch":
+                    if (!string.IsNullOrEmpty(call.Text)) { AddPatch(call.Text); }
+                    break;
+                case "write_stdin":
+                    // C'est le suivi d'une commande déjà affichée, pas une nouvelle commande.
+                    break;
+                default:
+                    AddFeed(new FeedEntry(ToolTargets.OneLine(call.Name), ToolTargets.OneLine(call.Text)));
+                    break;
+            }
+        }
+    }
+
+    private static string ShellLabel(string? shell, string? command, bool usePlatformDefault = false)
+    {
+        var executable = shell?.Replace('\\', '/').Split('/').Last().ToLowerInvariant();
+        if (executable is "powershell" or "powershell.exe" or "pwsh" or "pwsh.exe"
+            || command?.TrimStart().StartsWith("powershell", StringComparison.OrdinalIgnoreCase) == true
+            || command?.TrimStart().StartsWith("pwsh", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return "PowerShell";
+        }
+
+        if (executable is "bash" or "bash.exe") { return "Bash"; }
+        if (executable is "cmd" or "cmd.exe") { return "CMD"; }
+        return usePlatformDefault && shell is null && OperatingSystem.IsWindows() ? "PowerShell" : "Shell";
     }
 
     private void ApplyPlan(JsonElement args)
@@ -442,7 +626,14 @@ public sealed class CodexRollout
             }
         }
 
-        AddFeed(new FeedEntry("Patch", ToolTargets.OneLine(path), added, removed));
+        // Les chemins absolus Desktop commencent tous par le même long dossier utilisateur : montrer le fichier utile.
+        var displayPath = path?.Replace('\\', '/');
+        if (displayPath is not null && (displayPath.StartsWith('/') || (displayPath.Length > 2 && displayPath[1] == ':')))
+        {
+            displayPath = displayPath.Split('/').Last();
+        }
+
+        AddFeed(new FeedEntry("Patch", ToolTargets.OneLine(displayPath), added, removed));
     }
 
     private static string? PatchPath(string header)

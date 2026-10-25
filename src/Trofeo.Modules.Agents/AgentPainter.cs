@@ -402,7 +402,7 @@ internal sealed class AgentPainter
             var fields = new List<(string Label, string Value)>
             {
                 ("Contexte", detail?.ContextPercent is { } context && !double.IsNaN(context) ? AgentText.Percent(context) : NoValue),
-                ("Durée", detail?.TaskStartedAt is { } started ? AgentText.Duration(_ctx.Now - started) : NoValue),
+                ("Durée", detail?.TaskStartedAt is { } started ? AgentText.Duration((detail.TaskFinishedAt ?? _ctx.Now) - started) : NoValue),
             };
             if (_ctx.Size.Columns >= 7)
             {

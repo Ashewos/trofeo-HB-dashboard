@@ -124,7 +124,7 @@ public sealed class CodexSourceTests : IDisposable
 
         var summary = Assert.Single(snapshot.Sessions);
         Assert.Equal("sess-a", summary.Id);
-        Assert.Equal("trofeo", summary.ProjectName);
+        Assert.Equal("Ajoute une sonde", summary.ProjectName);
         Assert.Equal(AgentActivity.Working, summary.Activity);
         Assert.Equal(started, summary.StartedAt);
         Assert.Equal(Now.AddSeconds(-5), summary.LastActivityAt);
@@ -240,6 +240,29 @@ public sealed class CodexSourceTests : IDisposable
         Assert.Equal("grand", summary.ProjectName);
         Assert.Equal(AgentActivity.Working, summary.Activity);
         Assert.Equal(Now.AddMinutes(-30), summary.StartedAt);
+    }
+
+    [Fact]
+    public void Source_ModelOutsideInitialTail_IsRecoveredAfterRestart_AndNewTurnsOverrideIt()
+    {
+        var lines = new List<string>
+        {
+            Meta("long-chat", Project("grand"), Now.AddMinutes(-30)),
+            CodexTestLines.Line("turn_context", Now.AddMinutes(-29), """{"model":"gpt-5-codex"}"""),
+            CodexTestLines.Line("turn_context", Now.AddMinutes(-28), """{"model":"gpt-6.1-sol"}"""),
+        };
+        lines.AddRange(Enumerable.Range(0, 700).Select(Filler));
+        lines.Add(Event("task_started", Now.AddMinutes(-1)));
+        var path = Rollout(Now, "rollout-big-model.jsonl", Now.AddSeconds(-5), [.. lines]);
+        using var source = NewSource();
+
+        var first = source.Poll("long-chat", Now).Selected!;
+        Assert.Equal("gpt-6.1-sol", first.Model);
+        Assert.Equal(Now.AddMinutes(-1), first.TaskStartedAt);
+        Assert.Empty(first.Feed);
+
+        File.AppendAllText(path, CodexTestLines.Line("turn_context", Now, """{"model":"gpt-6-astra"}""") + "\n");
+        Assert.Equal("gpt-6-astra", source.Poll("long-chat", Now).Selected!.Model);
     }
 
     [Fact]
