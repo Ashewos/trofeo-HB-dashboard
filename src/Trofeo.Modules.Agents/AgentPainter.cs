@@ -3,14 +3,18 @@ using Trofeo.ModuleKit;
 
 namespace Trofeo.Modules.Agents;
 
-/// <summary>Tout ce que le dessin lit : le relevé, l'onglet affiché, l'état du module, la vue, la saveur et la mascotte.</summary>
+/// <summary>Tout ce que le dessin lit : le relevé, l'onglet affiché, l'état du module, ses réglages, la saveur et la mascotte.</summary>
 internal sealed record AgentScene(
-    AgentSnapshot? Snapshot, string? SelectedId, ModuleStatus Status, AgentView View, AgentFlavor Flavor, MascotAnimator Animator);
+    AgentSnapshot? Snapshot, string? SelectedId, ModuleStatus Status, AgentSettings Settings, AgentFlavor Flavor, MascotAnimator Animator);
+
+/// <summary>Un texte dessiné : tel qu'il apparaît (ellipsé), sa ligne de base et sa couleur. Réservé aux tests.</summary>
+internal sealed record DrawnRun(string Text, float Baseline, SKColor Color);
 
 /// <summary>
 /// Dessine le module : onglets, en-tête, fil d'activité ou vue d'ensemble, barre du bas et mascotte. Sans état entre deux
-/// images (hormis <see cref="DrawnTexts"/>, réservé aux tests) ; appelé sur le thread d'affichage. Les tailles sont
-/// multipliées par <see cref="ModuleRenderContext.TextScale"/> et tout est découpé par les limites du module.
+/// images (hormis <see cref="DrawnTexts"/> et <see cref="DrawnRuns"/>, réservés aux tests) ; appelé sur le thread
+/// d'affichage. Les tailles sont multipliées par <see cref="ModuleRenderContext.TextScale"/> et tout est découpé par les
+/// limites du module.
 /// </summary>
 internal sealed class AgentPainter
 {
@@ -26,6 +30,9 @@ internal sealed class AgentPainter
     /// <summary>Si non <c>null</c>, chaque texte dessiné (tel qu'il apparaît, ellipsé) y est ajouté.</summary>
     internal List<string>? DrawnTexts { get; set; }
 
+    /// <summary>Si non <c>null</c>, chaque texte dessiné y est ajouté avec sa ligne de base et sa couleur.</summary>
+    internal List<DrawnRun>? DrawnRuns { get; set; }
+
     public void Draw(SKCanvas canvas, ModuleRenderContext ctx, AgentScene scene)
     {
         if (ctx.Bounds.Width <= 0f || ctx.Bounds.Height <= 0f)
@@ -34,7 +41,7 @@ internal sealed class AgentPainter
         }
 
         var layout = AgentLayout.Compute(ctx.Bounds, ctx.Size, ctx.TextScale);
-        using var frame = new Frame(canvas, ctx, scene, layout, DrawnTexts);
+        using var frame = new Frame(canvas, ctx, scene, layout, DrawnTexts, DrawnRuns);
         canvas.Save();
         canvas.ClipRect(ctx.Bounds);
         try
@@ -55,17 +62,19 @@ internal sealed class AgentPainter
         private readonly AgentScene _scene;
         private readonly AgentLayoutResult _layout;
         private readonly List<string>? _texts;
+        private readonly List<DrawnRun>? _runs;
         private readonly Theme _theme;
         private readonly float _scale;
         private readonly Dictionary<float, SKFont> _fonts = [];
 
-        public Frame(SKCanvas canvas, ModuleRenderContext ctx, AgentScene scene, AgentLayoutResult layout, List<string>? texts)
+        public Frame(SKCanvas canvas, ModuleRenderContext ctx, AgentScene scene, AgentLayoutResult layout, List<string>? texts, List<DrawnRun>? runs)
         {
             _canvas = canvas;
             _ctx = ctx;
             _scene = scene;
             _layout = layout;
             _texts = texts;
+            _runs = runs;
             _theme = ctx.Theme;
             _scale = ctx.TextScale;
         }
@@ -146,6 +155,7 @@ internal sealed class AgentPainter
             using var paint = new SKPaint { Color = color, IsAntialias = true };
             ModuleDrawing.DrawText(_canvas, fitted, x, baseline, align, font, paint);
             _texts?.Add(fitted);
+            _runs?.Add(new DrawnRun(fitted, baseline, color));
             return ModuleDrawing.MeasureText(fitted, font);
         }
 
@@ -250,7 +260,7 @@ internal sealed class AgentPainter
                     Text(task, header.Left, header.MidY, SKTextAlign.Left, 26f, _theme.Text, header.Width);
                 }
 
-                if (_scene.View == AgentView.Overview)
+                if (_scene.Settings.View == AgentView.Overview)
                 {
                     DrawOverview(selected, detail);
                 }
@@ -267,7 +277,11 @@ internal sealed class AgentPainter
             Text(text, body.MidX, body.MidY, SKTextAlign.Center, 24f, _theme.TextMuted, body.Width);
         }
 
-        /// <summary>Le fil d'activité, le plus récent en haut, de plus en plus pâle.</summary>
+        /// <summary>
+        /// Le fil d'activité. Le plus récent est en haut (les autres sous lui) ou sur la dernière ligne entière du corps (les
+        /// autres au-dessus, le haut restant vide s'il y a peu d'entrées). Avec le fondu, chaque ligne est plus pâle que la
+        /// précédente en s'éloignant de la plus récente.
+        /// </summary>
         private void DrawFeed(AgentSessionDetail detail)
         {
             var body = _layout.Body;
@@ -275,11 +289,13 @@ internal sealed class AgentPainter
             var toolWidth = 96f * _scale;
             var gap = 10f * _scale;
             var lines = Math.Min(_layout.FeedCapacity, detail.Feed.Count);
+            var settings = _scene.Settings;
             for (var i = 0; i < lines; i++)
             {
                 var entry = detail.Feed[detail.Feed.Count - 1 - i];
-                var opacity = Math.Max(0.25f, 1f - 0.18f * i);
-                var mid = body.Top + i * lineHeight + lineHeight / 2f;
+                var opacity = settings.FeedFade ? Math.Max(0.25f, 1f - 0.18f * i) : 1f;
+                var slot = settings.FeedNewest == FeedNewest.Bottom ? _layout.FeedCapacity - 1 - i : i;
+                var mid = body.Top + slot * lineHeight + lineHeight / 2f;
 
                 // Les compteurs, collés à droite : « +12 » en vert, « −3 » en rouge.
                 var right = body.Right;

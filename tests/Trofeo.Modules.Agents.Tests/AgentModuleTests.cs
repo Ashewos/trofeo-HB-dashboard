@@ -862,6 +862,128 @@ public sealed class AgentModuleTests
         Assert.Contains("Opus 5.5", texts);
     }
 
+    // --- Fil d'activité : fondu et sens ---
+
+    private const string Oldest = "premier.cs";
+    private const string Middle = "milieu.cs";
+    private const string Newest = "dernier.cs";
+
+    private static async Task<Rig> StartedWithFeed(AgentSettings settings, IReadOnlyList<FeedEntry> feed)
+    {
+        var rig = Create(settings);
+        rig.Source.Enqueue(Snapshot([Session("a", AgentActivity.Working)], Detail("a", "Faire le truc", feed: feed)));
+        await rig.Module.StartAsync(CancellationToken.None);
+        rig.Module.PollNow();
+        return rig;
+    }
+
+    private static List<DrawnRun> DrawnRuns(AgentModule module, int columns, int rows)
+    {
+        var runs = new List<DrawnRun>();
+        module.Painter.DrawnRuns = runs;
+        var rect = GridGeometry.ModuleRect(0, 0, columns, rows);
+        using var bitmap = RenderOn(module, rect, new GridSize(columns, rows), 1f);
+        module.Painter.DrawnRuns = null;
+        return runs;
+    }
+
+    private static DrawnRun Run(List<DrawnRun> runs, string text) => Assert.Single(runs, r => r.Text == text);
+
+    private static List<FeedEntry> ThreeEntries() => [new("Read", Oldest), new("Read", Middle), new("Edit", Newest)];
+
+    private static int FeedCapacity(int columns, int rows)
+    {
+        var rect = GridGeometry.ModuleRect(0, 0, columns, rows);
+        return AgentLayout.Compute(new SKRect(rect.Left, rect.Top, rect.Right, rect.Bottom), new GridSize(columns, rows), 1f).FeedCapacity;
+    }
+
+    [Fact]
+    public async Task Render_Feed_DefaultHasNoFade()
+    {
+        using var rig = await StartedWithFeed(new AgentSettings(), ThreeEntries());
+
+        var runs = DrawnRuns(rig.Module, 8, 4);
+
+        Assert.Equal(Themes.Classique.Text, Run(runs, Newest).Color);
+        Assert.Equal(Run(runs, Newest).Color, Run(runs, Middle).Color);
+        Assert.Equal(Run(runs, Newest).Color, Run(runs, Oldest).Color);
+    }
+
+    [Fact]
+    public async Task Render_Feed_WithFade_OldLinesArePaler()
+    {
+        using var rig = await StartedWithFeed(new AgentSettings(FeedFade: true), ThreeEntries());
+
+        var runs = DrawnRuns(rig.Module, 8, 4);
+
+        Assert.Equal(Themes.Classique.Text, Run(runs, Newest).Color);
+        Assert.True(Run(runs, Middle).Color.Alpha < Run(runs, Newest).Color.Alpha);
+        Assert.True(Run(runs, Oldest).Color.Alpha < Run(runs, Middle).Color.Alpha);
+    }
+
+    [Fact]
+    public async Task Render_Feed_NewestOnTop_KeepsTheCurrentOrder()
+    {
+        using var rig = await StartedWithFeed(new AgentSettings(), ThreeEntries());
+
+        var runs = DrawnRuns(rig.Module, 8, 4);
+
+        var step = Run(runs, Middle).Baseline - Run(runs, Newest).Baseline;
+        Assert.True(step > 0f);
+        Assert.Equal(step, Run(runs, Oldest).Baseline - Run(runs, Middle).Baseline, 0.01f);
+    }
+
+    [Fact]
+    public async Task Render_Feed_NewestOnBottom_StacksUpwardsFromTheLastWholeLine()
+    {
+        var capacity = FeedCapacity(8, 4);
+        Assert.True(capacity >= 4);
+
+        // Un fil plus long que le corps : le plus récent occupe la dernière ligne entière, comme la plus ancienne l'occupe en haut.
+        var feed = Enumerable.Range(0, capacity + 5).Select(i => new FeedEntry("Read", $"f{i:00}.cs")).ToList();
+        using var top = await StartedWithFeed(new AgentSettings(), feed);
+        using var bottom = await StartedWithFeed(new AgentSettings(FeedNewest: FeedNewest.Bottom), feed);
+
+        var topRuns = DrawnRuns(top.Module, 8, 4);
+        var bottomRuns = DrawnRuns(bottom.Module, 8, 4);
+
+        var newest = $"f{capacity + 4:00}.cs";
+        var previous = $"f{capacity + 3:00}.cs";
+        var oldestShown = $"f{5:00}.cs";
+        var lastLine = Run(topRuns, oldestShown).Baseline;
+        Assert.Equal(lastLine, Run(bottomRuns, newest).Baseline, 0.01f);
+        Assert.True(Run(bottomRuns, previous).Baseline < Run(bottomRuns, newest).Baseline);
+        Assert.Equal(Run(topRuns, newest).Baseline, Run(bottomRuns, oldestShown).Baseline, 0.01f);
+    }
+
+    [Fact]
+    public async Task Render_Feed_NewestOnBottom_ShortFeedIsGluedToTheBottom()
+    {
+        using var top = await StartedWithFeed(new AgentSettings(), ThreeEntries());
+        using var bottom = await StartedWithFeed(new AgentSettings(FeedNewest: FeedNewest.Bottom), ThreeEntries());
+        var firstLine = Run(DrawnRuns(top.Module, 8, 4), Newest).Baseline;
+        var lastLine = firstLine + (FeedCapacity(8, 4) - 1) * AgentLayout.FeedLineHeight;
+
+        var runs = DrawnRuns(bottom.Module, 8, 4);
+
+        Assert.Equal(lastLine, Run(runs, Newest).Baseline, 0.01f);
+        Assert.True(Run(runs, Middle).Baseline < Run(runs, Newest).Baseline);
+        Assert.True(Run(runs, Oldest).Baseline < Run(runs, Middle).Baseline);
+        Assert.Equal(AgentLayout.FeedLineHeight, Run(runs, Newest).Baseline - Run(runs, Middle).Baseline, 0.01f);
+    }
+
+    [Fact]
+    public async Task Render_Feed_NewestOnBottom_WithFade_NewestStaysOpaqueAndAgeGrowsUpwards()
+    {
+        using var rig = await StartedWithFeed(new AgentSettings(FeedFade: true, FeedNewest: FeedNewest.Bottom), ThreeEntries());
+
+        var runs = DrawnRuns(rig.Module, 8, 4);
+
+        Assert.Equal(Themes.Classique.Text, Run(runs, Newest).Color);
+        Assert.True(Run(runs, Middle).Color.Alpha < Run(runs, Newest).Color.Alpha);
+        Assert.True(Run(runs, Oldest).Color.Alpha < Run(runs, Middle).Color.Alpha);
+    }
+
     [Fact]
     public async Task Render_6Columns_OmitsTheModelField()
     {

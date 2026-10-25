@@ -21,7 +21,9 @@ internal static class Program
           --codex-probe [codexHome]   décrit la structure (clés, sans valeurs) de la transcription Codex la plus récente
           --mascot-sheet <dossier>    écrit un PNG par clip de chaque mascotte (poses côte à côte, pixel de 8)
           --render <png> [--agent claude|codex] [--view feed|overview] [--size 6x3|8x4|10x4] [--text small|normal|large]
+                                [--fade on|off] [--newest top|bottom]
                                       dessine le module (1920 × 462, en haut à gauche) sur des données d'exemple
+                                      (--fade : fondu des lignes anciennes du fil, off par défaut ; --newest : ligne la plus récente en haut ou en bas)
         """;
 
     private static int Main(string[] args)
@@ -166,10 +168,13 @@ internal static class Program
         var view = options.GetValueOrDefault("--view", "feed");
         var size = options.GetValueOrDefault("--size", "8x4");
         var text = options.GetValueOrDefault("--text", "normal");
-        var known = new[] { "--agent", "--view", "--size", "--text" };
+        var fade = options.GetValueOrDefault("--fade", "off");
+        var newest = options.GetValueOrDefault("--newest", "top");
+        var known = new[] { "--agent", "--view", "--size", "--text", "--fade", "--newest" };
         if (options.Keys.Any(k => !known.Contains(k))
             || agent is not ("claude" or "codex") || view is not ("feed" or "overview")
-            || size is not ("6x3" or "8x4" or "10x4") || text is not ("small" or "normal" or "large"))
+            || size is not ("6x3" or "8x4" or "10x4") || text is not ("small" or "normal" or "large")
+            || fade is not ("on" or "off") || newest is not ("top" or "bottom"))
         {
             Console.Error.WriteLine(Usage);
             return 2;
@@ -177,7 +182,7 @@ internal static class Program
 
         try
         {
-            RenderModule(args[1], agent == "codex", view == "overview", size, text);
+            RenderModule(args[1], agent == "codex", view == "overview", size, text, fade == "on", newest);
             return 0;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -187,7 +192,7 @@ internal static class Program
         }
     }
 
-    private static void RenderModule(string path, bool codex, bool overview, string size, string text)
+    private static void RenderModule(string path, bool codex, bool overview, string size, string text, bool fade, string newest)
     {
         var columns = int.Parse(size.AsSpan(0, size.IndexOf('x')), CultureInfo.InvariantCulture);
         var rows = int.Parse(size.AsSpan(size.IndexOf('x') + 1), CultureInfo.InvariantCulture);
@@ -198,7 +203,8 @@ internal static class Program
         IModuleFactory factory = codex
             ? new CodexFactory(_ => new SampleSource(now, codex: true))
             : new ClaudeCodeFactory(_ => new SampleSource(now, codex: false));
-        using var json = JsonDocument.Parse(overview ? "{\"view\":\"overview\"}" : "{\"view\":\"feed\"}");
+        using var json = JsonDocument.Parse(
+            $$"""{"view":"{{(overview ? "overview" : "feed")}}","feedFade":{{(fade ? "true" : "false")}},"feedNewest":"{{newest}}"}""");
         var context = new ModuleContext(Guid.NewGuid(), json.RootElement.Clone(), TimeProvider.System, new ConsoleLog(), new NoSecrets());
         using var module = (AgentModule)factory.Create(context);
         module.PollNow();

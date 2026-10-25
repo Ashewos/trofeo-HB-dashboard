@@ -528,6 +528,6 @@ public sealed class AgentModule(ModuleDescriptor descriptor, AgentFlavor flavor,
     public void Render(SKCanvas canvas, ModuleRenderContext ctx)
     {
         var shown = Volatile.Read(ref _shown);
-        Painter.Draw(canvas, ctx, new AgentScene(shown.Snapshot, shown.SelectedId, Status, settings.View, flavor, _animator));
+        Painter.Draw(canvas, ctx, new AgentScene(shown.Snapshot, shown.SelectedId, Status, settings, flavor, _animator));
     }
 }

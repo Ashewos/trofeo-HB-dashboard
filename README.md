@@ -85,6 +85,12 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
     "Settings": { "view": "feed", "autoFollow": true }
   }
   ```
+  Réglages du module Claude Code / Codex (tous facultatifs) :
+
+  - `view` : `feed` (le fil d'activité, par défaut) ou `overview` (l'action en cours et les tâches) ;
+  - `autoFollow` : `true` (par défaut) pour que l'onglet affiché passe à la session qui se met à t'attendre ;
+  - `feedFade` : `true` pour que les lignes du fil pâlissent en vieillissant, `false` (par défaut) pour les garder toutes à pleine intensité ;
+  - `feedNewest` : `top` (par défaut) pour que la ligne la plus récente soit en haut et que le fil descende, `bottom` pour qu'elle soit en bas et que le fil monte, comme un terminal.
 - **Freebox** : dans les réglages du module Réseau, `"source":"freebox"`. Au premier lancement, le module demande d'appuyer sur la flèche de la Freebox pour autoriser le dashboard.
 - **UniFi** : `"source":"unifi","unifi":{"host":"192.168.1.1"}`, puis la clé API de la console avec `--set-secret network unifi.apiKey`.
 
