@@ -164,6 +164,46 @@ public sealed class CodexRolloutTests
     }
 
     [Fact]
+    public void TokenCount_AfterCompaction_UsesRetainedTotalNotZeroInputOrLifetimeTotal()
+    {
+        var rollout = Build(Event("token_count", 1, """
+            ,"info":{"last_token_usage":{"input_tokens":0,"output_tokens":0,"total_tokens":57341},
+            "total_token_usage":{"input_tokens":54432845,"total_tokens":54625805},"model_context_window":475000}
+            """));
+
+        Assert.Equal(57341d * 100 / 475000, rollout.ContextPercent);
+        Assert.Equal("12 %", AgentText.Percent(rollout.ContextPercent!.Value));
+    }
+
+    [Theory]
+    [InlineData("{\"total_tokens\":120,\"input_tokens\":0}", 12)]
+    [InlineData("{\"total_tokens\":120,\"input_tokens\":100}", 12)]
+    [InlineData("{\"total_tokens\":120}", 12)]
+    [InlineData("{\"total_tokens\":0,\"input_tokens\":100}", 0)]
+    [InlineData("{\"input_tokens\":100}", 10)]
+    [InlineData("{\"total_tokens\":null,\"input_tokens\":100}", 10)]
+    [InlineData("{\"total_tokens\":\"120\",\"input_tokens\":100}", 10)]
+    [InlineData("{\"total_tokens\":-1,\"input_tokens\":100}", 10)]
+    [InlineData("{\"total_tokens\":2000}", 100)]
+    public void TokenCount_PrefersValidLatestTotalWithLegacyInputFallback(string last, double expected)
+    {
+        var rollout = Build(Event("token_count", 1,
+            ",\"info\":{\"last_token_usage\":" + last + ",\"model_context_window\":1000}"));
+
+        Assert.Equal(expected, rollout.ContextPercent);
+    }
+
+    [Fact]
+    public void TokenCount_InvalidLatestUsage_DoesNotReplaceKnownContextWithLifetimeTotal()
+    {
+        var rollout = Build(
+            Event("token_count", 1, ",\"info\":{\"last_token_usage\":{\"total_tokens\":120},\"model_context_window\":1000}"),
+            Event("token_count", 2, ",\"info\":{\"last_token_usage\":{},\"total_token_usage\":{\"total_tokens\":990000},\"model_context_window\":1000}"));
+
+        Assert.Equal(12, rollout.ContextPercent);
+    }
+
+    [Fact]
     public void TokenCount_WithoutWindowMinutes_UsesRank()
     {
         var rollout = Build(Event("token_count", 0, """

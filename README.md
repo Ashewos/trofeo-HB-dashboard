@@ -90,6 +90,29 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
   - `autoFollow` : `true` (par défaut) pour que l'onglet affiché passe à la session qui se met à t'attendre ;
   - `feedFade` : `true` pour que les lignes du fil pâlissent en vieillissant, `false` (par défaut) pour les garder toutes à pleine intensité ;
   - `feedNewest` : `top` (par défaut) pour que la ligne la plus récente soit en haut et que le fil descende, `bottom` pour qu'elle soit en bas et que le fil monte, comme un terminal.
+
+  Le module Codex exclut les sessions techniques de sous-agents (dont `guardian`). Les onglets utilisent les titres de
+  `~/.codex/session_index.jsonl` quand cet index existe ; sinon, la première demande lisible ou le dossier de travail.
+  Les messages Desktop utilisateur et assistant apparaissent dans le fil, sous forme d'extraits d'une ligne, en plus des
+  appels d'outils. Les instructions injectées et le raisonnement interne n'y sont pas affichés. La durée mesure le
+  traitement de la demande et reste figée à sa fin ou à son interruption (ce n'est pas la durée d'une commande shell).
+  Le module reste une vue des sessions locales récentes : au plus 12 conversations modifiées depuis moins de 2 h,
+  recherchées dans les dossiers des 3 derniers jours ; ce n'est pas l'historique complet de l'application.
+  Les commandes littérales encapsulées dans l'outil Desktop `exec` sont également lues (PowerShell, Bash, CMD et
+  modifications de fichiers avec compteurs de lignes). Cette lecture ne réexécute jamais le JavaScript ni les commandes.
+  Au démarrage, si le modèle est absent de la portion relue, le module recherche le dernier `turn_context` du même
+  fichier (16 Mio au plus), sans rejouer son fil ni emprunter le modèle d'une autre conversation.
+  Si les 512 Kio initiaux ne contiennent aucun message ni outil (par exemple après une grosse compression), le module
+  récupère les derniers extraits du même fichier dans une fenêtre de 16 Mio au plus. Les lignes de plus de 1 Mio,
+  les entrées de compression et le raisonnement ne sont pas affichés. Cette récupération unique ne modifie ni
+  l'activité, ni la durée, ni les quotas ; les ajouts suivants restent incrémentaux, sans duplication du fil.
+  Le contexte est calculé à partir de `last_token_usage.total_tokens` quand il est disponible (sinon `input_tokens`
+  pour les anciens formats), rapporté à `model_context_window`. Après compression, le total conservé reste exploitable
+  même si `input_tokens` vaut zéro ; le cumul de toute la conversation n'est jamais utilisé pour ce calcul.
+  Pour Codex, « Contexte » affiche la part **utilisée** ; seuls les quotas « 5 h » / « Hebdo » affichent la part
+  **restante**, barres comprises (30 % consommés donnent 70 % restants). Les heures de remise à zéro ne changent pas ; une valeur inconnue ou
+  un quota périmé reste « — ». Le module Claude Code conserve son affichage de la part consommée.
+
 - **Freebox** : dans les réglages du module Réseau, `"source":"freebox"`. Au premier lancement, le module demande d'appuyer sur la flèche de la Freebox pour autoriser le dashboard.
 - **UniFi** : `"source":"unifi","unifi":{"host":"192.168.1.1"}`, puis la clé API de la console avec `--set-secret network unifi.apiKey`.
 

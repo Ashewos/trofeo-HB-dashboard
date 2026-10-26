@@ -30,6 +30,9 @@ public sealed class TranscriptTail(string path, int initialBytes = 512 * 1024, i
     /// </summary>
     public bool Restarted { get; private set; }
 
+    /// <summary>Fin exacte des octets déjà lus, pour borner une récupération sans anticiper les futurs ajouts.</summary>
+    internal long Position => _position;
+
     /// <summary>Les lignes complètes apparues depuis l'appel précédent (sans « \r\n »). Fichier absent : liste vide.</summary>
     public IReadOnlyList<string> ReadNewLines()
     {

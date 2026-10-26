@@ -494,7 +494,7 @@ public sealed class AgentModule(ModuleDescriptor descriptor, AgentFlavor flavor,
     private static string Signature(AgentSnapshot snapshot, string? selectedId, ModuleStatus status, DateTimeOffset now)
     {
         var detail = snapshot.Selected;
-        var taskMinutes = detail?.TaskStartedAt is { } startedAt ? (long)Math.Max(0, (now - startedAt).TotalMinutes) : (long?)null;
+        var taskMinutes = detail?.TaskStartedAt is { } startedAt ? (long)Math.Max(0, ((detail.TaskFinishedAt ?? now) - startedAt).TotalMinutes) : (long?)null;
         var quotas = snapshot.Quotas;
         return JsonSerializer.Serialize(new
         {

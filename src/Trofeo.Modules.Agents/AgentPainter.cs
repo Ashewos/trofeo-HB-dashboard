@@ -444,7 +444,7 @@ internal sealed class AgentPainter
             var fields = new List<(string Label, string Value)>
             {
                 ("Contexte", detail?.ContextPercent is { } context && !double.IsNaN(context) ? AgentText.Percent(context) : NoValue),
-                ("Durée", detail?.TaskStartedAt is { } started ? AgentText.Duration(_ctx.Now - started) : NoValue),
+                ("Durée", detail?.TaskStartedAt is { } started ? AgentText.Duration((detail.TaskFinishedAt ?? _ctx.Now) - started) : NoValue),
             };
             if (_ctx.Size.Columns >= 7)
             {
@@ -492,15 +492,16 @@ internal sealed class AgentPainter
             var bar = _layout.Bar;
             var expired = window?.ResetsAt is { } at && at <= _ctx.Now;
             var known = window is not null && !expired && !double.IsNaN(window.UsedPercent);
+            var percent = known ? DisplayQuotaPercent(window!.UsedPercent) : 0d;
             var half = width / 2f;
 
             var baseline = BaselineFor(20f, bar.Top + 14f * _scale);
             TextOnBaseline(label, left, baseline, SKTextAlign.Left, 15f, _theme.TextMuted, half);
-            TextOnBaseline(known ? AgentText.Percent(window!.UsedPercent) : NoValue, left + width, baseline, SKTextAlign.Right, 20f, _theme.Text, half);
+            TextOnBaseline(known ? AgentText.Percent(percent) : NoValue, left + width, baseline, SKTextAlign.Right, 20f, _theme.Text, half);
 
             var top = bar.Top + 27f * _scale;
             ModuleDrawing.DrawBar(_canvas, ModuleDrawing.BarRect(new SKRect(left, top, left + width, top + 8f * _scale), _theme),
-                known ? (float)(window!.UsedPercent / 100d) : 0f, _theme.Accent, _theme);
+                (float)(percent / 100d), _theme.Accent, _theme);
 
             if (window?.ResetsAt is { } resetsAt)
             {
@@ -508,6 +509,13 @@ internal sealed class AgentPainter
                 var reset = AgentText.Reset(resetsAt.ToLocalTime(), _ctx.Now.ToLocalTime());
                 Text(reset, left, bar.Top + 49f * _scale, SKTextAlign.Left, 14f, _theme.TextMuted, width);
             }
+        }
+
+        // Le contexte reste consommé ; seuls les quotas Codex sont convertis en restant.
+        private double DisplayQuotaPercent(double used)
+        {
+            var bounded = Math.Clamp(used, 0d, 100d);
+            return _scene.Flavor.DisplayRemainingQuotaPercent ? 100d - bounded : bounded;
         }
     }
 }

@@ -863,6 +863,19 @@ public sealed class AgentModuleTests
         Assert.Contains("Opus 5.5", texts);
     }
 
+    [Fact]
+    public async Task Render_CompletedTaskDurationDoesNotIncludeTimeSinceCompletion()
+    {
+        var detail = Detail("a", startedAt: Start.AddMinutes(-12)) with { TaskFinishedAt = Start.AddMinutes(-10) };
+        using var rig = await Started(Snapshot([Session("a", AgentActivity.Idle)], detail));
+        rig.Module.PollNow();
+
+        var texts = DrawnTexts(rig.Module, 8, 4);
+
+        Assert.Contains("2 min", texts);
+        Assert.DoesNotContain("12 min", texts);
+    }
+
     // --- Fil d'activité : fondu et sens ---
 
     private const string Oldest = "premier.cs";
