@@ -2,8 +2,11 @@ using Trofeo.ModuleKit;
 
 namespace Trofeo.Core.Layout;
 
-/// <summary>Résultat de la validation d'un emplacement.</summary>
-public enum PlacementError { None, OutOfBounds, Overlap, BelowMinSize, UnknownType }
+/// <summary>
+/// Résultat de la validation d'un emplacement. <see cref="NoRoom"/> : aucune place libre pour un ajout
+/// (<see cref="LayoutEditor.Add"/>).
+/// </summary>
+public enum PlacementError { None, OutOfBounds, Overlap, BelowMinSize, UnknownType, NoRoom }
 
 /// <summary>Règles de placement : dans le damier, pas de chevauchement, taille minimum respectée.</summary>
 public static class LayoutValidator

@@ -365,6 +365,24 @@ public sealed class LayoutStoreTests : IDisposable
     }
 
     [Fact]
+    public void Load_DuplicateKey_NullShortcutEntry_IsDroppedWithWarning()
+    {
+        // Chemin d'avant (clé en double) : les entrées null de Shortcuts n'arrivent pas jusqu'aux appelants.
+        var json = LayoutJson(180, (0, 0, 4, 2)).TrimEnd().TrimEnd('}') +
+                   ",\"Rotation\":0,\"Shortcuts\":[null,{\"Keys\":\"Ctrl+Alt+Right\",\"Command\":\"NextTab\"}]}";
+        File.WriteAllText(FilePath, json);
+
+        var warnings = new List<string>();
+        var layout = new LayoutStore(FilePath, warnings.Add).Load();
+
+        Assert.Equal(0, layout.Rotation);
+        var binding = Assert.Single(layout.Shortcuts!);
+        Assert.Equal("Ctrl+Alt+Right", binding.Keys);
+        Assert.Equal(["Raccourci « ? » ignoré : touches absentes."], warnings);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
     public void Load_DuplicateAppearanceKey_StaysReadable()
     {
         var json = LayoutJson(180, (0, 0, 4, 2)).TrimEnd().TrimEnd('}') +

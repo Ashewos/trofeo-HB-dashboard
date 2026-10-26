@@ -91,7 +91,9 @@ internal static class LayoutJson
             // Un nom de propriété en double : JsonNode refuse, le sérialiseur l'acceptait (la dernière valeur gagne) et
             // les fichiers d'avant le plan 4 doivent rester lus. Chemin d'avant, sans lecture indulgente.
             var legacy = JsonSerializer.Deserialize<DashboardLayout>(json, Options);
-            return legacy is null ? null : legacy with { MaxFps = CheckMaxFps(legacy.MaxFps, warn) };
+            return legacy is null
+                ? null
+                : legacy with { Shortcuts = DropNullShortcuts(legacy.Shortcuts, warn), MaxFps = CheckMaxFps(legacy.MaxFps, warn) };
         }
     }
 
@@ -139,6 +141,21 @@ internal static class LayoutJson
 
         warn(MaxFpsInvalid);
         return null;
+    }
+
+    /// <summary>Chemin d'avant : les entrées <c>null</c> sont écartées avec le même avertissement que la lecture indulgente.</summary>
+    private static IReadOnlyList<ShortcutBinding>? DropNullShortcuts(IReadOnlyList<ShortcutBinding>? shortcuts, Action<string> warn)
+    {
+        if (shortcuts is null || !shortcuts.Contains(null!)) return shortcuts;
+
+        var kept = new List<ShortcutBinding>();
+        foreach (var binding in shortcuts)
+        {
+            if (binding is not null) kept.Add(binding);
+            else warn("Raccourci « ? » ignoré : touches absentes.");
+        }
+
+        return kept;
     }
 
     /// <summary>Un raccourci illisible est écarté (avec un avertissement) ; il ne fait pas rejeter la disposition.</summary>

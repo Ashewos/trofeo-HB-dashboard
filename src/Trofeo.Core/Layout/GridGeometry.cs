@@ -36,6 +36,54 @@ public static class GridGeometry
         return new SKRectI(x0, y0, x1, y1);
     }
 
+    /// <summary>
+    /// Case sous un point de l'écran (pixels 1920 × 462, non tourné), bornée au damier. Un point dans un écart entre
+    /// deux modules appartient à la case la plus proche.
+    /// </summary>
+    public static (int Column, int Row) CellAt(float x, float y, GridSpacing spacing) =>
+        (CellIndex(x, Width, Columns, spacing), CellIndex(y, Height, Rows, spacing));
+
+    /// <summary>Bord de colonne (0 à 16) le plus proche d'un point : sert au redimensionnement.</summary>
+    public static int NearestColumnEdge(float x, GridSpacing spacing) => NearestEdge(x, Width, Columns, spacing);
+
+    /// <summary>Bord de rangée (0 à 4) le plus proche d'un point : sert au redimensionnement.</summary>
+    public static int NearestRowEdge(float y, GridSpacing spacing) => NearestEdge(y, Height, Rows, spacing);
+
+    /// <summary>Position en pixels d'un bord : au milieu de l'écart entre deux cases, au bord du module aux extrémités.</summary>
+    private static double EdgePosition(int edge, int screen, int divisions, GridSpacing spacing)
+    {
+        int inner = screen - 2 * spacing.Inset + spacing.Gap;
+        if (edge == 0) return spacing.Inset;
+        if (edge == divisions) return spacing.Inset + Snap(divisions, inner, divisions) - spacing.Gap;
+        return spacing.Inset + Snap(edge, inner, divisions) - spacing.Gap / 2.0;
+    }
+
+    private static int CellIndex(float coordinate, int screen, int divisions, GridSpacing spacing)
+    {
+        // La case k commence au bord k (milieu de l'écart qui la précède).
+        var index = 0;
+        for (var k = 1; k < divisions; k++)
+            if (coordinate >= EdgePosition(k, screen, divisions, spacing)) index = k;
+        return index;
+    }
+
+    private static int NearestEdge(float coordinate, int screen, int divisions, GridSpacing spacing)
+    {
+        var best = 0;
+        var bestDistance = double.MaxValue;
+        for (var k = 0; k <= divisions; k++)
+        {
+            var distance = Math.Abs(coordinate - EdgePosition(k, screen, divisions, spacing));
+            if (distance < bestDistance) // égalité : le bord le plus petit
+            {
+                best = k;
+                bestDistance = distance;
+            }
+        }
+
+        return best;
+    }
+
     private static int Snap(int index, int extent, int divisions) =>
         (int)Math.Round((double)index * extent / divisions, MidpointRounding.AwayFromZero);
 }
