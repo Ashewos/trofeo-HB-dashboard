@@ -131,7 +131,7 @@ static class Program
             var meter = new ProcessMeter(SampleProcess, TimeProvider.System, Environment.ProcessorCount);
             var handler = new ServiceControlHandler(
                 store, loop, registry, () => ServiceControlHandler.ToScreenInfo(screen.Status), () => ReadSensors(sensorPipe),
-                meter, BuildConfig, hotkeys?.Host, buildWarnings);
+                meter, BuildConfig, hotkeys?.Host, buildWarnings, config);
             using var control = StartControl(handler);
 
             Application.Run(tray);

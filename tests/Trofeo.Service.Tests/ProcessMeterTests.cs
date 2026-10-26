@@ -73,4 +73,21 @@ public sealed class ProcessMeterTests
 
         Assert.Equal(100, meter.Read().CpuPercent, 3);
     }
+
+    [Fact]
+    public void ProcessMeter_ConcurrentReaders_NeverMoveTheBaselineBackwards()
+    {
+        var time = new FakeTimeProvider();
+        var cpu = TimeSpan.Zero;
+        var meter = new ProcessMeter(() => (cpu += TimeSpan.FromMilliseconds(1), 0, 0), time, 1);
+        meter.Read();
+
+        // La mesure et l'horodatage sont pris ensemble : le temps CPU lu ne recule jamais d'une lecture à l'autre.
+        Parallel.For(0, 2000, _ =>
+        {
+            time.Advance(TimeSpan.FromMilliseconds(1));
+            var percent = meter.Read().CpuPercent;
+            Assert.InRange(percent, 0, 100);
+        });
+    }
 }

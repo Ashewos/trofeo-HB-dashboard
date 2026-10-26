@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Reflection;
 using Trofeo.Control;
 using Trofeo.Core.Layout;
+using Trofeo.Core.Rendering;
 using Trofeo.Core.Shortcuts;
 using Trofeo.Device;
 using Trofeo.ModuleKit;
@@ -20,15 +21,24 @@ namespace Trofeo.Display;
 /// Reçoit les avertissements de <paramref name="buildConfig"/> (apparence, fond) : ils rejoignent ceux du rechargement.
 /// <paramref name="buildConfig"/> doit les lui adresser.
 /// </param>
+/// <param name="initialConfig">
+/// La configuration que la boucle applique au démarrage : tant que l'apparence ne change pas, un rechargement garde son thème et
+/// son fond (une vidéo ne repart pas de zéro, une image n'est pas rouverte).
+/// </param>
 public sealed class ServiceControlHandler(
     LayoutStore store, DisplayLoop loop, ModuleRegistry registry, Func<ScreenInfo> screen, Func<SensorInfo> sensors,
-    ProcessMeter meter, Func<DashboardLayout, LoopConfig> buildConfig, IHotkeyHost? hotkeys, WarningSink? buildWarnings = null)
+    ProcessMeter meter, Func<DashboardLayout, LoopConfig> buildConfig, IHotkeyHost? hotkeys, WarningSink? buildWarnings = null,
+    LoopConfig? initialConfig = null)
     : IControlHandler
 {
     private static readonly string ServiceVersion = ReadVersion();
 
     // Un rechargement à la fois : deux fenêtres de réglage ne s'entremêlent pas.
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
+
+    // Ce que la boucle applique en ce moment (thème et fond) et l'apparence dont ils viennent ; sous _reloadGate.
+    private LoopConfig? _applied = initialConfig;
+    private AppearanceSettings? _appliedAppearance = initialConfig?.Layout.Appearance;
 
     public Welcome Hello()
     {
@@ -75,21 +85,31 @@ public sealed class ServiceControlHandler(
 
             var warnings = new List<string>(loaded.Warnings);
 
-            buildWarnings?.Drain(); // ce qu'une fabrication précédente (le démarrage) a laissé ne regarde pas ce rechargement
             LoopConfig config;
-            try
+            if (_applied is { } applied && Equals(layout.Appearance, _appliedAppearance))
             {
-                config = buildConfig(layout);
+                // Même apparence : mêmes instances de thème et de fond, la boucle n'en change aucun.
+                config = new LoopConfig(layout, applied.Theme, applied.Background);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            else
             {
-                Trace.TraceError($"Rechargement : l'apparence n'a pas pu être appliquée : {ex}");
-                return new Reloaded(false, $"L'apparence n'a pas pu être appliquée : {ex.Message}", []);
-            }
+                buildWarnings?.Drain(); // ce qu'une fabrication précédente (le démarrage) a laissé ne regarde pas ce rechargement
+                try
+                {
+                    config = buildConfig(layout);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Trace.TraceError($"Rechargement : l'apparence n'a pas pu être appliquée : {ex}");
+                    return new Reloaded(false, $"L'apparence n'a pas pu être appliquée : {ex.Message}", []);
+                }
 
-            if (buildWarnings is not null) warnings.AddRange(buildWarnings.Drain());
+                if (buildWarnings is not null) warnings.AddRange(buildWarnings.Drain());
+            }
 
             warnings.AddRange(await loop.ApplyAsync(config).ConfigureAwait(false));
+            _applied = config;
+            _appliedAppearance = layout.Appearance;
 
             if (hotkeys is not null)
             {

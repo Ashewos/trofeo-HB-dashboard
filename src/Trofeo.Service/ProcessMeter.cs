@@ -17,9 +17,10 @@ public sealed class ProcessMeter(Func<(TimeSpan Cpu, long PrivateBytes, long Wor
 
     public ProcessInfo Read()
     {
-        var (cpu, privateBytes, workingSet) = sample();
         lock (_gate)
         {
+            // La mesure est prise sous le verrou, avec l'horodatage : deux lecteurs en même temps ne font pas reculer _lastCpu.
+            var (cpu, privateBytes, workingSet) = sample();
             var now = time.GetTimestamp();
             if (_hasPrevious)
             {

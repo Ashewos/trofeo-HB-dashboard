@@ -89,7 +89,9 @@ public sealed class ServiceControlHandlerTests
     {
         private readonly string _dir = Path.Combine(Path.GetTempPath(), "trofeo-handler-" + Guid.NewGuid().ToString("N"));
 
-        public Rig(DashboardLayout? layout = null, Func<ScreenInfo>? screen = null, Func<SensorInfo>? sensors = null)
+        public Rig(
+            DashboardLayout? layout = null, Func<ScreenInfo>? screen = null, Func<SensorInfo>? sensors = null,
+            Func<DashboardLayout, LoopConfig>? build = null, LoopConfig? initialConfig = null)
         {
             Directory.CreateDirectory(_dir);
             LayoutPath = Path.Combine(_dir, "layout.json");
@@ -104,8 +106,8 @@ public sealed class ServiceControlHandlerTests
                 screen ?? (() => new ScreenInfo(LinkScreenState.Ready, null)),
                 sensors ?? (() => new SensorInfo(true, false, false)),
                 new ProcessMeter(() => (TimeSpan.Zero, 1, 2), LoopRig.Time, 4),
-                layout => LoopConfigFactory.Build(layout, new NoSystemFonts(), null, Sink.Warn),
-                Hotkeys, Sink);
+                build ?? (layout => LoopConfigFactory.Build(layout, new NoSystemFonts(), null, Sink.Warn)),
+                Hotkeys, Sink, initialConfig);
         }
 
         public string LayoutPath { get; }
@@ -226,6 +228,67 @@ public sealed class ServiceControlHandlerTests
 
         Assert.Empty(first.Warnings);
         Assert.Empty(second.Warnings);
+    }
+
+    [Fact]
+    public async Task Reload_SameAppearance_KeepsBackgroundInstance()
+    {
+        var built = new List<TrackedBackground>();
+        using var rig = new Rig(build: layout =>
+        {
+            var background = new TrackedBackground(SKColors.Red);
+            built.Add(background);
+            return new LoopConfig(layout, Themes.ClassiqueDefinition, background);
+        });
+        var appearance = new AppearanceSettings("pixel");
+        rig.Store.Save(Layout(Place(A, "fake")) with { Appearance = appearance });
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        rig.Store.Save(Layout(Place(A, "fake", column: 6)) with { Appearance = appearance with { } }); // un module déplacé
+        var result = await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        Assert.True(result.Applied);
+        Assert.Single(built);
+        Assert.False(built[0].Disposed);
+        Assert.Equal(6, rig.LoopRig.Loop.Layout.Placements[0].Column);
+    }
+
+    [Fact]
+    public async Task Reload_SameAppearanceAsStartup_DoesNotRebuild()
+    {
+        var builds = 0;
+        var startup = new LoopConfig(Layout(Place(A, "fake")), Themes.ClassiqueDefinition, new TrackedBackground(SKColors.Red));
+        using var rig = new Rig(build: layout =>
+        {
+            builds++;
+            return new LoopConfig(layout, Themes.ClassiqueDefinition, new TrackedBackground(SKColors.Blue));
+        }, initialConfig: startup);
+        rig.Store.Save(Layout(Place(A, "fake", column: 6)));  // apparence absente, comme au départ
+
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        Assert.Equal(0, builds);
+    }
+
+    [Fact]
+    public async Task Reload_ChangedAppearance_RebuildsBackground()
+    {
+        var built = new List<TrackedBackground>();
+        using var rig = new Rig(build: layout =>
+        {
+            var background = new TrackedBackground(SKColors.Red);
+            built.Add(background);
+            return new LoopConfig(layout, Themes.ClassiqueDefinition, background);
+        });
+        rig.Store.Save(Layout(Place(A, "fake")) with { Appearance = new AppearanceSettings("pixel") });
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        rig.Store.Save(Layout(Place(A, "fake")) with { Appearance = new AppearanceSettings("pixel", PanelOpacity: 0.5f) });
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        Assert.Equal(2, built.Count);
+        Assert.True(built[0].Disposed);   // la boucle a libéré l'ancien fond
+        Assert.False(built[1].Disposed);
     }
 
     [Fact]
