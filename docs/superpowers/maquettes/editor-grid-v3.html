@@ -1,0 +1,89 @@
+<style>
+  .ed-app { font-family: "Segoe UI", system-ui, sans-serif; background: #0f1117; color: #d9d7d3; border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px #2a2d36, 0 20px 50px rgba(0,0,0,.4); margin-top: 10px; }
+  .ed-top { display: flex; align-items: center; gap: 4px; padding: 10px 14px; background: #0b0d12; border-bottom: 1px solid #1f222b; font-size: 13px; }
+  .ed-top .t { padding: 6px 12px; border-radius: 6px; color: #8a8f9c; }
+  .ed-top .t.on { background: #1c2029; color: #f0ede8; }
+  .ed-top .right { margin-left: auto; display: flex; gap: 10px; align-items: center; color: #8a8f9c; font-size: 12px; }
+  .ed-pill { padding: 4px 10px; border-radius: 99px; background: #1c2029; display: flex; align-items: center; gap: 6px; }
+  .ed-pill.emu { background: #2a2116; color: #e8b36a; }
+  .ed-main { display: grid; grid-template-columns: 190px 1fr 200px; min-height: 330px; }
+  .ed-side { background: #0c0e13; border-right: 1px solid #1f222b; padding: 12px 10px; font-size: 13px; }
+  .ed-side h4, .ed-props h4 { margin: 0 0 10px; font-size: 11px; color: #6b707c; text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+  .m { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px; color: #b5b8c1; }
+  .m.sel { background: #1c2029; color: #f0ede8; }
+  .m small { margin-left: auto; color: #5b606d; font-size: 11px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .g { background: #3ecf72; box-shadow: 0 0 6px #3ecf72; }
+  .r { background: #ef5350; box-shadow: 0 0 6px #ef5350; }
+  .n { background: #5b606d; }
+  .ed-center { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .ed-hint { font-size: 12px; color: #6b707c; }
+  .screen { container-type: inline-size; width: 100%; aspect-ratio: 1920/480; background: #07080b; border-radius: 6px; position: relative; box-shadow: 0 0 0 6px #1a1d25, 0 0 0 7px #2a2d36; }
+  .ed-cells { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(16, 1fr); grid-template-rows: repeat(4, 1fr); }
+  .ed-cells div { border-right: 1px dashed #1d2029; border-bottom: 1px dashed #1d2029; }
+  .ed-lay { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(16, 1fr); grid-template-rows: repeat(4, 1fr); gap: 0.4cqw; padding: 0.4cqw; }
+  .b { background: rgba(28,32,41,.85); border-radius: 0.6cqw; font-size: 1.05cqw; color: #9da1ab; display: flex; align-items: center; justify-content: center; position: relative; flex-direction: column; gap: .3cqw; }
+  .b .sz { font-size: 0.8cqw; color: #5b606d; }
+  .b.sel { outline: 2px solid #d97757; background: rgba(217,119,87,.08); color: #f0ede8; }
+  .h { position: absolute; width: 0.8cqw; height: 0.8cqw; background: #d97757; border-radius: 2px; }
+  .ghostsnap { grid-column: 1 / 11; grid-row: 1 / 5; border: 2px dashed rgba(217,119,87,.5); border-radius: 0.6cqw; z-index: 2; pointer-events: none; }
+  .ed-props { background: #0c0e13; border-left: 1px solid #1f222b; padding: 12px; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
+  .ed-row { display: flex; justify-content: space-between; color: #8a8f9c; }
+  .ed-row b { color: #f0ede8; font-weight: 600; }
+  .ed-preset { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ed-preset span { padding: 4px 8px; border-radius: 5px; background: #1c2029; font-size: 12px; color: #b5b8c1; }
+  .ed-preset span.on { background: #d97757; color: #1a0f0a; }
+  .ed-legend { display: flex; gap: 14px; font-size: 12px; color: #8a8f9c; margin-top: 10px; }
+  .ed-legend span { display: flex; align-items: center; gap: 6px; }
+</style>
+
+<div style="width:100%;min-width:100%"><h2>L’éditeur : redimensionner sur un damier</h2>
+<p class="subtitle">L'écran est découpé en 16 × 4 cases de 120 px. Un module s'étend sur des cases entières : on tire un bord ou un coin et il se cale sur la case la plus proche. Ici, le module Claude Code passe de 8 × 4 (ta taille idéale) à 10 × 4 et pousse Monitoring vers la droite.</p>
+
+<div class="ed-app">
+  <div class="ed-top">
+    <span class="t on">Disposition</span><span class="t">Personnalisation</span><span class="t">Modules</span><span class="t">Raccourcis</span>
+    <div class="right"><span class="ed-pill emu">◉ Mode émulé</span><span class="ed-pill"><span class="dot n"></span>Écran non branché</span></div>
+  </div>
+  <div class="ed-main">
+    <div class="ed-side">
+      <h4>Modules</h4>
+      <div class="m sel"><span class="dot g"></span>Claude Code<small>8×4</small></div>
+      <div class="m"><span class="dot g"></span>Monitoring PC<small>4×4</small></div>
+      <div class="m"><span class="dot g"></span>Heure · météo<small>4×2</small></div>
+      <div class="m"><span class="dot r"></span>Réseau (Freebox)<small>4×2</small></div>
+      <div class="m"><span class="dot n"></span>En écoute<small>—</small></div>
+      <div class="m"><span class="dot n"></span>Codex<small>—</small></div>
+    </div>
+    <div class="ed-center">
+      <div class="ed-hint">Glisse un bord pour agrandir · glisse le module pour le déplacer · les cases vides restent transparentes et laissent voir le fond d'écran</div>
+      <div class="screen">
+        <div class="ed-cells">
+          <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+          <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+          <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+          <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+        </div>
+        <div class="ed-lay">
+          <div class="b sel" style="grid-column:1/9;grid-row:1/5">Claude Code<span class="sz">8 × 4</span>
+            <i class="h" style="right:-0.4cqw;top:calc(50% - 0.4cqw)"></i><i class="h" style="right:-0.4cqw;bottom:-0.4cqw"></i><i class="h" style="left:-0.4cqw;top:calc(50% - 0.4cqw)"></i>
+          </div>
+          <div class="ghostsnap"></div>
+          <div class="b" style="grid-column:9/13;grid-row:1/5">Monitoring PC<span class="sz">4 × 4</span></div>
+          <div class="b" style="grid-column:13/17;grid-row:1/3">Heure · météo<span class="sz">4 × 2</span></div>
+          <div class="b" style="grid-column:13/17;grid-row:3/5">Réseau<span class="sz">4 × 2</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="ed-props">
+      <h4>Claude Code</h4>
+      <div class="ed-row">Taille<b>8 × 4 cases</b></div>
+      <div class="ed-row">En pixels<b>960 × 480</b></div>
+      <div class="ed-row">Taille minimum<b>6 × 3</b></div>
+      <div class="ed-preset"><span>Compact</span><span class="on">Idéal</span><span>Large</span></div>
+      <div class="ed-row">Affichage<b>Flux en direct</b></div>
+      <div class="ed-row">Thème<b>Classique</b></div>
+    </div>
+  </div>
+</div>
+<div class="ed-legend"><span><span class="dot g"></span>en ligne</span><span><span class="dot r"></span>hors ligne</span><span><span class="dot n"></span>non configuré</span></div></div>
