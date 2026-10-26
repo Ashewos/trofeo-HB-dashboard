@@ -37,6 +37,10 @@ internal static class BackgroundSupport
 
     public static string Missing(string path) => $"Fond d'écran introuvable : {path}. Fond du thème utilisé.";
     public static string Unreadable(string path) => $"Fond d'écran illisible : {path}. Fond du thème utilisé.";
+
+    /// <summary>Comme <see cref="Unreadable(string)"/>, avec la cause de l'échec.</summary>
+    public static string Unreadable(string path, string cause) =>
+        $"Fond d'écran illisible : {path} ({cause}). Fond du thème utilisé.";
     public static string BadColor(string? color) => $"Couleur de fond invalide : {color}. Fond du thème utilisé.";
     public static string NoVideo(string? path) => $"Vidéo non prise en charge ici : {path}. Fond du thème utilisé.";
 

@@ -2,7 +2,7 @@ namespace Trofeo.Core.Rendering;
 
 /// <summary>
 /// Décide quand envoyer une image : seulement si quelque chose a changé (ou s'anime)
-/// et jamais plus souvent que le plafond d'images par seconde.
+/// et jamais plus souvent que le plafond d'images par seconde (de début de rendu à début de rendu).
 /// </summary>
 public sealed class FrameScheduler : IDisposable
 {
@@ -11,6 +11,7 @@ public sealed class FrameScheduler : IDisposable
     private int _dirty;
     private bool _hasRendered;
     private long _lastRenderTimestamp;
+    private long? _renderStart; // début du rendu en cours, noté par ShouldRender
 
     /// <param name="time">Source de temps (mockable en test).</param>
     /// <param name="maxFps">Plafond d'images par seconde ; doit être strictement positif.</param>
@@ -92,13 +93,20 @@ public sealed class FrameScheduler : IDisposable
         }
 
         Interlocked.Exchange(ref _dirty, 0);
+        _renderStart = _time.GetTimestamp();
         return true;
     }
 
-    /// <summary>À appeler une fois l'image envoyée : démarre l'intervalle minimum.</summary>
+    /// <summary>
+    /// À appeler une fois l'image envoyée. L'intervalle minimum se compte depuis le <b>début</b> du rendu que
+    /// <see cref="ShouldRender"/> vient d'accepter, pas depuis cette fin : l'échéance de l'image suivante est absolue, la durée du
+    /// rendu et de l'envoi ne s'y ajoute pas (sinon 50 ms de rendu feraient 133 ms entre deux images au lieu de 83). Un rendu plus
+    /// long que l'intervalle laisse l'image suivante partir tout de suite. Sans <see cref="ShouldRender"/> avant, c'est maintenant.
+    /// </summary>
     public void OnRendered()
     {
-        _lastRenderTimestamp = _time.GetTimestamp();
+        _lastRenderTimestamp = _renderStart ?? _time.GetTimestamp();
+        _renderStart = null;
         _hasRendered = true;
     }
 

@@ -152,6 +152,39 @@ public class FrameSchedulerTests
     }
 
     [Fact]
+    public void Interval_CountsFromTheStartOfTheRender_NotFromItsEnd()
+    {
+        // Échéance absolue : un rendu de 50 ms ne rallonge pas l'intervalle (83 ms) de 50 ms de plus.
+        var time = new FakeTimeProvider();
+        var scheduler = new FrameScheduler(time);
+        scheduler.MarkDirty();
+        Assert.True(scheduler.ShouldRender(anyAnimating: false));
+
+        time.Advance(TimeSpan.FromMilliseconds(50)); // le rendu et l'envoi
+        scheduler.OnRendered();
+
+        Assert.Equal(scheduler.MinInterval - TimeSpan.FromMilliseconds(50), scheduler.UntilNextSlot());
+        time.Advance(scheduler.MinInterval - TimeSpan.FromMilliseconds(50));
+        Assert.Equal(TimeSpan.Zero, scheduler.UntilNextSlot());
+        scheduler.MarkDirty();
+        Assert.True(scheduler.ShouldRender(anyAnimating: false));
+    }
+
+    [Fact]
+    public void Interval_RenderLongerThanTheInterval_NextRenderIsImmediate()
+    {
+        var time = new FakeTimeProvider();
+        var scheduler = new FrameScheduler(time);
+        scheduler.MarkDirty();
+        Assert.True(scheduler.ShouldRender(anyAnimating: false));
+
+        time.Advance(TimeSpan.FromMilliseconds(200));
+        scheduler.OnRendered();
+
+        Assert.Equal(TimeSpan.Zero, scheduler.UntilNextSlot());
+    }
+
+    [Fact]
     public void Animating_CappedAt12fps()
     {
         var time = new FakeTimeProvider();

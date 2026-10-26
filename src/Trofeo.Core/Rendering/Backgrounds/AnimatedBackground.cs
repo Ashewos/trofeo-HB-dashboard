@@ -141,8 +141,8 @@ public sealed class AnimatedBackground : IBackground
     {
         if (!Decode(index)) return false;
 
-        // Le tampon et l'image d'écran sont réutilisés (mêmes adresses de pixels). La nouvelle image Skia est construite
-        // avant de libérer l'ancienne : en cas d'exception, Current reste valable.
+        // Le tampon et l'image d'écran sont réutilisés (mêmes adresses de pixels). En cas d'exception en route, Current reste
+        // un objet valide, jamais libéré, mais il partage ces pixels : il peut montrer un recadrage à moitié refait.
         using (var bufferPixels = _buffer!.PeekPixels())
         using (var source = SKImage.FromPixels(bufferPixels))
         {

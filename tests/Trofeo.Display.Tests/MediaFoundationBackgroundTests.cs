@@ -23,8 +23,6 @@ public sealed class MediaFoundationBackgroundTests : IDisposable
         new(0, 255, 255), new(255, 255, 255), new(255, 128, 0), new(0, 128, 255), new(128, 0, 255),
     ];
 
-    private static readonly SKColor Black = new(0, 0, 0);
-
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "trofeo-video-tests-" + Guid.NewGuid().ToString("N"));
 
     public MediaFoundationBackgroundTests() => Directory.CreateDirectory(_folder);
@@ -34,10 +32,12 @@ public sealed class MediaFoundationBackgroundTests : IDisposable
         try { Directory.Delete(_folder, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
-    private string Video(Func<int, int, int, SKColor>? pixel = null, int frameMs = FrameMs, bool withAudio = false, int width = VideoWidth, int height = VideoHeight)
+    private string Video(
+        Func<int, int, int, SKColor>? pixel = null, int frameMs = FrameMs, bool withAudio = false, int width = VideoWidth,
+        int height = VideoHeight, int frameCount = FrameCount)
     {
         var path = Path.Combine(_folder, Guid.NewGuid().ToString("N") + ".mp4");
-        WriteVideo(path, pixel ?? ((frame, _, _) => Palette[frame]), frameMs, withAudio, width, height);
+        WriteVideo(path, pixel ?? ((frame, _, _) => Palette[frame]), frameMs, withAudio, width, height, frameCount);
         return path;
     }
 
@@ -100,9 +100,8 @@ public sealed class MediaFoundationBackgroundTests : IDisposable
         for (int step = 0; step < 30; step++)
         {
             video.Advance(TimeSpan.FromMilliseconds(step * FrameMs + FrameMs / 2));
-            var color = Center(video);
-            AssertColor(Palette[step % FrameCount], color, $"(pas {step})");
-            Assert.NotEqual(Black, color);
+            // La tolérance de AssertColor exclut déjà le noir : aucune couleur de la palette n'en est à moins de 70 niveaux.
+            AssertColor(Palette[step % FrameCount], Center(video), $"(pas {step})");
         }
 
         // Au début du tour suivant (après les 83 ms mini entre deux recadrages) : l'image 0 revient aussitôt.
@@ -111,13 +110,119 @@ public sealed class MediaFoundationBackgroundTests : IDisposable
     }
 
     [Fact]
-    public void Video_LongJump_StaysInSync()
+    public void Video_LongAbsence_ResumesWhereItLeftOff_WithoutCatchingUp()
     {
         using var video = Open(Video());
+        Assert.True(video.Advance(TimeSpan.FromMilliseconds(250))); // image 2 à l'écran
+        AssertColor(Palette[2], Center(video));
+        int before = video.SamplesRead;
 
-        // Plusieurs tours d'un coup (veille de l'ordinateur, écran éteint) : on retombe sur la bonne image.
-        Assert.True(video.Advance(TimeSpan.FromMilliseconds(50 * FrameCount * FrameMs + 350)));
-        AssertColor(Palette[3], Center(video));
+        // Une heure sans Advance (écran débranché, veille) : la lecture reprend là où elle en était, comme une pause. Elle ne
+        // décode pas une heure de vidéo d'un coup (3,6 images/s pendant 25 s mesurés sur l'écran après 4 min 48 d'absence).
+        Assert.True(video.Advance(TimeSpan.FromHours(1)));
+
+        Assert.InRange(video.SamplesRead - before, 1, 3);
+        AssertColor(Palette[3], Center(video), "(l'image qui suivait)");
+        Assert.True(video.Advance(TimeSpan.FromHours(1) + TimeSpan.FromMilliseconds(120)));
+        AssertColor(Palette[4], Center(video), "(la lecture continue au rythme normal)");
+    }
+
+    [Fact]
+    public void Video_LongAbsence_AfterOneTour_ReadsAtMostOneTour()
+    {
+        using var video = Open(Video());
+        video.Advance(TimeSpan.FromMilliseconds(950));
+        video.Advance(TimeSpan.FromMilliseconds(1050)); // un tour fini : la durée du tour est connue
+
+        int before = video.SamplesRead;
+        video.Advance(TimeSpan.FromHours(10));
+
+        Assert.True(video.SamplesRead - before <= FrameCount + 1, $"{video.SamplesRead - before} échantillons lus");
+        Assert.True(video.IsAnimated);
+    }
+
+    [Fact]
+    public void Video_ShortLag_IsStillCaughtUp()
+    {
+        // Un retard d'une demi-seconde (moins que le seuil) se rattrape : la vidéo reste calée sur le temps écoulé.
+        using var video = Open(Video());
+
+        Assert.True(video.Advance(TimeSpan.FromMilliseconds(750)));
+
+        AssertColor(Palette[7], Center(video));
+    }
+
+    [Fact]
+    public void Video_SingleFrame_StopsWakingTheLoop()
+    {
+        // Une vidéo d'une seule image est une image fixe : plus de réveil à 12 images/s pour rien, la version ne bouge plus.
+        using var video = Open(Video(frameCount: 1));
+        int version = video.Version;
+
+        Assert.False(video.Advance(TimeSpan.FromMilliseconds(250))); // la fin du fichier est atteinte : un seul échantillon
+
+        Assert.False(video.IsAnimated);
+        Assert.Null(video.UntilNextFrame);
+        Assert.Equal(1, video.SamplesRead);
+        for (int ms = 300; ms < 5000; ms += 250)
+        {
+            Assert.False(video.Advance(TimeSpan.FromMilliseconds(ms)));
+        }
+
+        Assert.Equal(version, video.Version);
+        Assert.Equal(1, video.SamplesRead);
+        AssertColor(Palette[0], Center(video));
+    }
+
+    [Fact]
+    public void Video_TwoFrames_KeepsLooping()
+    {
+        using var video = Open(Video(frameCount: 2));
+
+        Assert.True(video.Advance(TimeSpan.FromMilliseconds(120)));
+        AssertColor(Palette[1], Center(video));
+        Assert.True(video.Advance(TimeSpan.FromMilliseconds(220)));
+        AssertColor(Palette[0], Center(video), "(retour au début)");
+        Assert.True(video.IsAnimated);
+    }
+
+    [Fact]
+    public void Video_DecoderFailsWhilePlaying_WarnsOnceWithTheCause_AndKeepsTheLastImage()
+    {
+        var path = Video();
+        var warnings = new List<string>();
+        using var video = Assert.IsType<MediaFoundationBackground>(MediaFoundationBackground.TryOpen(path, warnings.Add));
+        AssertColor(Palette[0], Center(video));
+        int version = video.Version;
+        video.ReadFault = () => throw new InvalidOperationException("décodeur en panne");
+
+        Assert.False(video.Advance(TimeSpan.FromMilliseconds(450)));
+        Assert.False(video.Advance(TimeSpan.FromMilliseconds(900)));
+
+        var warning = Assert.Single(warnings); // un seul avertissement, malgré deux Advance
+        Assert.Contains("décodeur en panne", warning);
+        Assert.Contains(path, warning);
+        Assert.Contains("figée", warning); // ce qui se passe vraiment : l'image reste, le fond du thème n'est pas repris
+        Assert.DoesNotContain("Fond du thème utilisé", warning);
+        Assert.False(video.IsAnimated);
+        Assert.Null(video.UntilNextFrame);
+        Assert.Equal(version, video.Version);
+        AssertColor(Palette[0], Center(video), "(la dernière image décodée reste)");
+    }
+
+    [Fact]
+    public void Video_DecoderFailsWithAnHResult_WarnsWithTheHResult()
+    {
+        var path = Video();
+        var warnings = new List<string>();
+        using var video = Assert.IsType<MediaFoundationBackground>(MediaFoundationBackground.TryOpen(path, warnings.Add));
+        video.ReadFault = () => throw new COMException("accès refusé", unchecked((int)0x80070005));
+
+        video.Advance(TimeSpan.FromMilliseconds(450));
+
+        var warning = Assert.Single(warnings);
+        Assert.Contains("accès refusé", warning);
+        Assert.Contains("0x80070005", warning); // le HRESULT, utile quand le message est vide ou obscur
     }
 
     [Fact]
@@ -179,7 +284,10 @@ public sealed class MediaFoundationBackgroundTests : IDisposable
         var video = MediaFoundationBackground.TryOpen(path, warnings.Add);
 
         Assert.Null(video);
-        Assert.Equal([$"Fond d'écran illisible : {path}. Fond du thème utilisé."], warnings);
+        var warning = Assert.Single(warnings);
+        Assert.StartsWith($"Fond d'écran illisible : {path} (", warning);
+        Assert.EndsWith("). Fond du thème utilisé.", warning);
+        Assert.True(warning.Length > $"Fond d'écran illisible : {path} (). Fond du thème utilisé.".Length, "la cause doit être écrite");
     }
 
     [Fact]
@@ -203,7 +311,9 @@ public sealed class MediaFoundationBackgroundTests : IDisposable
 
         Assert.Null(MediaFoundationBackground.TryOpen(path, warnings.Add));
 
-        Assert.Equal([$"Fond d'écran illisible : {path}. Fond du thème utilisé."], warnings);
+        var warning = Assert.Single(warnings);
+        Assert.StartsWith($"Fond d'écran illisible : {path} (", warning);
+        Assert.EndsWith("). Fond du thème utilisé.", warning);
     }
 
     [Fact]
@@ -254,7 +364,9 @@ public sealed class MediaFoundationBackgroundTests : IDisposable
     /// Encode un MP4 H.264 de <see cref="FrameCount"/> images de <paramref name="frameMs"/> ms ; avec <paramref name="withAudio"/>,
     /// une piste son AAC (du silence) accompagne les images.
     /// </summary>
-    private static void WriteVideo(string path, Func<int, int, int, SKColor> pixel, int frameMs, bool withAudio = false, int width = VideoWidth, int height = VideoHeight)
+    private static void WriteVideo(
+        string path, Func<int, int, int, SKColor> pixel, int frameMs, bool withAudio = false, int width = VideoWidth,
+        int height = VideoHeight, int frameCount = FrameCount)
     {
         Assert.True(MediaFoundationBackground.EnsureStarted());
 
@@ -317,7 +429,7 @@ public sealed class MediaFoundationBackgroundTests : IDisposable
         writer.BeginWriting();
         var bytes = new byte[width * height * 4];
         var silence = new byte[AudioBytesPerSecond * frameMs / 1000];
-        for (int frame = 0; frame < FrameCount; frame++)
+        for (int frame = 0; frame < frameCount; frame++)
         {
             for (int y = 0; y < height; y++)
             {

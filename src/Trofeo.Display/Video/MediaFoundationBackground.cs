@@ -25,6 +25,13 @@ public sealed class MediaFoundationBackground : IBackground
     /// <summary>Échantillons sans image (ticks, trous) lus de suite avant d'abandonner : une vidéo ne doit pas faire boucler l'affichage.</summary>
     private const int MaxEmptyReads = 200;
 
+    /// <summary>
+    /// Retard toléré entre la position voulue et la position lue. Au-delà (écran débranché, veille, machine saturée), la lecture
+    /// ne rattrape pas : elle reprend là où elle en était, comme après une pause. Sans cela, le retour de l'écran décode toutes
+    /// les images manquantes d'un coup, sur le thread d'affichage.
+    /// </summary>
+    private static readonly TimeSpan MaxLag = TimeSpan.FromSeconds(1);
+
     private static readonly Lazy<bool> Started = new(StartMediaFoundation);
 
     private readonly string _path;
@@ -45,6 +52,9 @@ public sealed class MediaFoundationBackground : IBackground
     private bool _ended;                // fin du fichier atteinte pendant ce tour
     private bool _fresh;                // un nouvel échantillon attend son recadrage
     private bool _broken;               // lecture impossible : on garde la dernière image
+    private bool _still;                // vidéo d'une seule image : une image fixe, le lecteur est libéré
+    private string? _failure;           // la cause de la première panne, pour l'avertissement d'ouverture
+    private int _tourSamples;           // échantillons lus pendant le tour en cours
     private int _version = 1;
     private TimeSpan? _until;
 
@@ -67,6 +77,7 @@ public sealed class MediaFoundationBackground : IBackground
         }
 
         MediaFoundationBackground? background = null;
+        var cause = "Media Foundation n'a pas pu démarrer";
         try
         {
             if (EnsureStarted())
@@ -77,16 +88,26 @@ public sealed class MediaFoundationBackground : IBackground
                     background._warn = warn;
                     return background;
                 }
+
+                cause = background._failure ?? "aucune image décodable";
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Codec absent, fichier abîmé, pas de flux vidéo : l'interop lève une exception COM. Jamais de plantage pour un fond.
+            cause = Describe(ex);
         }
 
         background?.Dispose();
-        warn?.Invoke(BackgroundSupport.Unreadable(path));
+        warn?.Invoke(BackgroundSupport.Unreadable(path, cause));
         return null;
+    }
+
+    /// <summary>La cause d'une exception, pour le journal : son message et son HRESULT (le message est parfois vide ou obscur).</summary>
+    private static string Describe(Exception ex)
+    {
+        var message = string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message.Trim();
+        return $"{message} [HRESULT 0x{ex.HResult:X8}]";
     }
 
     /// <summary>
@@ -176,19 +197,23 @@ public sealed class MediaFoundationBackground : IBackground
                 return true;
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            Fail(); // le fichier a disparu ou le décodeur a lâché en route : on garde l'image actuelle
+            Fail(Describe(ex)); // le fichier a disparu ou le décodeur a lâché en route : l'image actuelle reste figée
         }
 
         SetUntil(now);
         return false;
     }
 
-    /// <summary>Lit les échantillons jusqu'à celui qui couvre <paramref name="now"/>, en bouclant à la fin du fichier.</summary>
+    /// <summary>
+    /// Lit les échantillons jusqu'à celui qui couvre <paramref name="now"/>, en bouclant à la fin du fichier. Si la position
+    /// voulue dépasse de plus de <see cref="MaxLag"/> celle qui est lue, la lecture ne rattrape pas : elle reprend là où elle
+    /// en était (l'origine du temps est décalée, sans recherche dans le fichier).
+    /// </summary>
     private void ReadUpTo(TimeSpan now)
     {
-        while (!_broken)
+        while (!_broken && !_still)
         {
             var media = now - _offset;
             if (_ended)
@@ -201,7 +226,15 @@ public sealed class MediaFoundationBackground : IBackground
                 _reader!.SetCurrentPosition(0);
                 _ended = false;
                 _frameEnd = TimeSpan.Zero;
+                _tourSamples = 0;
                 continue;
+            }
+
+            var lag = media - _frameEnd;
+            if (lag > MaxLag)
+            {
+                _offset += lag; // pause : la position voulue redevient la fin de l'image à l'écran
+                media = _frameEnd;
             }
 
             if (media < _frameEnd) return;
@@ -215,6 +248,7 @@ public sealed class MediaFoundationBackground : IBackground
     /// </summary>
     private void ReadNext()
     {
+        ReadFault?.Invoke();
         for (int empty = 0; empty < MaxEmptyReads; empty++)
         {
             var sample = _reader!.ReadSample(SourceReaderIndex.FirstVideoStream, SourceReaderControlFlag.None, out _, out var flags, out long time);
@@ -224,7 +258,7 @@ public sealed class MediaFoundationBackground : IBackground
             if (flags.HasFlag(SourceReaderFlag.Error))
             {
                 sample?.Dispose();
-                Fail();
+                Fail("le lecteur Media Foundation a signalé une erreur de lecture");
                 return;
             }
 
@@ -233,16 +267,19 @@ public sealed class MediaFoundationBackground : IBackground
                 sample?.Dispose();
                 if (_frameEnd <= TimeSpan.Zero)
                 {
-                    Fail(); // une fin sans aucune image (ou revenu au début sans rien lire)
+                    Fail("fin du fichier atteinte sans aucune image"); // ou revenu au début sans rien lire
                     return;
                 }
                 _loopLength = _frameEnd;
                 _ended = true;
+                if (_tourSamples == 1) Freeze(); // un tour d'une seule image : une image fixe
                 return;
             }
 
             if (sample is null) continue; // trou dans le flux (tick) : on lit la suite
 
+            SamplesRead++;
+            _tourSamples++;
             var start = TimeSpan.FromTicks(time);
             _origin ??= start;
             var duration = SampleDuration(sample);
@@ -253,7 +290,21 @@ public sealed class MediaFoundationBackground : IBackground
             return;
         }
 
-        Fail(); // que des trous : on ne tourne pas dans le vide
+        Fail($"{MaxEmptyReads} échantillons vides de suite"); // que des trous : on ne tourne pas dans le vide
+    }
+
+    /// <summary>
+    /// La vidéo n'a qu'une image : elle devient une image fixe. Plus de réveil de la boucle (<see cref="IsAnimated"/> est faux,
+    /// <see cref="UntilNextFrame"/> est null, <see cref="Version"/> ne bouge plus) et le lecteur est libéré. L'image à l'écran
+    /// a ses propres pixels : elle n'en dépend pas.
+    /// </summary>
+    private void Freeze()
+    {
+        _still = true;
+        _sample?.Dispose();
+        _sample = null;
+        _reader?.Dispose();
+        _reader = null;
     }
 
     private TimeSpan SampleDuration(IMFSample sample)
@@ -346,8 +397,9 @@ public sealed class MediaFoundationBackground : IBackground
     private static TimeSpan Max(TimeSpan a, TimeSpan b) => a >= b ? a : b;
 
     /// <summary>
-    /// Recadre l'échantillon courant dans l'image d'écran, en lisant directement ses pixels (sans copie). La nouvelle image Skia
-    /// est construite avant de libérer l'ancienne : en cas d'échec, Current reste valable. Faux si l'échantillon est inutilisable.
+    /// Recadre l'échantillon courant dans l'image d'écran, en lisant directement ses pixels (sans copie). Faux si l'échantillon est
+    /// inutilisable (rien n'est alors touché). Si le dessin lève une exception en route, <see cref="Current"/> reste un objet
+    /// valide, jamais libéré, mais il partage les pixels de l'image d'écran : il peut alors montrer un recadrage à moitié refait.
     /// </summary>
     private bool Crop()
     {
@@ -401,13 +453,24 @@ public sealed class MediaFoundationBackground : IBackground
         _until = Max(TimeSpan.FromMilliseconds(1), Max(frame, crop));
     }
 
-    /// <summary>La lecture n'est plus possible : l'image actuelle reste, plus rien ne bouge. Un seul avertissement.</summary>
-    private void Fail()
+    /// <summary>
+    /// La lecture n'est plus possible : la dernière image décodée reste à l'écran, figée, et plus rien ne bouge (le fond du thème
+    /// n'est pas repris). Un seul avertissement, avec la cause. À l'ouverture, <c>_warn</c> est encore vide : <see cref="TryOpen"/>
+    /// avertit lui-même, avec la cause gardée ici.
+    /// </summary>
+    private void Fail(string cause)
     {
         if (_broken) return;
         _broken = true;
-        _warn?.Invoke(BackgroundSupport.Unreadable(_path));
+        _failure = cause;
+        _warn?.Invoke($"Lecture de la vidéo interrompue : {_path} ({cause}). L'image reste figée sur la dernière image décodée.");
     }
+
+    /// <summary>Nombre d'échantillons (images) lus depuis l'ouverture. Pour les tests : le rattrapage d'un retard doit rester borné.</summary>
+    internal int SamplesRead { get; private set; }
+
+    /// <summary>Pour les tests : appelé avant chaque lecture d'échantillon ; s'il lève, la lecture échoue comme si le décodeur lâchait.</summary>
+    internal Action? ReadFault { get; set; }
 
     /// <summary>Nombre de flux du fichier, et parmi eux ceux que le lecteur décode. Pour les tests : un seul, la vidéo.</summary>
     internal int StreamCount => CountStreams(selectedOnly: false);

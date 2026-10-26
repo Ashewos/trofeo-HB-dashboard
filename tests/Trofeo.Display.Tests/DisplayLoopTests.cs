@@ -276,6 +276,153 @@ public sealed class DisplayLoopTests
         Assert.Equal([TimeSpan.Zero, TimeSpan.FromMilliseconds(350)], background.AdvanceTimes);
     }
 
+    /// <summary>Un fond animé dont <see cref="Advance"/> lève toujours, et dont le délai annoncé (périmé) reste de 83 ms.</summary>
+    private sealed class ThrowingBackground : IBackground
+    {
+        private readonly ColorBackground _inner = new(SkiaSharp.SKColors.DarkSlateBlue);
+
+        public int AdvanceCalls { get; private set; }
+        public bool IsAnimated => true;
+        public SkiaSharp.SKImage Current => _inner.Current;
+        public int Version => 1;
+        public TimeSpan? UntilNextFrame => TimeSpan.FromMilliseconds(83);
+
+        public bool Advance(TimeSpan elapsed)
+        {
+            AdvanceCalls++;
+            throw new InvalidOperationException("fond en panne");
+        }
+
+        public void Dispose() => _inner.Dispose();
+    }
+
+    /// <summary>Fait tourner la boucle comme le fil d'affichage : un <see cref="DisplayLoop.Tick"/>, puis le sommeil demandé.</summary>
+    private static int RunFor(Rig rig, TimeSpan duration)
+    {
+        int ticks = 0;
+        var start = rig.Time.GetTimestamp();
+        while (rig.Time.GetElapsedTime(start) < duration)
+        {
+            var delay = rig.Loop.Tick();
+            ticks++;
+            rig.Time.Advance(delay > TimeSpan.FromMilliseconds(1) ? delay : TimeSpan.FromMilliseconds(1));
+        }
+
+        return ticks;
+    }
+
+    [Fact]
+    public void Loop_AnimatedBackground_SlowRender_StillReaches12Fps()
+    {
+        // Un rendu et un envoi de 50 ms ne doivent pas s'ajouter à l'intervalle de 83 ms entre deux images : l'échéance de la
+        // suivante est absolue (6 à 7 images/s mesurées sur l'écran avant ce correctif, soit environ 15 en 2 s).
+        Rig? rig = null;
+        var module = new FakeModule((_, _) => rig!.Time.Advance(TimeSpan.FromMilliseconds(50)));
+        rig = new Rig(module, background: new FakeAnimatedBackground(TimeSpan.FromTicks(TimeSpan.TicksPerSecond / 12)));
+        using var _rig = rig;
+        rig.AddHealthyScreen(acks: 200);
+
+        RunFor(rig, TimeSpan.FromSeconds(2));
+
+        Assert.InRange(module.RenderCalls.Count, 23, 25);
+        Assert.Equal(module.RenderCalls.Count, rig.Loop.FramesSent);
+    }
+
+    [Fact]
+    public void Loop_AnimatedBackground_RenderLongerThanTheFrame_RendersBackToBack()
+    {
+        // Un rendu de 120 ms dépasse l'intervalle : l'image suivante part tout de suite, sans attente en plus.
+        Rig? rig = null;
+        var module = new FakeModule((_, _) => rig!.Time.Advance(TimeSpan.FromMilliseconds(120)));
+        rig = new Rig(module, background: new FakeAnimatedBackground(TimeSpan.FromMilliseconds(20)));
+        using var _rig = rig;
+        rig.AddHealthyScreen(acks: 200);
+
+        RunFor(rig, TimeSpan.FromSeconds(2));
+
+        Assert.InRange(module.RenderCalls.Count, 15, 17); // 2 s / 120 ms
+    }
+
+    [Fact]
+    public void Loop_ScreenNotReady_DoesNotAdvanceTheBackground()
+    {
+        var background = new FakeAnimatedBackground(TimeSpan.FromMilliseconds(100));
+        using var rig = new Rig(background: background); // aucun écran : la connexion échoue
+
+        for (int i = 0; i < 5; i++)
+        {
+            rig.Loop.Tick();
+            rig.Time.Advance(TimeSpan.FromSeconds(2));
+        }
+
+        Assert.NotEqual(ScreenState.Ready, rig.Screen.State);
+        Assert.Empty(background.AdvanceTimes); // personne ne verrait le résultat : la vidéo ne décode pas dans le vide
+
+        rig.AddHealthyScreen();
+        rig.Loop.Tick();
+
+        Assert.Equal(ScreenState.Ready, rig.Screen.State);
+        Assert.Single(background.AdvanceTimes);
+    }
+
+    [Fact]
+    public void Loop_BackgroundAdvanceThrows_LogsOnce_KeepsRunning_AndDoesNotWakeAt12Fps()
+    {
+        var background = new ThrowingBackground();
+        using var rig = new Rig(background: background);
+        rig.AddHealthyScreen(acks: 100);
+        var listener = new CapturingTraceListener();
+        Trace.Listeners.Add(listener);
+        int ticks;
+        try
+        {
+            ticks = RunFor(rig, TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            Trace.Listeners.Remove(listener);
+        }
+
+        // Journalisé une seule fois (le même message n'est pas répété), la boucle continue (image de départ, puis renvois).
+        Assert.Single(listener.Lines, l => l.Contains("fond en panne") && l.Contains("avance du fond"));
+        Assert.Equal(1, rig.Loop.FramesSent);
+        Assert.True(rig.Loop.KeepAlivesSent >= 8, $"{rig.Loop.KeepAlivesSent} renvois");
+        // Pas de réveil à 12 par seconde pour un fond en échec (120 ticks en 10 s) : au plus un par seconde, et un essai.
+        Assert.True(ticks <= 25, $"{ticks} réveils en 10 s");
+        Assert.True(background.AdvanceCalls <= 12, $"{background.AdvanceCalls} appels à Advance en 10 s");
+    }
+
+    [Fact]
+    public void Log_EveryHundredFrames_ShowsAverageRenderAndSendTimes()
+    {
+        // Les rendus durent 40 ms, puis 60 ms, en alternance : 50 ms en moyenne.
+        Rig? rig = null;
+        int calls = 0;
+        var module = new FakeModule((_, _) => rig!.Time.Advance(TimeSpan.FromMilliseconds(++calls % 2 == 1 ? 40 : 60))) { IsAnimating = true };
+        rig = new Rig(module);
+        using var _rig = rig;
+        rig.AddHealthyScreen(acks: 300);
+        var listener = new CapturingTraceListener();
+        Trace.Listeners.Add(listener);
+        try
+        {
+            while (rig.Loop.FramesSent < 200)
+            {
+                var delay = rig.Loop.Tick();
+                rig.Time.Advance(delay > TimeSpan.FromMilliseconds(1) ? delay : TimeSpan.FromMilliseconds(1));
+            }
+        }
+        finally
+        {
+            Trace.Listeners.Remove(listener);
+        }
+
+        var lines = listener.Lines.Where(l => l.StartsWith("Image ") && l.Contains(" envoyée (")).ToArray();
+        Assert.Matches(@"^Image 1 envoyée \(\d+ octets\) ; rendu 40 ms, envoi 0 ms$", lines.First(l => l.StartsWith("Image 1 ")));
+        Assert.Matches(@"^Image 100 envoyée \(\d+ octets\) ; rendu 50 ms, envoi 0 ms en moyenne$", lines.Single(l => l.StartsWith("Image 100 ")));
+        Assert.Matches(@"^Image 200 envoyée \(\d+ octets\) ; rendu 50 ms, envoi 0 ms en moyenne$", lines.Single(l => l.StartsWith("Image 200 ")));
+    }
+
     [Fact]
     public void Dispose_DisposesTheBackground()
     {

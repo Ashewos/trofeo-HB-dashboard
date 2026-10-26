@@ -34,6 +34,8 @@ public sealed class DisplayLoop : IDisposable
     private readonly ThemeDefinition _theme;
     private readonly IBackground _background;
     private readonly long _backgroundStart;
+    private TimeSpan? _backgroundDue;       // échéance absolue de l'image suivante du fond, sur l'axe du temps du fond (depuis _backgroundStart)
+    private TimeSpan? _backgroundRetryAt;   // fond en échec : prochain essai d'avance, sur le même axe
     private readonly RateLimitedErrorLog _renderErrors;
     private readonly Dictionary<Guid, IModule> _modules = [];
     private readonly IModule[] _moduleList;
@@ -49,6 +51,11 @@ public sealed class DisplayLoop : IDisposable
     private bool _forceReconnect;
     private int _reconnectRequested;
     private bool _disposed;
+
+    // Durées de rendu (composition et encodage) et d'envoi des images envoyées depuis la dernière ligne de journal.
+    private TimeSpan _renderTotal;
+    private TimeSpan _sendTotal;
+    private int _timedFrames;
 
     /// <param name="theme">Le thème complet ; Classique si absent.</param>
     /// <param name="background">
@@ -283,9 +290,18 @@ public sealed class DisplayLoop : IDisposable
             }
 
             // Un fond animé réveille la boucle à sa prochaine image, jamais plus vite que le plafond d'images par seconde.
-            if (_background.IsAnimated && _background.UntilNextFrame is { } untilFrame)
+            // L'échéance est absolue : le temps passé à rendre et à envoyer l'image ne s'ajoute pas au délai.
+            if (_background.IsAnimated)
             {
-                delay = Min(delay, Max(untilFrame, _scheduler.UntilNextSlot()));
+                var elapsed = _time.GetElapsedTime(_backgroundStart);
+                if (_backgroundRetryAt is { } retry)
+                {
+                    delay = Min(delay, retry - elapsed); // fond en échec : un essai par seconde, pas un réveil par image
+                }
+                else if (_backgroundDue is { } due)
+                {
+                    delay = Min(delay, Max(due - elapsed, _scheduler.UntilNextSlot()));
+                }
             }
         }
 
@@ -299,18 +315,28 @@ public sealed class DisplayLoop : IDisposable
     /// <summary>
     /// Avance le fond animé au temps écoulé depuis le démarrage (horloge monotone : un changement d'heure ne bloque pas la
     /// vidéo) et demande une image s'il a changé. Rien tant que l'écran n'est pas prêt : personne ne verrait le résultat.
+    /// Note l'échéance absolue de l'image suivante. Si l'avance lève, l'erreur est journalisée (une fois, puis au plus une ligne
+    /// de synthèse par minute) et le fond n'est réessayé qu'une fois par seconde : un fond en échec ne réveille pas la boucle
+    /// à chaque image.
     /// </summary>
     private void AdvanceBackground()
     {
         if (!_background.IsAnimated || _screen.State != ScreenState.Ready) return;
 
+        var elapsed = _time.GetElapsedTime(_backgroundStart);
+        if (_backgroundRetryAt is { } retry && elapsed < retry) return;
+
         try
         {
-            if (_background.Advance(_time.GetElapsedTime(_backgroundStart))) _scheduler.MarkDirty();
+            _backgroundRetryAt = null;
+            if (_background.Advance(elapsed)) _scheduler.MarkDirty();
+            _backgroundDue = _background.UntilNextFrame is { } until ? elapsed + until : null;
         }
         catch (Exception ex)
         {
             _renderErrors.Report($"Échec de l'avance du fond d'écran : {ex}");
+            _backgroundDue = null;
+            _backgroundRetryAt = elapsed + MaxDelay;
         }
     }
 
@@ -342,6 +368,7 @@ public sealed class DisplayLoop : IDisposable
         try
         {
             byte[] jpeg;
+            var renderStart = _time.GetTimestamp();
             try
             {
                 using var bitmap = _composer.Compose(_layout, _modules, _theme, _background, _time.GetLocalNow());
@@ -354,6 +381,8 @@ public sealed class DisplayLoop : IDisposable
                 return;
             }
 
+            var sendStart = _time.GetTimestamp();
+            var renderTime = _time.GetElapsedTime(renderStart, sendStart);
             bool sent;
             try
             {
@@ -370,9 +399,12 @@ public sealed class DisplayLoop : IDisposable
             {
                 _lastSend = _time.GetTimestamp();
                 FramesSent++;
+                _renderTotal += renderTime;
+                _sendTotal += _time.GetElapsedTime(sendStart, _lastSend);
+                _timedFrames++;
                 if (FramesSent <= 10 || FramesSent % 100 == 0)
                 {
-                    Trace.TraceInformation($"Image {FramesSent} envoyée ({jpeg.Length} octets).");
+                    Trace.TraceInformation($"Image {FramesSent} envoyée ({jpeg.Length} octets){TimingSummary()}");
                 }
             }
             else
@@ -384,6 +416,21 @@ public sealed class DisplayLoop : IDisposable
         {
             _scheduler.OnRendered();
         }
+    }
+
+    /// <summary>
+    /// " ; rendu 41 ms, envoi 58 ms" : les durées moyennes de rendu (composition et encodage) et d'envoi des images envoyées
+    /// depuis la ligne de journal précédente ; remet les compteurs à zéro. Sert à mesurer ce que coûte un fond animé.
+    /// </summary>
+    private string TimingSummary()
+    {
+        int count = Math.Max(1, _timedFrames);
+        var render = (long)Math.Round(_renderTotal.TotalMilliseconds / count);
+        var send = (long)Math.Round(_sendTotal.TotalMilliseconds / count);
+        var average = _timedFrames > 1 ? " en moyenne" : "";
+        _renderTotal = _sendTotal = TimeSpan.Zero;
+        _timedFrames = 0;
+        return $" ; rendu {render} ms, envoi {send} ms{average}";
     }
 
     private void KeepAlive()
