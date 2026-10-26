@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Le canal de contrôle (tube nommé local) entre le service d'affichage et la fenêtre de réglage. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Trofeo.Control.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Trofeo.ModuleKit\Trofeo.ModuleKit.csproj" />
+  </ItemGroup>
+
+</Project>

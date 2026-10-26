@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Trofeo.Control\Trofeo.Control.csproj" />
+  </ItemGroup>
+
+</Project>
