@@ -17,6 +17,7 @@ Tableau de bord modulaire pour l'écran USB Thermalright Trofeo Vision 9,16" (19
 ## Règles de travail
 
 - **Commits** : adresse `1345997+Ashewos@users.noreply.github.com` (configurée dans le dépôt), jamais l'adresse personnelle d'Alex.
+- **Branches** : `Canary` est la branche de travail. On en part, et les contributions (PR comprises) la visent. `main` ne reçoit que les versions stables, sur demande d'Alex, après ses essais sous Windows. Ne pas supprimer `Canary`.
 - **Publication** : rien n'est poussé, fusionné ni publié sans l'accord explicite d'Alex, donné pour cette action-là.
 - **Sous-agents** (subagent-driven-development) : implémenteurs et relecteurs sur Sonnet, effort élevé. La session principale reprend la main quand un sous-agent coince.
 - **Méthode** : spec → plan (writing-plans) → construction en sous-agents avec relecture par tâche, relecture de toute la branche, puis finishing-a-development-branch. Un bilan est écrit à la fin de chaque plan.
