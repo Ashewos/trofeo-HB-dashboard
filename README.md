@@ -65,7 +65,7 @@ L'outil `tools/Trofeo.HardwareCheck` sert à vérifier un écran :
 - `--clear-secret <portée> <clé>` : efface un secret du coffre et affiche le nom de la clé effacée, jamais une valeur. Pour faire de nouveau confiance à une console UniFi dont le certificat a été renouvelé, efface son empreinte mémorisée avec `--clear-secret network unifi.certSha256.<hôte en minuscules>` (l'hôte de `layout.json` écrit en minuscules, avec son port s'il y en a un), puis relance le service : la prochaine connexion mémorise le nouveau certificat ;
 - `--city <nom>` : affiche les cinq villes proposées par Open-Meteo, avec leurs coordonnées, pour régler la météo ;
 - `--claude-statusline install <chemin de Trofeo.StatusLine.exe>`, `uninstall` ou `status` : branche, débranche ou décrit la barre d'état de Claude Code (voir plus bas) ;
-- `--appearance [theme=<id>] [opacity=<0..1|theme>] [font=<famille|theme>] [background=theme|color:#hex|image:<chemin>|gif:<chemin>|video:<chemin>]` : choisit le thème, la transparence, la police et le fond d'écran (voir « Apparence »).
+- `--appearance [theme=<id>] [opacity=<0..1|theme>] [font=<famille|theme>] [background=theme|color:#hex|image:<chemin>|gif:<chemin>|video:<chemin>] [legibility=on|off|theme]` : choisit le thème, la transparence, la police, le fond d'écran et la garde de lisibilité (voir « Apparence »).
 
 En attendant le logiciel de réglage, les modules se règlent à la main dans `layout.json`, service arrêté :
 
@@ -98,16 +98,17 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
 Trois thèmes sont fournis : `classique` (le thème par défaut), `liquid-glass` (panneaux de verre dépoli sur un fond « Aurore », un dégradé de halos colorés) et `pixel` (panneaux en pixel art, avec VT323, une police pixel lisible ; l'ancienne, Pixelify Sans, se choisit avec `font=Pixelify Sans`). Les réglages se font avec `Trofeo.HardwareCheck.exe --appearance`, que tu peux relancer autant de fois que tu veux : un réglage que tu ne cites pas reste comme il était. Après `dotnet build -c Release`, depuis la racine du dépôt, l'outil se trouve ici : `tools\Trofeo.HardwareCheck\bin\Release\net10.0-windows10.0.19041.0\Trofeo.HardwareCheck.exe`.
 
 ```powershell
-Trofeo.HardwareCheck.exe --appearance theme=liquid-glass opacity=0,3 font="Segoe UI"
+Trofeo.HardwareCheck.exe --appearance theme=liquid-glass opacity=0.3 font="Segoe UI"
 Trofeo.HardwareCheck.exe --appearance background=video:C:\Videos\fond.mp4
 Trofeo.HardwareCheck.exe --appearance
 ```
 
 - `theme=<id>` : `classique`, `liquid-glass` ou `pixel` ;
-- `opacity=<0 à 1>` : l'opacité du fond des modules (0 : transparent, 1 : plein ; la virgule est acceptée), ou `opacity=theme` pour celle du thème ;
+- `opacity=<0 à 1>` : l'opacité du fond des modules (0 : transparent, 1 : plein), ou `opacity=theme` pour celle du thème. **Écris le nombre avec un point** (`opacity=0.3`) : la commande accepte aussi la virgule (`opacity=0,3`) quand elle lui arrive entière, mais un terminal peut la couper en deux. Constaté avec Windows PowerShell 5.1 : un appel direct à l'exe (`Trofeo.HardwareCheck.exe --appearance opacity=0,3`) transmet `opacity=0,3` en un seul morceau et marche, mais `Start-Process -ArgumentList opacity=0,3` le coupe en `opacity=0` puis `3`. La commande refuse alors le `3` seul (code de sortie 2, rien n'est écrit) en te rappelant d'écrire un point ;
 - `font=<famille>` : une police installée sur ton PC (par exemple `Segoe UI`), ou `font=theme` pour celle du thème. Si la police n'est pas installée, la commande te prévient et le service garde la police du thème, jusqu'à ce que tu l'installes ;
 - `background=` : `theme` (le fond du thème), `color:#1A2B3C` (une couleur), `image:<chemin>` (une photo), `gif:<chemin>` (un GIF animé) ou `video:<chemin>` (une vidéo). Le fichier doit exister, son chemin est enregistré en entier ;
-- sans réglage, la commande affiche les réglages actuels, puis les polices installées.
+- `legibility=<on|off|theme>` : la garde de lisibilité (voir plus bas). `on` la garde active, `off` la coupe, `theme` remet le défaut (active) ;
+- sans réglage, la commande affiche les réglages actuels (garde de lisibilité comprise), puis les polices installées.
 
 Les réglages sont écrits dans `layout.json` (clé `Appearance`), sans toucher aux modules ni aux raccourcis. Une valeur refusée (thème inconnu, opacité hors de 0 à 1, fond inconnu…) donne un message et un code de sortie 2, sans rien écrire.
 
@@ -118,11 +119,28 @@ Deux choses à savoir :
 
 Un réglage faux ne bloque jamais le service : il retombe sur le thème Classique, la police ou le fond du thème, et le dit dans le journal.
 
+### Garde de lisibilité
+
+Le texte des modules est clair. Avec un fond clair (une photo lumineuse, un GIF ou une vidéo blanche) et une opacité basse, il devenait difficile à lire. La garde mesure la zone la plus claire du fond derrière chaque module et, si elle est trop claire, rend le panneau plus opaque, juste assez pour que le texte reste lisible. Elle n'abaisse jamais l'opacité que tu as choisie : sur un fond sombre, elle ne change rien.
+
+Sur un fond animé (GIF, vidéo), l'opacité de chaque panneau change en douceur : elle monte en environ 1 seconde quand une zone claire arrive, et redescend en environ 15 secondes quand elle s'éloigne. Les panneaux ne clignotent donc pas au passage d'une tache claire.
+
+Coupe-la avec `legibility=off` si le rendu ne te plaît pas : chaque panneau garde alors exactement l'opacité choisie (`opacity=`), quel que soit le fond. C'est le bon réglage si ton fond reste sombre, ou si tu préfères la transparence au texte toujours lisible (il peut alors se perdre sur les passages clairs). `legibility=on` ou `legibility=theme` la remet. Comme les autres réglages, il est lu au démarrage du service.
+
+```powershell
+Trofeo.HardwareCheck.exe --appearance legibility=off
+```
+
 ### Fonds animés
 
 - **Vidéo** : préfère du 1080p, 30 images par seconde au plus. Le décodeur lit chaque image de la vidéo, sans carte graphique (décodage logiciel) : plus la vidéo est lourde, plus le processeur travaille. La lecture boucle et n'a pas de son.
-- **GIF** : il boucle aussi. L'écran ne reçoit jamais plus de 12 images par seconde, quel que soit le fond.
-- **Remplacer un fichier pendant que le service le joue** : le copier par-dessus ou le supprimer marche. Le déplacer ou le renommer par-dessus est refusé par Windows tant que le service tourne. Le nouveau fichier n'est repris qu'au prochain démarrage.
+- Quand l'écran revient après une absence (câble débranché, veille), la vidéo reprend là où elle en était, comme après une pause : elle ne rattrape pas le temps perdu.
+- **GIF** : il boucle aussi. L'écran ne reçoit jamais plus de 12 images par seconde, quel que soit le fond. Une vidéo d'une seule image est traitée comme une image fixe.
+- **Coût** : toutes les 100 images, le journal (`display.log`) indique le temps moyen de rendu et d'envoi, par exemple `Image 200 envoyée (164573 octets) ; rendu 41 ms, envoi 58 ms en moyenne`. Au-delà de 83 ms au total, 12 images par seconde ne sont plus tenues.
+- **Remplacer un fichier pendant que le service le joue** :
+  - **GIF** : le copier par-dessus ou le supprimer marche. Le déplacer ou le renommer par-dessus est refusé par Windows tant que le service tourne.
+  - **Vidéo** : copier par-dessus une vidéo en cours de lecture est refusé par Windows (« le processus ne peut pas accéder au fichier »). Pour la remplacer, quitte le service (« Quitter » dans le menu de l'icône de la zone de notification), copie la nouvelle vidéo, puis relance le service. Seule la suppression marche pendant la lecture.
+  - Dans les deux cas, le nouveau fichier n'est repris qu'au prochain démarrage.
 
 ## Quotas de Claude Code
 
@@ -195,6 +213,8 @@ Le protocole de l'écran a été compris grâce à ces projets :
 - [CraigyBabyJ/lcd_therma](https://github.com/CraigyBabyJ/lcd_therma)
 
 Les relevés de capteurs viennent de [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0), qui s'appuie sur le pilote [PawnIO](https://pawnio.eu/) pour les températures du processeur.
+
+La lecture des fonds vidéo passe par [Vortice.MediaFoundation](https://github.com/amerkoleci/Vortice.Windows) (MIT), qui s'appuie sur [SharpGen.Runtime](https://github.com/SharpGenTools/SharpGenTools) (MIT) ; ses autres dépendances, Vortice.DirectX et Vortice.Mathematics, sont aussi sous licence MIT.
 
 Données météo : [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0).
 

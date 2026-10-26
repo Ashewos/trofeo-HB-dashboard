@@ -87,7 +87,9 @@ static class Program
         var theme = AppearanceResolver.Resolve(layout.Appearance ?? AppearanceSettings.Default, new SkiaSystemFonts(), Warn);
         var background = BackgroundFactory.Create(
             layout.Appearance?.Background, theme, path => MediaFoundationBackground.TryOpen(path, Warn), Warn);
-        Trace.TraceInformation($"Apparence : thème « {theme.Theme.Id} », fond {(layout.Appearance?.Background?.Kind ?? BackgroundKind.Theme)}.");
+        Trace.TraceInformation(
+            $"Apparence : thème « {theme.Theme.Id} », fond {(layout.Appearance?.Background?.Kind ?? BackgroundKind.Theme)}"
+            + $"{(theme.LegibilityGuard ? "" : ", garde de lisibilité coupée")}.");
 
         // La boucle devient propriétaire du fond et le libère après elle.
         using var loop = new DisplayLoop(layout, registry, screen, scheduler, TimeProvider.System, theme, background);

@@ -57,7 +57,7 @@ public static class AppearanceCommand
         foreach (var arg in args)
         {
             var separator = arg.IndexOf('=');
-            if (separator <= 0) return Fail(error, $"Réglage « {arg} » incompris (attendu : clé=valeur).\n{Usage}", 2);
+            if (separator <= 0) return Fail(error, $"Réglage « {arg} » incompris (attendu : clé=valeur).{CommaHint(arg)}\n{Usage}", 2);
 
             var key = arg[..separator].Trim().ToLowerInvariant();
             var value = arg[(separator + 1)..].Trim();
@@ -89,6 +89,15 @@ public static class AppearanceCommand
         output.WriteLine("Relance le service d'affichage pour appliquer ces réglages.");
         return 0;
     }
+
+    /// <summary>
+    /// Un nombre seul (« 5 ») est la fin d'une valeur que le terminal a coupée à la virgule (<c>opacity=0,5</c> devient
+    /// <c>opacity=0</c> puis <c>5</c>, par exemple avec <c>Start-Process -ArgumentList</c> de PowerShell) : on dit d'écrire un point.
+    /// </summary>
+    private static string CommaHint(string arg) =>
+        double.TryParse(arg, NumberStyles.Float, CultureInfo.InvariantCulture, out _)
+            ? " Si c'est la fin d'un nombre coupé à la virgule (opacity=0,5), écris-le avec un point : opacity=0.5."
+            : "";
 
     private static (AppearanceSettings, string?) ApplyTheme(AppearanceSettings settings, string id)
     {

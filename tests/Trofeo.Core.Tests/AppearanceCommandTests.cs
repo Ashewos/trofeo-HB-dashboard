@@ -174,6 +174,31 @@ public sealed class AppearanceCommandTests : IDisposable
     }
 
     [Fact]
+    public void Run_ValueSplitAtTheComma_ExitsWith2_AndSuggestsADot()
+    {
+        // Start-Process -ArgumentList opacity=0,5 envoie « opacity=0 » puis « 5 » : rien n'est écrit, et le message dit quoi faire.
+        new LayoutStore(LayoutPath).Save(SampleLayout());
+        var before = File.ReadAllBytes(LayoutPath);
+
+        var code = Run("opacity=0", "5");
+
+        Assert.Equal(2, code);
+        Assert.Contains("opacity=0.5", _err.ToString());
+        Assert.Equal(before, File.ReadAllBytes(LayoutPath));
+    }
+
+    [Theory]
+    [InlineData("opacity=0,5", 0.5f)]
+    [InlineData("opacity=0.5", 0.5f)]
+    [InlineData("opacity=1", 1f)]
+    public void Run_Opacity_AcceptsACommaOrADot(string arg, float expected)
+    {
+        Assert.Equal(0, Run(arg));
+
+        Assert.Equal(expected, Reload().Appearance!.PanelOpacity);
+    }
+
+    [Fact]
     public void Run_UnknownTheme_ListsTheKnownOnes()
     {
         Run("theme=inconnu");
