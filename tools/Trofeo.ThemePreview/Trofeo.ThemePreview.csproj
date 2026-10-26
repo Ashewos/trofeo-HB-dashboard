@@ -22,7 +22,7 @@
 
   <!-- Sous Linux, SkiaSharp a besoin de sa bibliothèque native (sous Windows, elle vient avec le paquet de base). -->
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
   </ItemGroup>
 
 </Project>

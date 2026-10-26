@@ -130,14 +130,17 @@ public sealed class LayoutStoreTests : IDisposable
     }
 
     [Fact]
-    public void Layout_NullShortcutEntry_FallsBackToDefault()
+    public void Layout_NullShortcutEntry_IsDroppedWithWarning()
     {
         File.WriteAllText(FilePath, """{"Rotation":180,"Placements":[],"Shortcuts":[null]}""");
 
-        var loaded = new LayoutStore(FilePath).Load();
+        var warnings = new List<string>();
+        var loaded = new LayoutStore(FilePath, warnings.Add).Load();
 
-        Assert.Same(DashboardLayout.Default, loaded);
-        Assert.True(File.Exists(FilePath + ".bad"));
+        Assert.NotSame(DashboardLayout.Default, loaded);
+        Assert.Empty(loaded.Shortcuts!);
+        Assert.Equal(["Raccourci « ? » ignoré : touches absentes."], warnings);
+        Assert.False(File.Exists(FilePath + ".bad"));
     }
 
     [Fact]
@@ -410,5 +413,249 @@ public sealed class LayoutStoreTests : IDisposable
         store.Save(layout);
 
         Assert.Equal(AppearanceSettings.Default, store.Load().Appearance);
+    }
+
+    // ---- Plan 5, tâche 1 : modules retirés, plafond d'images, lecture sans repli ----
+
+    private static ModulePlacement Clock(int column, int row, int columns = 4, int rows = 2, Guid? id = null) =>
+        new(id ?? Guid.NewGuid(), "clock", column, row, columns, rows, TextSize.Normal,
+            JsonDocument.Parse("{}").RootElement.Clone());
+
+    private static ModulePlacement Network(int column, int row, Guid? id = null) =>
+        new(id ?? Guid.NewGuid(), "network", column, row, 4, 2, TextSize.Normal,
+            JsonDocument.Parse("""{"source":"pc"}""").RootElement.Clone());
+
+    private static string WithKey(string layoutJson, string key, string valueJson) =>
+        layoutJson.TrimEnd().TrimEnd('}') + $",\"{key}\":" + valueJson + "}";
+
+    [Fact]
+    public void Load_OldFile_HasNoShelfNoMaxFps()
+    {
+        File.WriteAllText(FilePath, LayoutJson(180, (0, 0, 4, 2)));
+
+        var layout = new LayoutStore(FilePath).Load();
+
+        Assert.Single(layout.Placements);
+        Assert.Null(layout.Shelf);
+        Assert.Null(layout.MaxFps);
+    }
+
+    [Fact]
+    public void SaveLoad_ShelfAndMaxFps_RoundTrip()
+    {
+        var shelved = Network(0, 0);
+        var layout = new DashboardLayout(180, [Clock(0, 0)], Shelf: [shelved], MaxFps: 8);
+        var store = new LayoutStore(FilePath);
+
+        store.Save(layout);
+        var loaded = store.Load();
+
+        Assert.Equal(8, loaded.MaxFps);
+        var back = Assert.Single(loaded.Shelf!);
+        Assert.Equal((shelved.InstanceId, "network"), (back.InstanceId, back.TypeId));
+        Assert.Equal("pc", back.Settings.GetProperty("source").GetString());
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("40")]
+    [InlineData("-3")]
+    [InlineData("\"vite\"")]
+    public void Load_MaxFpsOutOfRange_IsNullWithWarning(string maxFps)
+    {
+        File.WriteAllText(FilePath, WithKey(LayoutJson(180, (0, 0, 4, 2)), "MaxFps", maxFps));
+
+        var warnings = new List<string>();
+        var layout = new LayoutStore(FilePath, warnings.Add).Load();
+
+        Assert.Single(layout.Placements);
+        Assert.Null(layout.MaxFps);
+        Assert.Equal(["Plafond d'images invalide : 12 images/s utilisées."], warnings);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("12")]
+    public void Load_MaxFpsInRange_IsKept(string maxFps)
+    {
+        File.WriteAllText(FilePath, WithKey(LayoutJson(180, (0, 0, 4, 2)), "MaxFps", maxFps));
+
+        var warnings = new List<string>();
+        var layout = new LayoutStore(FilePath, warnings.Add).Load();
+
+        Assert.Equal(int.Parse(maxFps), layout.MaxFps);
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void Load_DuplicateIdAcrossShelf_IsRejected()
+    {
+        var id = Guid.NewGuid();
+        var store = new LayoutStore(FilePath);
+        store.Save(new DashboardLayout(180, [Clock(0, 0, id: id)], Shelf: [Network(0, 0, id)]));
+
+        Assert.Same(DashboardLayout.Default, store.Load());
+        Assert.True(File.Exists(FilePath + ".bad"));
+        File.Delete(FilePath + ".bad");
+
+        var result = store.TryLoad();
+        Assert.Null(result.Layout);
+        Assert.Equal("Identifiant de module en double.", result.Error);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void Load_ShelfOffGrid_IsAccepted()
+    {
+        var store = new LayoutStore(FilePath);
+        store.Save(new DashboardLayout(180, [Clock(0, 0)], Shelf: [Network(20, 9)]));
+
+        var layout = store.Load();
+
+        Assert.Equal(20, Assert.Single(layout.Shelf!).Column);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Theory]
+    [InlineData("""{"InstanceId":"22222222-2222-2222-2222-222222222222","TypeId":"","Column":0,"Row":0,"Columns":4,"Rows":2,"TextSize":"Normal","Settings":{}}""")]
+    [InlineData("""{"InstanceId":"22222222-2222-2222-2222-222222222222","TypeId":"network","Column":0,"Row":0,"Columns":4,"Rows":2,"TextSize":"Normal"}""")]
+    [InlineData("""{"InstanceId":"22222222-2222-2222-2222-222222222222","TypeId":"network","Column":0,"Row":0,"Columns":0,"Rows":2,"TextSize":"Normal","Settings":{}}""")]
+    [InlineData("null")]
+    public void Load_InvalidShelfEntry_IsRejected(string entry)
+    {
+        File.WriteAllText(FilePath, WithKey(LayoutJson(180, (0, 0, 4, 2)), "Shelf", "[" + entry + "]"));
+
+        var result = new LayoutStore(FilePath).TryLoad();
+
+        Assert.Null(result.Layout);
+        Assert.NotNull(result.Error);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void Load_OneInvalidShortcut_KeepsLayoutAndOthers()
+    {
+        File.WriteAllText(FilePath, WithKey(LayoutJson(180, (0, 0, 4, 2)), "Shortcuts", """
+            [
+              {"Keys":"Ctrl+Alt+Right","Command":"NextTab","Index":0,"Target":null},
+              {"Keys":"Ctrl+Alt+X","Command":"Fly","Index":0,"Target":null},
+              {"Command":"NextTab"},
+              {"Keys":"Ctrl","Command":"NextTab"},
+              {"Keys":"Ctrl+Alt+F5","Command":"SelectTab","Index":3,"Target":null}
+            ]
+            """));
+
+        var warnings = new List<string>();
+        var layout = new LayoutStore(FilePath, warnings.Add).Load();
+
+        Assert.Single(layout.Placements);
+        Assert.Equal(
+            [
+                new ShortcutBinding("Ctrl+Alt+Right", ModuleCommandKind.NextTab),
+                new ShortcutBinding("Ctrl+Alt+F5", ModuleCommandKind.SelectTab, 3),
+            ],
+            layout.Shortcuts);
+        Assert.Equal(
+            [
+                "Raccourci « Ctrl+Alt+X » ignoré : commande inconnue.",
+                "Raccourci « ? » ignoré : touches absentes.",
+                "Raccourci « Ctrl » ignoré : touches non reconnues.",
+            ],
+            warnings);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void Load_ShortcutsNotAnArray_IsNullWithWarning()
+    {
+        File.WriteAllText(FilePath, WithKey(LayoutJson(180, (0, 0, 4, 2)), "Shortcuts", "\"oups\""));
+
+        var warnings = new List<string>();
+        var layout = new LayoutStore(FilePath, warnings.Add).Load();
+
+        Assert.Single(layout.Placements);
+        Assert.Null(layout.Shortcuts);
+        Assert.Single(warnings);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void TryLoad_Overlap_ReturnsReasonAndNoBackup()
+    {
+        new LayoutStore(FilePath).Save(new DashboardLayout(180, [Clock(0, 0), Network(2, 0)]));
+
+        var result = new LayoutStore(FilePath).TryLoad();
+
+        Assert.Null(result.Layout);
+        Assert.Equal("Deux modules se chevauchent : clock et network.", result.Error);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void TryLoad_Errors_AreInFrench()
+    {
+        File.WriteAllText(FilePath, "{nope");
+        Assert.Equal("Le fichier layout.json est illisible (JSON invalide).", new LayoutStore(FilePath).TryLoad().Error);
+
+        File.WriteAllText(FilePath, LayoutJson(90, (0, 0, 4, 2)));
+        Assert.Equal("Rotation 90° refusée : 0 ou 180.", new LayoutStore(FilePath).TryLoad().Error);
+
+        File.WriteAllText(FilePath, LayoutJson(180, (14, 0, 4, 2)));
+        Assert.Equal("Module hors du damier : clock.", new LayoutStore(FilePath).TryLoad().Error);
+
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void TryLoad_Valid_ReturnsLayoutAndWarnings()
+    {
+        File.WriteAllText(FilePath, WithKey(LayoutJson(180, (0, 0, 4, 2)), "MaxFps", "99"));
+
+        var result = new LayoutStore(FilePath).TryLoad();
+
+        Assert.Null(result.Error);
+        Assert.Single(result.Layout!.Placements);
+        Assert.Equal(["Plafond d'images invalide : 12 images/s utilisées."], result.Warnings);
+    }
+
+    [Fact]
+    public void TryLoad_Missing_IsDefault()
+    {
+        var result = new LayoutStore(FilePath).TryLoad();
+
+        Assert.Same(DashboardLayout.Default, result.Layout);
+        Assert.Null(result.Error);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void TryLoad_LockedFile_ReturnsErrorNotDefault()
+    {
+        new LayoutStore(FilePath).Save(new DashboardLayout(0, []));
+        using var locked = new FileStream(FilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        var result = new LayoutStore(FilePath).TryLoad();
+
+        Assert.Null(result.Layout);
+        Assert.NotNull(result.Error);
+    }
+
+    [Fact]
+    public void Stamp_ChangesWhenFileIsRewritten()
+    {
+        var store = new LayoutStore(FilePath);
+        Assert.Null(store.Stamp());
+
+        store.Save(new DashboardLayout(180, []));
+        var first = store.Stamp();
+        Assert.NotNull(first);
+
+        store.Save(new DashboardLayout(180, [Clock(0, 0)]));
+        File.SetLastWriteTimeUtc(FilePath, DateTime.UtcNow.AddMinutes(5));
+        var second = store.Stamp();
+
+        Assert.NotEqual(first, second);
     }
 }
