@@ -154,7 +154,7 @@ public sealed class MainWindowTests : IDisposable
     {
         _link.Set(LinkState.Connected, SampleData.Welcome(), SampleData.Status());
         var (window, _) = Open();
-        var tabs = window.GetVisualDescendants().OfType<ListBox>().Single();
+        var tabs = window.GetVisualDescendants().OfType<ListBox>().Single(l => l.Classes.Contains("tabs"));
         var item = (ListBoxItem)tabs.ContainerFromIndex(1)!;
 
         item.Focus(Avalonia.Input.NavigationMethod.Tab);

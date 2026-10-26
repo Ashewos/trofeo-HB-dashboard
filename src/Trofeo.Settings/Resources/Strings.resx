@@ -92,4 +92,134 @@
     <value>Impossible d'écrire la disposition : {0}</value>
     <comment>{0} : la cause.</comment>
   </data>
+  <data name="LayoutOnScreen" xml:space="preserve">
+    <value>Sur l'écran</value>
+    <comment>Titre de la liste des modules placés.</comment>
+  </data>
+  <data name="LayoutShelved" xml:space="preserve">
+    <value>Retirés</value>
+    <comment>Titre de la liste des modules retirés de l'écran.</comment>
+  </data>
+  <data name="LayoutAddModule" xml:space="preserve">
+    <value>Ajouter un module</value>
+    <comment>Bouton qui ouvre la liste des types de modules.</comment>
+  </data>
+  <data name="LayoutRestore" xml:space="preserve">
+    <value>Remettre</value>
+    <comment>Remet un module retiré sur l'écran.</comment>
+  </data>
+  <data name="LayoutForget" xml:space="preserve">
+    <value>Oublier</value>
+    <comment>Supprime pour de bon un module retiré.</comment>
+  </data>
+  <data name="LayoutForgetConfirm" xml:space="preserve">
+    <value>Ses réglages seront perdus.</value>
+    <comment>Confirmation avant d'oublier un module retiré.</comment>
+  </data>
+  <data name="LayoutForgetKeep" xml:space="preserve">
+    <value>Garder</value>
+    <comment>Renonce à oublier un module retiré.</comment>
+  </data>
+  <data name="LayoutHint" xml:space="preserve">
+    <value>Glisse un module pour le déplacer, tire un bord pour l'agrandir.</value>
+    <comment>Consigne sous la bande.</comment>
+  </data>
+  <data name="LayoutUndo" xml:space="preserve">
+    <value>Annuler (Ctrl+Z)</value>
+    <comment>Annule la dernière modification de la disposition.</comment>
+  </data>
+  <data name="LayoutRedo" xml:space="preserve">
+    <value>Rétablir (Ctrl+Y)</value>
+    <comment>Rétablit la modification annulée.</comment>
+  </data>
+  <data name="LayoutBlocked" xml:space="preserve">
+    <value>Place prise par {0}.</value>
+    <comment>{0} : le nom du module qui gêne.</comment>
+  </data>
+  <data name="LayoutOutside" xml:space="preserve">
+    <value>Hors de l'écran.</value>
+    <comment>Le cadre sort du damier.</comment>
+  </data>
+  <data name="LayoutBelowMinimum" xml:space="preserve">
+    <value>Plus petit que le minimum de {0} ({1} × {2}).</value>
+    <comment>{0} : le nom du module ; {1} × {2} : colonnes × rangées minimum.</comment>
+  </data>
+  <data name="LayoutNoRoom" xml:space="preserve">
+    <value>Plus de place libre : retire ou réduis un module.</value>
+    <comment>Ajout impossible.</comment>
+  </data>
+  <data name="LayoutUnknownType" xml:space="preserve">
+    <value>Ce type de module n'est pas connu du service.</value>
+    <comment>Le service ne connaît pas ce type.</comment>
+  </data>
+  <data name="LayoutCells" xml:space="preserve">
+    <value>{0} × {1} cases</value>
+    <comment>{0} × {1} : colonnes × rangées du module choisi.</comment>
+  </data>
+  <data name="LayoutPixels" xml:space="preserve">
+    <value>{0} × {1} px</value>
+    <comment>{0} × {1} : largeur × hauteur en pixels du module choisi.</comment>
+  </data>
+  <data name="LayoutMinimum" xml:space="preserve">
+    <value>minimum {0} × {1}</value>
+    <comment>{0} × {1} : colonnes × rangées minimum du type.</comment>
+  </data>
+  <data name="LayoutSize" xml:space="preserve">
+    <value>{0} × {1}</value>
+    <comment>Taille d'un module dans la liste : colonnes × rangées.</comment>
+  </data>
+  <data name="LayoutPresets" xml:space="preserve">
+    <value>Taille</value>
+    <comment>Titre des boutons de préréglage.</comment>
+  </data>
+  <data name="LayoutPresetCompact" xml:space="preserve">
+    <value>Compact</value>
+  </data>
+  <data name="LayoutPresetIdeal" xml:space="preserve">
+    <value>Idéal</value>
+  </data>
+  <data name="LayoutPresetLarge" xml:space="preserve">
+    <value>Large</value>
+  </data>
+  <data name="LayoutTextSize" xml:space="preserve">
+    <value>Taille du texte</value>
+    <comment>Titre des boutons de taille de texte.</comment>
+  </data>
+  <data name="LayoutTextSmall" xml:space="preserve">
+    <value>Petit</value>
+  </data>
+  <data name="LayoutTextNormal" xml:space="preserve">
+    <value>Normal</value>
+  </data>
+  <data name="LayoutTextLarge" xml:space="preserve">
+    <value>Grand</value>
+  </data>
+  <data name="LayoutRemove" xml:space="preserve">
+    <value>Retirer de l'écran</value>
+    <comment>Retire le module choisi de l'écran (il reste dans « Retirés »).</comment>
+  </data>
+  <data name="LayoutNothingSelected" xml:space="preserve">
+    <value>Choisis un module sur l'écran ou dans la liste pour le régler.</value>
+    <comment>Colonne de droite sans module choisi.</comment>
+  </data>
+  <data name="LayoutEmpty" xml:space="preserve">
+    <value>Aucun module sur l'écran.</value>
+    <comment>Liste des modules placés vide.</comment>
+  </data>
+  <data name="LayoutHealthOnline" xml:space="preserve">
+    <value>En ligne</value>
+    <comment>Point d'état d'un module.</comment>
+  </data>
+  <data name="LayoutHealthIdle" xml:space="preserve">
+    <value>Non configuré</value>
+    <comment>Point d'état d'un module.</comment>
+  </data>
+  <data name="LayoutHealthOffline" xml:space="preserve">
+    <value>Hors ligne</value>
+    <comment>Point d'état d'un module.</comment>
+  </data>
+  <data name="LayoutGridName" xml:space="preserve">
+    <value>Damier de l'écran</value>
+    <comment>Nom accessible du damier posé sur la bande.</comment>
+  </data>
 </root>

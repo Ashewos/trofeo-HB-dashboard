@@ -41,9 +41,14 @@
     </Border>
 
     <!-- L'écran en direct, sur toute la largeur et dans tous les onglets. -->
-    <controls:ScreenStrip Grid.Row="1" Margin="24,20,24,0"
-                          AutomationProperties.Name="{x:Static t:Texts.StripName}"
-                          Source="{Binding PreviewImage}" Rotation="{Binding PreviewRotation}" />
+    <Grid Grid.Row="1" Margin="24,20,24,0">
+      <controls:ScreenStrip Name="Strip"
+                            AutomationProperties.Name="{x:Static t:Texts.StripName}"
+                            Source="{Binding PreviewImage}" Rotation="{Binding PreviewRotation}" />
+      <!-- Dans l'onglet Disposition, le damier se pose sur la bande et on y travaille directement. -->
+      <controls:GridOverlay Strip="{Binding #Strip}" Model="{Binding LayoutTab}" IsVisible="{Binding IsGridVisible}"
+                            AutomationProperties.Name="{x:Static t:Texts.LayoutGridName}" />
+    </Grid>
 
     <!-- Le contenu de l'onglet choisi, ou le panneau « service arrêté ». -->
     <Grid Grid.Row="2" Margin="24,16,24,24">

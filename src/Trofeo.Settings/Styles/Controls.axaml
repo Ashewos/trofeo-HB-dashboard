@@ -36,6 +36,15 @@
   <Style Selector="TextBlock.error">
     <Setter Property="Foreground" Value="{DynamicResource Refuse}" />
   </Style>
+  <Style Selector="TextBlock.warning">
+    <Setter Property="Foreground" Value="{DynamicResource Amber}" />
+  </Style>
+  <!-- Nom d'un module : Barlow SemiBold, comme les titres. -->
+  <Style Selector="TextBlock.name">
+    <Setter Property="FontFamily" Value="{DynamicResource HeadingFont}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeLead}" />
+  </Style>
 
   <!-- Focus visible : contour de 2 px en Accent au bord du contrôle, doublé d'un liseré Ink de 2 px à l'intérieur pour qu'il se lise aussi sur un bouton Accent. -->
   <Style Selector=":is(Control)">
@@ -89,6 +98,32 @@
   <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="#6AB9B0" />
     <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+  </Style>
+
+  <!-- Petits boutons des listes, boutons de choix (préréglages, taille du texte) et lignes de la liste d'ajout. -->
+  <Style Selector="Button.small">
+    <Setter Property="Padding" Value="10,5" />
+  </Style>
+  <Style Selector="Button.choice">
+    <Setter Property="Padding" Value="14,7" />
+    <Setter Property="MinWidth" Value="76" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.danger">
+    <Setter Property="BorderBrush" Value="{DynamicResource Refuse}" />
+  </Style>
+  <Style Selector="Button.menu">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+  <Style Selector="FlyoutPresenter">
+    <Setter Property="Background" Value="{DynamicResource Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusPanel}" />
+    <Setter Property="Padding" Value="4" />
   </Style>
 
   <!-- Pastille de l'écran : un point de couleur et un texte. -->
@@ -157,6 +192,39 @@
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="FontSize" Value="{DynamicResource FontSizeLead}" />
     <Setter Property="Foreground" Value="{Binding $parent[ContentPresenter].Foreground}" />
+  </Style>
+
+  <!-- Liste des modules placés : une ligne choisie sur Raised, avec un filet Accent à gauche. -->
+  <Style Selector="ListBox.modules">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+  <Style Selector="ListBox.modules > ListBoxItem">
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="Margin" Value="0,0,0,2" />
+    <Setter Property="Foreground" Value="{DynamicResource Text}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Border Name="Back" Background="Transparent" CornerRadius="6" />
+          <Border Name="Bar" Width="2" Margin="0,8" HorizontalAlignment="Left" Background="Transparent" CornerRadius="1" />
+          <ContentPresenter Name="Row"
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ListBox.modules > ListBoxItem:pointerover /template/ Border#Back">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+  </Style>
+  <Style Selector="ListBox.modules > ListBoxItem:selected /template/ Border#Back">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+  </Style>
+  <Style Selector="ListBox.modules > ListBoxItem:selected /template/ Border#Bar">
+    <Setter Property="Background" Value="{DynamicResource Accent}" />
   </Style>
 
   <!-- La bande : cadre de rayon 10 en Line ; le texte d'attente en Muted. -->

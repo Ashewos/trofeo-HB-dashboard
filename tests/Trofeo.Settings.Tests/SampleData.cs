@@ -7,7 +7,26 @@ namespace Trofeo.Settings.Tests;
 /// <summary>Des réponses du service toutes prêtes, pour les tests de la fenêtre.</summary>
 public static class SampleData
 {
-    public static Welcome Welcome() => new("0.5.0", ControlPipe.ProtocolVersion, []);
+    public static Welcome Welcome() => new("0.5.0", ControlPipe.ProtocolVersion, Types());
+
+    private static ModuleTypeInfo Type(string id, string name, GridSize min, GridSize compact, GridSize ideal, GridSize large) =>
+        new(id, name, min, new Dictionary<SizePreset, GridSize>
+        {
+            [SizePreset.Compact] = compact,
+            [SizePreset.Ideal] = ideal,
+            [SizePreset.Large] = large,
+        }, false, SettingsSchema.Empty);
+
+    /// <summary>Les six types du service, avec leurs noms et leurs tailles réels.</summary>
+    public static IReadOnlyList<ModuleTypeInfo> Types() =>
+    [
+        Type("claudecode", "Claude Code", new(6, 3), new(6, 3), new(8, 4), new(10, 4)),
+        Type("codex", "Codex", new(6, 3), new(6, 3), new(8, 4), new(10, 4)),
+        Type("monitoring", "Monitoring PC", new(3, 2), new(4, 2), new(6, 2), new(6, 4)),
+        Type("nowplaying", "En écoute", new(3, 1), new(3, 1), new(4, 2), new(6, 2)),
+        Type("clock", "Heure, date et météo", new(3, 1), new(3, 1), new(4, 2), new(6, 2)),
+        Type("network", "Réseau", new(3, 1), new(3, 1), new(4, 2), new(6, 2)),
+    ];
 
     public static ServiceStatus Status(LinkScreenState screen = LinkScreenState.Ready, bool emulated = false) => new(
         new ScreenInfo(screen, null), emulated, [],

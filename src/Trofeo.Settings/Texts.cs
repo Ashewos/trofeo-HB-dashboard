@@ -63,4 +63,72 @@ public static class Texts
     public static string ReloadRefused => Get();
     /// <summary>{0} : la cause.</summary>
     public static string SaveFailed => Get();
+    /// <summary>Titre de la liste des modules placés.</summary>
+    public static string LayoutOnScreen => Get();
+    /// <summary>Titre de la liste des modules retirés de l'écran.</summary>
+    public static string LayoutShelved => Get();
+    /// <summary>Bouton qui ouvre la liste des types de modules.</summary>
+    public static string LayoutAddModule => Get();
+    /// <summary>Remet un module retiré sur l'écran.</summary>
+    public static string LayoutRestore => Get();
+    /// <summary>Supprime pour de bon un module retiré.</summary>
+    public static string LayoutForget => Get();
+    /// <summary>Confirmation avant d'oublier un module retiré.</summary>
+    public static string LayoutForgetConfirm => Get();
+    /// <summary>Renonce à oublier un module retiré.</summary>
+    public static string LayoutForgetKeep => Get();
+    /// <summary>Consigne sous la bande.</summary>
+    public static string LayoutHint => Get();
+    /// <summary>Annule la dernière modification de la disposition.</summary>
+    public static string LayoutUndo => Get();
+    /// <summary>Rétablit la modification annulée.</summary>
+    public static string LayoutRedo => Get();
+    /// <summary>{0} : le nom du module qui gêne.</summary>
+    public static string LayoutBlocked => Get();
+    /// <summary>Le cadre sort du damier.</summary>
+    public static string LayoutOutside => Get();
+    /// <summary>{0} : le nom du module ; {1} × {2} : colonnes × rangées minimum.</summary>
+    public static string LayoutBelowMinimum => Get();
+    /// <summary>Ajout impossible.</summary>
+    public static string LayoutNoRoom => Get();
+    /// <summary>Le service ne connaît pas ce type.</summary>
+    public static string LayoutUnknownType => Get();
+    /// <summary>{0} × {1} : colonnes × rangées du module choisi.</summary>
+    public static string LayoutCells => Get();
+    /// <summary>{0} × {1} : largeur × hauteur en pixels du module choisi.</summary>
+    public static string LayoutPixels => Get();
+    /// <summary>{0} × {1} : colonnes × rangées minimum du type.</summary>
+    public static string LayoutMinimum => Get();
+    /// <summary>Taille d'un module dans la liste : colonnes × rangées.</summary>
+    public static string LayoutSize => Get();
+    /// <summary>Titre des boutons de préréglage.</summary>
+    public static string LayoutPresets => Get();
+    /// <summary>Compact</summary>
+    public static string LayoutPresetCompact => Get();
+    /// <summary>Idéal</summary>
+    public static string LayoutPresetIdeal => Get();
+    /// <summary>Large</summary>
+    public static string LayoutPresetLarge => Get();
+    /// <summary>Titre des boutons de taille de texte.</summary>
+    public static string LayoutTextSize => Get();
+    /// <summary>Petit</summary>
+    public static string LayoutTextSmall => Get();
+    /// <summary>Normal</summary>
+    public static string LayoutTextNormal => Get();
+    /// <summary>Grand</summary>
+    public static string LayoutTextLarge => Get();
+    /// <summary>Retire le module choisi de l'écran (il reste dans « Retirés »).</summary>
+    public static string LayoutRemove => Get();
+    /// <summary>Colonne de droite sans module choisi.</summary>
+    public static string LayoutNothingSelected => Get();
+    /// <summary>Liste des modules placés vide.</summary>
+    public static string LayoutEmpty => Get();
+    /// <summary>Point d'état d'un module.</summary>
+    public static string LayoutHealthOnline => Get();
+    /// <summary>Point d'état d'un module.</summary>
+    public static string LayoutHealthIdle => Get();
+    /// <summary>Point d'état d'un module.</summary>
+    public static string LayoutHealthOffline => Get();
+    /// <summary>Nom accessible du damier posé sur la bande.</summary>
+    public static string LayoutGridName => Get();
 }

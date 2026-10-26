@@ -17,11 +17,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public MainViewModel(IServiceLink link, LayoutDocument document, EditorPreferences preferences)
     {
         _link = link;
+        LayoutTab = new LayoutTabViewModel(link, document);
         Document = document;
         Preferences = preferences;
         Tabs =
         [
-            new LayoutTabViewModel(), new AppearanceTabViewModel(), new ModulesTabViewModel(),
+            LayoutTab, new AppearanceTabViewModel(), new ModulesTabViewModel(),
             new ShortcutsTabViewModel(), new SettingsTabViewModel(),
         ];
         _selectedTab = Tabs[0];
@@ -33,16 +34,24 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     public IServiceLink Link => _link;
+
+    /// <summary>L'onglet Disposition : le damier de la fenêtre travaille avec lui.</summary>
+    public LayoutTabViewModel LayoutTab { get; }
     public LayoutDocument Document { get; }
     public EditorPreferences Preferences { get; }
     public IReadOnlyList<TabViewModel> Tabs { get; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsGridVisible))]
     private TabViewModel _selectedTab;
 
     /// <summary>Le service ne tourne pas : le panneau « Démarrer le service » remplace les onglets.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsGridVisible))]
     private bool _isStopped;
+
+    /// <summary>Le damier se pose sur la bande dans l'onglet Disposition, tant que le service tourne.</summary>
+    public bool IsGridVisible => SelectedTab is LayoutTabViewModel && !IsStopped;
 
     /// <summary>Le démarrage a échoué : Trofeo.Display.exe est introuvable.</summary>
     [ObservableProperty]
@@ -130,6 +139,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _link.Changed -= Refresh;
         _link.FrameReceived -= ShowFrame;
+        LayoutTab.Dispose();
         PreviewImage?.Dispose();
         PreviewImage = null;
     }
