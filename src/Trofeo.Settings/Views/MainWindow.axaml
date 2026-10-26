@@ -9,7 +9,7 @@
         Width="1440" Height="900" MinWidth="1200" MinHeight="760"
         WindowStartupLocation="CenterScreen">
 
-  <Grid RowDefinitions="Auto,Auto,*">
+  <Grid RowDefinitions="Auto,Auto,Auto,*">
 
     <!-- En-tête : le nom, les cinq onglets, la pastille de l'écran. -->
     <Border Grid.Row="0" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1">
@@ -50,8 +50,12 @@
                             AutomationProperties.Name="{x:Static t:Texts.LayoutGridName}" />
     </Grid>
 
+    <!-- Une ligne Amber sous la bande, dans tous les onglets : le message de la dernière modification, les avertissements hors apparence. -->
+    <TextBlock Grid.Row="2" Name="SaveMessage" Classes="warning" TextWrapping="Wrap" Margin="24,12,24,0"
+               Text="{Binding SaveMessage}" IsVisible="{Binding HasSaveMessage}" />
+
     <!-- Le contenu de l'onglet choisi, ou le panneau « service arrêté ». -->
-    <Grid Grid.Row="2" Margin="24,16,24,24">
+    <Grid Grid.Row="3" Margin="24,16,24,24">
       <ContentControl Name="TabContent" Content="{Binding SelectedTab}" IsVisible="{Binding !IsStopped}" />
 
       <Border Classes="panel" IsVisible="{Binding IsStopped}" Padding="32"

@@ -73,13 +73,7 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
     [NotifyPropertyChangedFor(nameof(RefusalText), nameof(HasRefusal))]
     private string? _notice;
 
-    /// <summary>Un message du service ou de l'écriture (en <c>Amber</c>), jusqu'à la prochaine modification.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasSaveMessage))]
-    private string? _saveMessage;
-
     public bool IsDragging => _drag is not null;
-    public bool HasSaveMessage => !string.IsNullOrEmpty(SaveMessage);
 
     /// <summary>Le motif à montrer sous la bande : celui du fantôme refusé, sinon celui du dernier refus.</summary>
     public string? RefusalText => Ghost is { Ok: false } ghost ? ghost.Reason : Notice;
@@ -196,7 +190,7 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
     private void StartDrag(Drag drag)
     {
         Notice = null;
-        SaveMessage = null;
+        _session.ClearMessage();
         Select(drag.Origin.InstanceId);
         _drag = drag;
         OnPropertyChanged(nameof(IsDragging));
@@ -388,10 +382,9 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
             return;
 
         Notice = null;
-        SaveMessage = null;
         EditResult? refused = null;
         DashboardLayout? basis = null;
-        var outcome = await _session.ApplyAsync(layout =>
+        await _session.ApplyAsync(layout =>
         {
             basis = layout;
             var result = edit(_editor, layout);
@@ -401,7 +394,6 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
 
         if (refused is not null && basis is not null)
             Notice = ReasonOf(basis, refused, typeId);
-        SaveMessage = outcome?.Message;
         Refresh();
     }
 
@@ -411,9 +403,7 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
             return;
 
         Notice = null;
-        SaveMessage = null;
-        var outcome = await (undo ? _session.UndoAsync() : _session.RedoAsync()).ConfigureAwait(true);
-        SaveMessage = outcome?.Message;
+        await (undo ? _session.UndoAsync() : _session.RedoAsync()).ConfigureAwait(true);
         Refresh();
     }
 

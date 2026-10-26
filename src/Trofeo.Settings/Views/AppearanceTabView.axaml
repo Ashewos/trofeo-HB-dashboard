@@ -1,7 +1,164 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:t="clr-namespace:Trofeo.Settings"
              xmlns:vm="clr-namespace:Trofeo.Settings.ViewModels"
              x:Class="Trofeo.Settings.Views.AppearanceTabView"
              x:DataType="vm:AppearanceTabViewModel">
-  <!-- Le contenu de l'onglet arrive avec les tâches 10 à 13. -->
+
+  <!-- Trois colonnes calmes, alignées à gauche : le thème et la transparence ; la police ; le fond. L'effet se voit sur la bande, au-dessus. -->
+  <ScrollViewer VerticalScrollBarVisibility="Auto" AllowAutoHide="False">
+    <Grid ColumnDefinitions="*,16,300,16,*">
+
+      <!-- Thème, transparence, garde de lisibilité. -->
+      <Border Grid.Column="0" Classes="panel" Padding="20" VerticalAlignment="Top">
+        <StackPanel Spacing="20">
+
+          <StackPanel Spacing="10">
+            <TextBlock Classes="section" Text="{x:Static t:Texts.AppearanceTheme}" />
+            <ItemsControl Name="ThemeCards" ItemsSource="{Binding Themes}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ThemeCard">
+                  <Button Classes="card" Classes.selected="{Binding IsSelected}" Command="{Binding SelectCommand}"
+                          AutomationProperties.Name="{Binding Name}">
+                    <Grid ColumnDefinitions="Auto,16,*">
+                      <Border Grid.Column="0" CornerRadius="4" ClipToBounds="True" VerticalAlignment="Center">
+                        <Image Width="176" Height="42" Stretch="UniformToFill" Source="{Binding Thumbnail}" />
+                      </Border>
+                      <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Classes="name" Text="{Binding Name}" />
+                        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Description}" />
+                      </StackPanel>
+                    </Grid>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Name="ThemeWarning" Classes="warning" TextWrapping="Wrap"
+                       Text="{Binding ThemeWarning}" IsVisible="{Binding HasThemeWarning}" />
+          </StackPanel>
+
+          <StackPanel Spacing="8">
+            <TextBlock Classes="section" Text="{x:Static t:Texts.AppearanceOpacity}" />
+            <Grid ColumnDefinitions="*,Auto,Auto">
+              <Slider Grid.Column="0" Name="OpacitySlider" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10"
+                      TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                      AutomationProperties.Name="{x:Static t:Texts.AppearanceOpacity}"
+                      Value="{Binding OpacityPercent}" />
+              <TextBlock Grid.Column="1" Classes="number lead" Width="56" TextAlignment="Right" VerticalAlignment="Center"
+                         Margin="12,0,16,0" Text="{Binding OpacityText}" />
+              <Button Grid.Column="2" Classes="choice small" Classes.primary="{Binding IsOpacityFromTheme}"
+                      Content="{x:Static t:Texts.AppearanceFromThemeFeminine}" Command="{Binding UseThemeOpacityCommand}" />
+            </Grid>
+            <TextBlock Name="OpacityWarning" Classes="warning" TextWrapping="Wrap"
+                       Text="{Binding OpacityWarning}" IsVisible="{Binding HasOpacityWarning}" />
+          </StackPanel>
+
+        </StackPanel>
+      </Border>
+
+      <!-- Police : « Celle du thème », les polices embarquées, un séparateur, celles du système ; chaque nom dans sa police. -->
+      <Border Grid.Column="2" Classes="panel" Padding="20,20,12,20" VerticalAlignment="Top">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+          <TextBlock Grid.Row="0" Classes="section" Text="{x:Static t:Texts.AppearanceFont}" />
+          <ListBox Grid.Row="1" Name="FontList" Classes="modules" MinHeight="200" MaxHeight="270"
+                   AutomationProperties.Name="{x:Static t:Texts.AppearanceFont}"
+                   ItemsSource="{Binding Fonts}" SelectedItem="{Binding SelectedFont}">
+            <ListBox.Styles>
+              <Style Selector="ListBoxItem" x:DataType="vm:FontItem">
+                <Setter Property="IsEnabled" Value="{Binding IsChoice}" />
+              </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:FontItem">
+                <Panel>
+                  <TextBlock Text="{Binding Name}" FontFamily="{Binding FontFamily}" FontSize="{Binding FontSize}" TextTrimming="CharacterEllipsis"
+                             IsVisible="{Binding IsChoice}" />
+                  <Border Height="1" Margin="0,8" Background="{DynamicResource Line}" IsVisible="{Binding IsSeparator}" />
+                </Panel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBlock Grid.Row="2" Name="FontWarning" Classes="warning" TextWrapping="Wrap" Margin="0,0,8,0"
+                     Text="{Binding FontWarning}" IsVisible="{Binding HasFontWarning}" />
+        </Grid>
+      </Border>
+
+      <!-- Fond : celui du thème, une couleur, une photo, un GIF ou une vidéo. -->
+      <Border Grid.Column="4" Classes="panel" Padding="20" VerticalAlignment="Top">
+        <StackPanel Spacing="16">
+          <TextBlock Classes="section" Text="{x:Static t:Texts.AppearanceBackground}" />
+
+          <ItemsControl Name="BackgroundKinds" ItemsSource="{Binding Kinds}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:BackgroundKindItem">
+                <Button Classes="choice" Classes.primary="{Binding IsSelected}" Margin="0,0,6,6"
+                        Content="{Binding Label}" Command="{Binding SelectCommand}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <!-- Couleur : huit teintes et un champ #RRGGBB. -->
+          <StackPanel Name="ColorSection" Spacing="10" IsVisible="{Binding ShowsColor}">
+            <ItemsControl Name="Palette" ItemsSource="{Binding Palette}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SwatchItem">
+                  <Button Classes="swatch" Classes.selected="{Binding IsSelected}" Command="{Binding SelectCommand}"
+                          AutomationProperties.Name="{Binding Hex}">
+                    <Border Width="28" Height="28" CornerRadius="4" Background="{Binding Brush}" />
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBox Name="HexBox" Width="140" HorizontalAlignment="Left" MaxLength="9"
+                     PlaceholderText="{x:Static t:Texts.AppearanceHexHint}"
+                     AutomationProperties.Name="{x:Static t:Texts.AppearanceHexName}"
+                     Text="{Binding ColorText}">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding ApplyColorTextCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+            <TextBlock Name="ColorError" Classes="error" TextWrapping="Wrap"
+                       Text="{Binding ColorError}" IsVisible="{Binding HasColorError}" />
+          </StackPanel>
+
+          <!-- Photo, GIF, vidéo : le sélecteur de fichier et le nom du fichier choisi. -->
+          <StackPanel Name="FileSection" Spacing="10" IsVisible="{Binding ShowsFile}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Button Name="ChooseFile" Content="{x:Static t:Texts.AppearanceChooseFile}" Command="{Binding ChooseFileCommand}"
+                      IsEnabled="{Binding CanPickFile}" />
+              <TextBlock Name="FileName" Classes="lead" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="260"
+                         Classes.muted="{Binding !HasFileName}" Text="{Binding FileLabel}" ToolTip.Tip="{Binding FileName}" />
+            </StackPanel>
+            <TextBlock Name="VideoAdvice" Classes="muted" TextWrapping="Wrap"
+                       Text="{x:Static t:Texts.AppearanceVideoAdvice}" IsVisible="{Binding ShowsVideoAdvice}" />
+          </StackPanel>
+
+          <TextBlock Name="BackgroundWarning" Classes="warning" TextWrapping="Wrap"
+                     Text="{Binding BackgroundWarning}" IsVisible="{Binding HasBackgroundWarning}" />
+
+          <!-- La garde de lisibilité regarde le fond : elle est rangée avec lui. -->
+          <Border Height="1" Background="{DynamicResource Line}" Margin="0,4" />
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,24,0">
+              <TextBlock Classes="name" Text="{x:Static t:Texts.AppearanceLegibility}" />
+              <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.AppearanceLegibilityHelp}" />
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" Name="LegibilitySwitch" OnContent="" OffContent="" VerticalAlignment="Center"
+                          AutomationProperties.Name="{x:Static t:Texts.AppearanceLegibility}"
+                          IsChecked="{Binding IsLegibilityOn}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </ScrollViewer>
 </UserControl>

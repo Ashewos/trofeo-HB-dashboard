@@ -126,6 +126,53 @@
     <Setter Property="Padding" Value="4" />
   </Style>
 
+
+  <!-- Champs de saisie : police du texte courant, rayon 6. -->
+  <Style Selector="TextBox">
+    <Setter Property="FontFamily" Value="{DynamicResource BodyFont}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+
+  <!-- Cartes de thème : un bouton large, sur Raised ; la carte choisie a un contour Accent de 2 px. -->
+  <Style Selector="Button.card">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusPanel}" />
+    <Setter Property="Padding" Value="10" />
+    <Setter Property="Margin" Value="0,0,0,8" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="Button.card:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Line}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.card.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+  </Style>
+  <Style Selector="Button.card.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+  </Style>
+
+  <!-- Pastilles de la palette : la couleur est un Border dans le bouton ; la pastille choisie a un contour Accent. -->
+  <Style Selector="Button.swatch">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="Padding" Value="3" />
+    <Setter Property="Margin" Value="0,0,6,6" />
+  </Style>
+  <Style Selector="Button.swatch.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+  </Style>
+  <Style Selector="Button.swatch.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+  </Style>
+
   <!-- Pastille de l'écran : un point de couleur et un texte. -->
   <Style Selector="Border.pill">
     <Setter Property="Background" Value="{DynamicResource Raised}" />

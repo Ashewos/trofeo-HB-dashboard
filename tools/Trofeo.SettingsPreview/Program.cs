@@ -78,6 +78,8 @@ internal static class Program
         Render(folder, scratch, "disposition-1200x760.png", 1200, 760, jpeg,
             link => link.Set(LinkState.Connected, connected.Welcome, connected.Status), (_, _) => { });
 
+        RenderAppearance(folder, scratch, jpeg, connected.Welcome, connected.Status);
+
         // L'onglet Disposition : un module choisi, des glissements (libre, refusé), l'ajout, l'oubli à confirmer.
         var layoutStatus = connected.Status with
         {
@@ -167,6 +169,85 @@ internal static class Program
             link => link.Set(LinkState.Connecting), (_, _) => { });
     }
 
+    /// <summary>L'onglet Personnalisation : par défaut, une vidéo choisie (avec son conseil), des avertissements sous le réglage, un refus du service, la couleur.</summary>
+    private static void RenderAppearance(string folder, string scratch, byte[] jpeg, Welcome welcome, ServiceStatus status)
+    {
+        void Connected(FakeServiceLink link) => link.Set(LinkState.Connected, welcome, status);
+        void Open(MainViewModel model) => model.SelectedTab = model.AppearanceTab;
+        static void Run(Task task) => task.GetAwaiter().GetResult();
+        var fonts = new[] { "Arial", "Bahnschrift", "Calibri", "Cascadia Code", "Consolas", "Georgia", "Segoe UI", "Verdana" };
+
+        Render(folder, scratch, "personnalisation.png", 1440, 900, jpeg, Connected, (_, model) => Open(model));
+        Render(folder, scratch, "personnalisation-1200x760.png", 1200, 760, jpeg, Connected, (_, model) => Open(model));
+
+        // Une vidéo choisie : « Choisir un fichier… », le nom du fichier et le conseil.
+        Render(folder, scratch, "personnalisation-video.png", 1440, 900, jpeg, Connected, (_, model) =>
+        {
+            Open(model);
+            model.AppearanceTab.Picker = new FakeFilePicker { Result = @"C:\Users\Alex\Videos\boucle-1920x462.mp4" };
+            Run(model.AppearanceTab.SetBackgroundKindAsync(BackgroundKind.Video));
+            Run(model.AppearanceTab.ChooseFileAsync());
+        });
+
+        // Un fond introuvable : l'avertissement du rechargement sous le choix du fond, en Amber.
+        Render(folder, scratch, "personnalisation-avertissement-fond.png", 1440, 900, jpeg,
+            link =>
+            {
+                Connected(link);
+                link.OnReload = () => Task.FromResult(new Reloaded(true, null,
+                    [@"Fond d'écran introuvable : C:\Users\Alex\Pictures\vacances.jpg. Fond du thème utilisé."]));
+            },
+            (_, model) =>
+            {
+                Open(model);
+                model.AppearanceTab.Picker = new FakeFilePicker { Result = @"C:\Users\Alex\Pictures\vacances.jpg" };
+                Run(model.AppearanceTab.SetBackgroundKindAsync(BackgroundKind.Image));
+                Run(model.AppearanceTab.ChooseFileAsync());
+            });
+
+        // Une police absente (sous la liste), un thème choisi, une transparence imposée, la garde coupée.
+        Render(folder, scratch, "personnalisation-police-absente.png", 1440, 900, jpeg,
+            link =>
+            {
+                Connected(link);
+                link.OnReload = () => Task.FromResult(new Reloaded(true, null,
+                    ["Police « Comic Papyrus » introuvable : police du thème utilisée."]));
+            },
+            (_, model) =>
+            {
+                Open(model);
+                Run(model.AppearanceTab.SetFontAsync(new FontItem("Comic Papyrus", "Comic Papyrus")));
+            },
+            layout: Base with { Appearance = new AppearanceSettings("liquid-glass", 0.4f, Legibility: false) },
+            systemFonts: fonts);
+
+        // Une couleur mal écrite, puis une couleur choisie dans la palette.
+        Render(folder, scratch, "personnalisation-couleur.png", 1440, 900, jpeg, Connected, (_, model) =>
+        {
+            Open(model);
+            Run(model.AppearanceTab.SetBackgroundKindAsync(BackgroundKind.Color));
+            Run(model.AppearanceTab.SetColorTextAsync("#12345"));
+        });
+        Render(folder, scratch, "personnalisation-couleur-palette.png", 1440, 900, jpeg, Connected, (_, model) =>
+        {
+            Open(model);
+            Run(model.AppearanceTab.SetColorAsync(model.AppearanceTab.Palette[5].Hex));
+        });
+
+        // Le thème Pixel, une police du système choisie.
+        Render(folder, scratch, "personnalisation-pixel.png", 1440, 900, jpeg, Connected,
+            (_, model) => Open(model),
+            layout: Base with { Appearance = new AppearanceSettings("pixel", Font: "Consolas") },
+            systemFonts: fonts);
+
+        // Un refus du service : la ligne Amber sous la bande, ici dans l'onglet Personnalisation.
+        Render(folder, scratch, "personnalisation-message-du-service.png", 1440, 900, jpeg, Connected, (_, model) =>
+        {
+            Open(model);
+            Run(model.AppearanceTab.SetThemeAsync("pixel"));
+        }, refuseReload: "Le service n'a pas pu appliquer le thème : le fond choisi est introuvable.");
+    }
+
     private static readonly Guid ClaudeId = new("3c1d9f5e-7a2b-4e8c-9b1f-6d2a0e4c8b17");
     private static readonly Guid MonitoringId = new("246ac06d-eec2-4d64-9930-24b64603a03b");
     private static readonly Guid NowPlayingId = new("8ebcc647-ab4b-401d-b2b3-f7a0ebd97b4b");
@@ -195,7 +276,7 @@ internal static class Program
     private static void Render(
         string folder, string scratch, string name, int width, int height, byte[]? jpeg,
         Action<FakeServiceLink> state, Action<MainWindow, MainViewModel> arrange,
-        DashboardLayout? layout = null, string? refuseReload = null)
+        DashboardLayout? layout = null, string? refuseReload = null, IReadOnlyList<string>? systemFonts = null)
     {
         var link = new FakeServiceLink();
         state(link);
@@ -205,7 +286,7 @@ internal static class Program
         store.Save(layout ?? Base);
         var document = new LayoutDocument(store, link);
         document.Load();
-        using var model = new MainViewModel(link, document, new EditorPreferences());
+        using var model = new MainViewModel(link, document, new EditorPreferences(), null, systemFonts ?? ["Arial", "Consolas", "Segoe UI"]);
         var window = new MainWindow { DataContext = model, Width = width, Height = height };
         window.Show();
         if (jpeg is not null)

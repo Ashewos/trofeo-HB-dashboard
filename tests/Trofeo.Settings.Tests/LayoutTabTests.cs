@@ -371,7 +371,7 @@ public sealed class LayoutTabTests : IDisposable
         Assert.Null(tab.Ghost);
         Assert.False(tab.CanUndo);
         Assert.Single(tab.Placed);  // la liste montre le fichier relu
-        Assert.Equal(Texts.LayoutChangedOutside, tab.SaveMessage);
+        Assert.Equal(Texts.LayoutChangedOutside, _session.Message);
     }
 
     [Fact]
@@ -383,15 +383,28 @@ public sealed class LayoutTabTests : IDisposable
 
         await tab.SetTextSizeAsync(TextSize.Large);
 
-        Assert.Equal("Disposition invalide : trop de modules.", tab.SaveMessage);
-        Assert.True(tab.HasSaveMessage);
+        Assert.Equal("Disposition invalide : trop de modules.", _session.Message);   // la fenêtre le montre, sous la bande, dans tous les onglets
         Assert.Equal(TextSize.Large, Of(_document.Current, ClockId).TextSize);  // la disposition montrée est celle du document
         Assert.True(tab.IsTextLarge);
 
         // Le message dure jusqu'à la prochaine édition.
         _link.OnReload = () => Task.FromResult(new Reloaded(true, null, []));
         await tab.SetTextSizeAsync(TextSize.Small);
-        Assert.False(tab.HasSaveMessage);
+        Assert.Null(_session.Message);
+    }
+
+    [Fact]
+    public async Task Drag_Start_ClearsTheServiceMessage()
+    {
+        var tab = Open(Layout(Placement(ClockId, "clock", 12, 0, 4, 2)));
+        _link.OnReload = () => Task.FromResult(new Reloaded(false, "Refusé.", []));
+        tab.Select(ClockId);
+        await tab.SetTextSizeAsync(TextSize.Large);
+        Assert.Equal("Refusé.", _session.Message);
+
+        tab.BeginMove(ClockId, Center(12, 0));
+
+        Assert.Null(_session.Message);
     }
 
     [Fact]

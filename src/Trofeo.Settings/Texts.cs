@@ -131,4 +131,66 @@ public static class Texts
     public static string LayoutHealthOffline => Get();
     /// <summary>Nom accessible du damier posé sur la bande.</summary>
     public static string LayoutGridName => Get();
+    /// <summary>Titre de la section des thèmes.</summary>
+    public static string AppearanceTheme => Get();
+    /// <summary>Nom du thème Classique.</summary>
+    public static string AppearanceThemeClassic => Get();
+    /// <summary>Phrase de la carte Classique.</summary>
+    public static string AppearanceThemeClassicText => Get();
+    /// <summary>Nom du thème Liquid Glass.</summary>
+    public static string AppearanceThemeLiquidGlass => Get();
+    /// <summary>Phrase de la carte Liquid Glass.</summary>
+    public static string AppearanceThemeLiquidGlassText => Get();
+    /// <summary>Nom du thème Pixel.</summary>
+    public static string AppearanceThemePixel => Get();
+    /// <summary>Phrase de la carte Pixel.</summary>
+    public static string AppearanceThemePixelText => Get();
+    /// <summary>Titre de la section du curseur de transparence des panneaux.</summary>
+    public static string AppearanceOpacity => Get();
+    /// <summary>{0} : la transparence choisie, de 0 à 100.</summary>
+    public static string AppearanceOpacityValue => Get();
+    /// <summary>Transparence ou police : ne rien imposer, suivre le thème.</summary>
+    public static string AppearanceFromThemeFeminine => Get();
+    /// <summary>Fond : ne rien imposer, suivre le thème.</summary>
+    public static string AppearanceFromThemeMasculine => Get();
+    /// <summary>Titre de la section de la liste des polices.</summary>
+    public static string AppearanceFont => Get();
+    /// <summary>Titre de la section du fond de l'écran.</summary>
+    public static string AppearanceBackground => Get();
+    /// <summary>Fond : une couleur unie.</summary>
+    public static string AppearanceBackgroundColor => Get();
+    /// <summary>Fond : une image fixe.</summary>
+    public static string AppearanceBackgroundPhoto => Get();
+    /// <summary>Fond : un GIF ou un WebP animé.</summary>
+    public static string AppearanceBackgroundGif => Get();
+    /// <summary>Fond : une vidéo.</summary>
+    public static string AppearanceBackgroundVideo => Get();
+    /// <summary>Nom accessible du champ de la couleur.</summary>
+    public static string AppearanceHexName => Get();
+    /// <summary>Texte d'aide du champ de la couleur.</summary>
+    public static string AppearanceHexHint => Get();
+    /// <summary>Le champ de la couleur ne contient pas #RRGGBB.</summary>
+    public static string AppearanceBadColor => Get();
+    /// <summary>Ouvre le sélecteur de fichier du fond.</summary>
+    public static string AppearanceChooseFile => Get();
+    /// <summary>Fond photo, GIF ou vidéo sans fichier.</summary>
+    public static string AppearanceNoFile => Get();
+    /// <summary>Conseil sous le choix d'une vidéo.</summary>
+    public static string AppearanceVideoAdvice => Get();
+    /// <summary>Titre du sélecteur de fichier (photo).</summary>
+    public static string AppearancePickPhoto => Get();
+    /// <summary>Titre du sélecteur de fichier (GIF).</summary>
+    public static string AppearancePickGif => Get();
+    /// <summary>Titre du sélecteur de fichier (vidéo).</summary>
+    public static string AppearancePickVideo => Get();
+    /// <summary>Nom du filtre du sélecteur de fichier (photos).</summary>
+    public static string AppearanceTypePhotos => Get();
+    /// <summary>Nom du filtre du sélecteur de fichier (GIF).</summary>
+    public static string AppearanceTypeGifs => Get();
+    /// <summary>Nom du filtre du sélecteur de fichier (vidéos).</summary>
+    public static string AppearanceTypeVideos => Get();
+    /// <summary>Titre de l'interrupteur de la garde de lisibilité.</summary>
+    public static string AppearanceLegibility => Get();
+    /// <summary>Explication sous l'interrupteur.</summary>
+    public static string AppearanceLegibilityHelp => Get();
 }

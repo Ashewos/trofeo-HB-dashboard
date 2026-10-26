@@ -38,6 +38,31 @@ public sealed class EditSession : IDisposable
     /// </summary>
     public event Action? Changed;
 
+    /// <summary>
+    /// Le message de la dernière modification (le service l'a refusée, l'écriture a échoué, le fichier avait changé) ;
+    /// <c>null</c> si elle a réussi. La fenêtre le montre sous la bande, dans tous les onglets, jusqu'à la modification suivante.
+    /// </summary>
+    public string? Message { get; private set; }
+
+    /// <summary>Les avertissements du dernier rechargement qui ne regardent pas l'apparence (raccourcis, modules…).</summary>
+    public IReadOnlyList<string> OtherWarnings { get; private set; } = [];
+
+    /// <summary>
+    /// Les avertissements d'apparence du dernier rechargement qui a changé l'apparence. Le service ne les répète pas tant
+    /// qu'elle ne change pas : ils restent donc là (modification de module, annulation d'une autre) jusqu'au prochain
+    /// changement d'apparence ou jusqu'à ce que le fichier soit relu.
+    /// </summary>
+    public AppearanceWarnings AppearanceWarnings { get; private set; } = AppearanceWarnings.Empty;
+
+    /// <summary>Efface le message (un nouveau glissement commence, par exemple).</summary>
+    public void ClearMessage()
+    {
+        if (Message is null)
+            return;
+        Message = null;
+        Changed?.Invoke();
+    }
+
     public void Dispose() => _document.Replaced -= OnReplaced;
 
     /// <summary>
@@ -53,7 +78,10 @@ public sealed class EditSession : IDisposable
         {
             var current = _document.Current;
             if (edit(current) is not { } edited || Same(current, edited))
+            {
+                Message = null;
                 return null;
+            }
 
             var epoch = _epoch;
             var save = _document.SaveAsync(edited);
@@ -61,6 +89,7 @@ public sealed class EditSession : IDisposable
             var outcome = await save.ConfigureAwait(true);
             if (outcome.Saved && epoch == _epoch)
                 _history.Push(current);
+            Record(current, edited, outcome);
             return outcome;
         }
         finally
@@ -81,9 +110,13 @@ public sealed class EditSession : IDisposable
         try
         {
             var epoch = _epoch;
-            var target = undo ? _history.Undo(_document.Current) : _history.Redo(_document.Current);
+            var before = _document.Current;
+            var target = undo ? _history.Undo(before) : _history.Redo(before);
             if (target is null)
+            {
+                Message = null;
                 return null;
+            }
 
             var save = _document.SaveAsync(target);
             Changed?.Invoke();
@@ -95,6 +128,7 @@ public sealed class EditSession : IDisposable
                 else _history.Undo(target);
             }
 
+            Record(before, target, outcome);
             return outcome;
         }
         finally
@@ -102,6 +136,22 @@ public sealed class EditSession : IDisposable
             _gate.Release();
             End();
         }
+    }
+
+    /// <summary>
+    /// Garde ce que le service a répondu : le message, les avertissements qui ne regardent pas l'apparence (propres à ce
+    /// rechargement) et ceux d'apparence (gardés tant que l'apparence ne change pas : le service ne les répète pas).
+    /// </summary>
+    private void Record(DashboardLayout before, DashboardLayout after, SaveOutcome outcome)
+    {
+        Message = outcome.Message;
+        if (!outcome.Saved)
+            return;
+
+        var (appearance, other) = WarningRouter.Route(outcome.Warnings);
+        OtherWarnings = other;
+        if (!Equals(before.Appearance, after.Appearance))
+            AppearanceWarnings = appearance;
     }
 
     private void Begin()
@@ -122,6 +172,7 @@ public sealed class EditSession : IDisposable
         // Le fichier a changé en dehors des réglages : l'historique ne vaut plus rien.
         _history = new LayoutHistory();
         _epoch++;
+        AppearanceWarnings = AppearanceWarnings.Empty; // l'apparence a pu changer : ces avertissements ne valent plus rien
         Changed?.Invoke();
     }
 

@@ -2,6 +2,7 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Trofeo.Control;
+using Trofeo.Core.Rendering;
 using Trofeo.Settings.Services;
 
 namespace Trofeo.Settings.ViewModels;
@@ -14,16 +15,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly IServiceLink _link;
 
-    public MainViewModel(IServiceLink link, LayoutDocument document, EditorPreferences preferences)
+    public MainViewModel(
+        IServiceLink link, LayoutDocument document, EditorPreferences preferences,
+        IFilePicker? picker = null, IReadOnlyList<string>? systemFonts = null)
     {
         _link = link;
         Session = new EditSession(document);
         LayoutTab = new LayoutTabViewModel(link, Session);
+        AppearanceTab = new AppearanceTabViewModel(Session, picker, systemFonts ?? new SkiaSystemFonts().Families);
         Document = document;
         Preferences = preferences;
         Tabs =
         [
-            LayoutTab, new AppearanceTabViewModel(), new ModulesTabViewModel(),
+            LayoutTab, AppearanceTab, new ModulesTabViewModel(),
             new ShortcutsTabViewModel(), new SettingsTabViewModel(),
         ];
         _selectedTab = Tabs[0];
@@ -31,16 +35,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _link.SetRealTimePreview(preferences.RealTimePreview);
         _link.Changed += Refresh;
         _link.FrameReceived += ShowFrame;
+        Session.Changed += RefreshBanner;
         Refresh();
+        RefreshBanner();
     }
 
     public IServiceLink Link => _link;
 
-    /// <summary>L'onglet Disposition : le damier de la fenêtre travaille avec lui.</summary>
     /// <summary>Les modifications de la disposition et leur historique, communs à tous les onglets (Ctrl+Z, Ctrl+Y).</summary>
     public EditSession Session { get; }
 
+    /// <summary>L'onglet Disposition : le damier de la fenêtre travaille avec lui.</summary>
     public LayoutTabViewModel LayoutTab { get; }
+
+    public AppearanceTabViewModel AppearanceTab { get; }
     public LayoutDocument Document { get; }
     public EditorPreferences Preferences { get; }
     public IReadOnlyList<TabViewModel> Tabs { get; }
@@ -48,6 +56,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGridVisible))]
     private TabViewModel _selectedTab;
+
+    /// <summary>
+    /// La ligne <c>Amber</c> sous la bande, dans tous les onglets : le message de la dernière modification (refus du
+    /// service, écriture impossible) puis les avertissements du rechargement qui ne regardent pas l'apparence. Les autres
+    /// avertissements sont sous le réglage concerné, dans l'onglet Personnalisation.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSaveMessage))]
+    private string? _saveMessage;
+
+    public bool HasSaveMessage => !string.IsNullOrEmpty(SaveMessage);
 
     /// <summary>Le service ne tourne pas : le panneau « Démarrer le service » remplace les onglets.</summary>
     [ObservableProperty]
@@ -86,6 +105,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         StartFailed = false;
         StartFailed = !await _link.StartServiceAsync();
+    }
+
+    private void RefreshBanner()
+    {
+        var lines = new List<string>();
+        if (!string.IsNullOrEmpty(Session.Message))
+            lines.Add(Session.Message);
+        lines.AddRange(Session.OtherWarnings);
+        SaveMessage = lines.Count == 0 ? null : string.Join('\n', lines);
     }
 
     private void Refresh()
@@ -143,7 +171,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _link.Changed -= Refresh;
         _link.FrameReceived -= ShowFrame;
+        Session.Changed -= RefreshBanner;
         LayoutTab.Dispose();
+        AppearanceTab.Dispose();
         Session.Dispose();
         PreviewImage?.Dispose();
         PreviewImage = null;

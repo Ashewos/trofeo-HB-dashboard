@@ -2,13 +2,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Trofeo.Settings.ViewModels;
 
-/// <summary>Un onglet de la fenêtre. La tâche 10 a rempli Disposition ; les tâches 11 à 13 remplissent les autres.</summary>
+/// <summary>Un onglet de la fenêtre. Les tâches 10 et 11 ont rempli Disposition et Personnalisation ; les tâches 12 et 13 remplissent les autres.</summary>
 public abstract class TabViewModel(string title) : ObservableObject
 {
     public string Title { get; } = title;
 }
-
-public sealed class AppearanceTabViewModel() : TabViewModel(Texts.TabAppearance);
 
 public sealed class ModulesTabViewModel() : TabViewModel(Texts.TabModules);
 

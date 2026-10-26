@@ -222,4 +222,128 @@
     <value>Damier de l'écran</value>
     <comment>Nom accessible du damier posé sur la bande.</comment>
   </data>
+  <data name="AppearanceTheme" xml:space="preserve">
+    <value>Thème</value>
+    <comment>Titre de la section des thèmes.</comment>
+  </data>
+  <data name="AppearanceThemeClassic" xml:space="preserve">
+    <value>Classique</value>
+    <comment>Nom du thème Classique.</comment>
+  </data>
+  <data name="AppearanceThemeClassicText" xml:space="preserve">
+    <value>Panneaux mats, typo de tableau de bord.</value>
+    <comment>Phrase de la carte Classique.</comment>
+  </data>
+  <data name="AppearanceThemeLiquidGlass" xml:space="preserve">
+    <value>Liquid Glass</value>
+    <comment>Nom du thème Liquid Glass.</comment>
+  </data>
+  <data name="AppearanceThemeLiquidGlassText" xml:space="preserve">
+    <value>Verre dépoli sur un fond de halos.</value>
+    <comment>Phrase de la carte Liquid Glass.</comment>
+  </data>
+  <data name="AppearanceThemePixel" xml:space="preserve">
+    <value>Pixel</value>
+    <comment>Nom du thème Pixel.</comment>
+  </data>
+  <data name="AppearanceThemePixelText" xml:space="preserve">
+    <value>Blocs nets et typo pixel.</value>
+    <comment>Phrase de la carte Pixel.</comment>
+  </data>
+  <data name="AppearanceOpacity" xml:space="preserve">
+    <value>Transparence</value>
+    <comment>Titre de la section du curseur de transparence des panneaux.</comment>
+  </data>
+  <data name="AppearanceOpacityValue" xml:space="preserve">
+    <value>{0} %</value>
+    <comment>{0} : la transparence choisie, de 0 à 100.</comment>
+  </data>
+  <data name="AppearanceFromThemeFeminine" xml:space="preserve">
+    <value>Celle du thème</value>
+    <comment>Transparence ou police : ne rien imposer, suivre le thème.</comment>
+  </data>
+  <data name="AppearanceFromThemeMasculine" xml:space="preserve">
+    <value>Celui du thème</value>
+    <comment>Fond : ne rien imposer, suivre le thème.</comment>
+  </data>
+  <data name="AppearanceFont" xml:space="preserve">
+    <value>Police</value>
+    <comment>Titre de la section de la liste des polices.</comment>
+  </data>
+  <data name="AppearanceBackground" xml:space="preserve">
+    <value>Fond</value>
+    <comment>Titre de la section du fond de l'écran.</comment>
+  </data>
+  <data name="AppearanceBackgroundColor" xml:space="preserve">
+    <value>Couleur</value>
+    <comment>Fond : une couleur unie.</comment>
+  </data>
+  <data name="AppearanceBackgroundPhoto" xml:space="preserve">
+    <value>Photo</value>
+    <comment>Fond : une image fixe.</comment>
+  </data>
+  <data name="AppearanceBackgroundGif" xml:space="preserve">
+    <value>GIF</value>
+    <comment>Fond : un GIF ou un WebP animé.</comment>
+  </data>
+  <data name="AppearanceBackgroundVideo" xml:space="preserve">
+    <value>Vidéo</value>
+    <comment>Fond : une vidéo.</comment>
+  </data>
+  <data name="AppearanceHexName" xml:space="preserve">
+    <value>Couleur du fond, écrite #RRGGBB</value>
+    <comment>Nom accessible du champ de la couleur.</comment>
+  </data>
+  <data name="AppearanceHexHint" xml:space="preserve">
+    <value>#RRGGBB</value>
+    <comment>Texte d'aide du champ de la couleur.</comment>
+  </data>
+  <data name="AppearanceBadColor" xml:space="preserve">
+    <value>Couleur invalide : écris-la comme #1A2B3C.</value>
+    <comment>Le champ de la couleur ne contient pas #RRGGBB.</comment>
+  </data>
+  <data name="AppearanceChooseFile" xml:space="preserve">
+    <value>Choisir un fichier…</value>
+    <comment>Ouvre le sélecteur de fichier du fond.</comment>
+  </data>
+  <data name="AppearanceNoFile" xml:space="preserve">
+    <value>Aucun fichier choisi.</value>
+    <comment>Fond photo, GIF ou vidéo sans fichier.</comment>
+  </data>
+  <data name="AppearanceVideoAdvice" xml:space="preserve">
+    <value>Une vidéo à la taille de l'écran (1920 × 462) coûte deux fois moins de processeur qu'une vidéo 1080p.</value>
+    <comment>Conseil sous le choix d'une vidéo.</comment>
+  </data>
+  <data name="AppearancePickPhoto" xml:space="preserve">
+    <value>Choisir une photo</value>
+    <comment>Titre du sélecteur de fichier (photo).</comment>
+  </data>
+  <data name="AppearancePickGif" xml:space="preserve">
+    <value>Choisir un GIF</value>
+    <comment>Titre du sélecteur de fichier (GIF).</comment>
+  </data>
+  <data name="AppearancePickVideo" xml:space="preserve">
+    <value>Choisir une vidéo</value>
+    <comment>Titre du sélecteur de fichier (vidéo).</comment>
+  </data>
+  <data name="AppearanceTypePhotos" xml:space="preserve">
+    <value>Photos</value>
+    <comment>Nom du filtre du sélecteur de fichier (photos).</comment>
+  </data>
+  <data name="AppearanceTypeGifs" xml:space="preserve">
+    <value>GIF et WebP animés</value>
+    <comment>Nom du filtre du sélecteur de fichier (GIF).</comment>
+  </data>
+  <data name="AppearanceTypeVideos" xml:space="preserve">
+    <value>Vidéos</value>
+    <comment>Nom du filtre du sélecteur de fichier (vidéos).</comment>
+  </data>
+  <data name="AppearanceLegibility" xml:space="preserve">
+    <value>Garde de lisibilité</value>
+    <comment>Titre de l'interrupteur de la garde de lisibilité.</comment>
+  </data>
+  <data name="AppearanceLegibilityHelp" xml:space="preserve">
+    <value>Assombrit un panneau quand le fond derrière lui est trop clair pour lire le texte.</value>
+    <comment>Explication sous l'interrupteur.</comment>
+  </data>
 </root>

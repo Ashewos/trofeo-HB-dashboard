@@ -199,4 +199,64 @@ public sealed class EditSessionTests : IDisposable
         await _session.UndoAsync();
         Assert.Equal(180, _document.Current.Rotation);
     }
+
+    // ---- Le message et les avertissements du dernier enregistrement (montrés par la fenêtre, quel que soit l'onglet) ----
+
+    [Fact]
+    public async Task Message_OfARefusedSave_IsKept_AndClearedByTheNextEdit()
+    {
+        _link.OnReload = () => Task.FromResult(new Reloaded(false, "Disposition invalide : trop de modules.", []));
+        var changes = 0;
+        _session.Changed += () => changes++;
+
+        await _session.ApplyAsync(layout => WithRotation(layout, 0));
+
+        Assert.Equal("Disposition invalide : trop de modules.", _session.Message);
+        Assert.True(changes > 0);
+
+        _link.OnReload = () => Task.FromResult(new Reloaded(true, null, []));
+        await _session.ApplyAsync(layout => WithRotation(layout, 90));
+        Assert.Null(_session.Message);
+    }
+
+    [Fact]
+    public async Task Message_OfAnExternalChange_IsKept()
+    {
+        _store.Save(Base with { Rotation = 0 });
+
+        await _session.ApplyAsync(layout => WithRotation(layout, 90));
+
+        Assert.Equal(Texts.LayoutChangedOutside, _session.Message);
+    }
+
+    [Fact]
+    public async Task Message_ClearedByUndo_AndByClearMessage()
+    {
+        await _session.ApplyAsync(layout => WithRotation(layout, 0));
+        _link.OnReload = () => Task.FromResult(new Reloaded(false, "Refusé.", []));
+        await _session.UndoAsync();
+        Assert.Equal("Refusé.", _session.Message);
+
+        _session.ClearMessage();
+        Assert.Null(_session.Message);
+    }
+
+    [Fact]
+    public async Task Warnings_AppearanceOnesStayUntilTheAppearanceChanges_OtherOnesFollowEachReload()
+    {
+        const string Missing = "Fond d'écran introuvable : x.png. Fond du thème utilisé.";
+        _link.OnReload = () => Task.FromResult(new Reloaded(true, null, [Missing, "Raccourci ignoré."]));
+        await _session.ApplyAsync(layout => layout with { Appearance = new Trofeo.Core.Rendering.AppearanceSettings("pixel") });
+        Assert.Equal([Missing], _session.AppearanceWarnings.Background);
+        Assert.Equal(["Raccourci ignoré."], _session.OtherWarnings);
+
+        // Un rechargement sans changement d'apparence : le service ne répète pas l'avertissement du fond, la fenêtre le garde.
+        _link.OnReload = () => Task.FromResult(new Reloaded(true, null, []));
+        await _session.ApplyAsync(layout => WithRotation(layout, 0));
+        Assert.Equal([Missing], _session.AppearanceWarnings.Background);
+        Assert.Empty(_session.OtherWarnings);
+
+        await _session.ApplyAsync(layout => layout with { Appearance = new Trofeo.Core.Rendering.AppearanceSettings("classique") });
+        Assert.Empty(_session.AppearanceWarnings.Background);
+    }
 }

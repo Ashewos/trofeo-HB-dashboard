@@ -27,8 +27,18 @@
     <AvaloniaResource Include="..\Trofeo.Core\Assets\Fonts\Manrope-Medium.ttf" Link="Assets\Fonts\Manrope-Medium.ttf" />
     <AvaloniaResource Include="..\Trofeo.Core\Assets\Fonts\BarlowSemiCondensed-Regular.ttf" Link="Assets\Fonts\BarlowSemiCondensed-Regular.ttf" />
     <AvaloniaResource Include="..\Trofeo.Core\Assets\Fonts\BarlowSemiCondensed-SemiBold.ttf" Link="Assets\Fonts\BarlowSemiCondensed-SemiBold.ttf" />
+    <!-- Pixelify Sans et VT323 : la liste des polices écrit chaque nom dans sa propre police. -->
+    <AvaloniaResource Include="..\Trofeo.Core\Assets\Fonts\PixelifySans-Regular.ttf" Link="Assets\Fonts\PixelifySans-Regular.ttf" />
+    <AvaloniaResource Include="..\Trofeo.Core\Assets\Fonts\VT323-Regular.ttf" Link="Assets\Fonts\VT323-Regular.ttf" />
+    <Content Include="..\Trofeo.Core\Assets\Fonts\OFL-PixelifySans.txt" Link="Assets\Fonts\OFL-PixelifySans.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Trofeo.Core\Assets\Fonts\OFL-VT323.txt" Link="Assets\Fonts\OFL-VT323.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Trofeo.Core\Assets\Fonts\OFL-Manrope.txt" Link="Assets\Fonts\OFL-Manrope.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\Trofeo.Core\Assets\Fonts\OFL-BarlowSemiCondensed.txt" Link="Assets\Fonts\OFL-BarlowSemiCondensed.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Les vignettes des cartes de thème : faites par l'option « thumbnails » de tools/Trofeo.ThemePreview (voir son aide). -->
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\Themes\*.png" />
   </ItemGroup>
 
   <ItemGroup>

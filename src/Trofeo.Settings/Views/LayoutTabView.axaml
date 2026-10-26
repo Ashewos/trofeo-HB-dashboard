@@ -6,7 +6,7 @@
              x:Class="Trofeo.Settings.Views.LayoutTabView"
              x:DataType="vm:LayoutTabViewModel">
 
-  <Grid RowDefinitions="Auto,Auto,*">
+  <Grid RowDefinitions="Auto,*">
 
     <!-- Sous la bande : la consigne, ou le motif du refus ; à droite, annuler et rétablir (Ctrl+Z, Ctrl+Y). -->
     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12" MinHeight="36">
@@ -20,11 +20,7 @@
       </StackPanel>
     </Grid>
 
-    <!-- Un message du service ou de l'écriture, jusqu'à la prochaine modification. -->
-    <TextBlock Grid.Row="1" Name="SaveMessage" Classes="warning" TextWrapping="Wrap" Margin="0,0,0,12"
-               Text="{Binding SaveMessage}" IsVisible="{Binding HasSaveMessage}" />
-
-    <Grid Grid.Row="2" ColumnDefinitions="320,16,*">
+    <Grid Grid.Row="1" ColumnDefinitions="320,16,*">
 
       <!-- Colonne de gauche : les modules sur l'écran, les modules retirés, et l'ajout. -->
       <Border Grid.Column="0" Classes="panel" Padding="16">

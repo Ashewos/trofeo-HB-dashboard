@@ -21,6 +21,9 @@ internal static class Program
           --theme <id> [--opacity x] [--font <famille>] [--background color:#hex|image:<chemin>|gif:<chemin>]
                        [--text-size small|normal|large] --png <fichier>
                                       une image à la demande (thèmes : classique, liquid-glass, pixel)
+          --thumbnails <dossier> [--width n]
+                                      une vignette par thème (<thème>.png, 480 px de large par défaut) : celles de
+                                      src/Trofeo.Settings/Assets/Themes, pour les cartes de l'onglet Personnalisation
           --check                     rend chaque thème à chaque taille de texte avec des textes longs et vérifie que rien
                                       n'est peint hors des panneaux ; affiche OK, ou une ligne par faute (code de sortie 1)
         """;
@@ -42,6 +45,11 @@ internal static class Program
             if (args.Length == 2 && args[0] == "--out")
             {
                 return await WriteSeriesAsync(args[1]).ConfigureAwait(false);
+            }
+
+            if (args.Length is 2 or 4 && args[0] == "--thumbnails")
+            {
+                return await WriteThumbnailsAsync(args).ConfigureAwait(false);
             }
 
             if (args[0] == "--theme")
@@ -118,6 +126,42 @@ internal static class Program
         var file = Path.Combine(folder, name);
         RenderTo(file, scene, composer, settings, size);
         Console.WriteLine("Aperçu écrit : " + file);
+    }
+
+    // --- Les vignettes des thèmes ---
+
+    private const int DefaultThumbnailWidth = 480;
+
+    /// <summary>
+    /// Une vignette par thème : l'écran complet de la série, ramené à <c>--width</c> pixels (480 par défaut) en gardant les
+    /// proportions de la dalle. Ce sont les images embarquées par le logiciel de réglage.
+    /// </summary>
+    private static async Task<int> WriteThumbnailsAsync(string[] args)
+    {
+        var width = DefaultThumbnailWidth;
+        if (args.Length == 4 && (args[2] != "--width" || !int.TryParse(args[3], NumberStyles.None, CultureInfo.InvariantCulture, out width) || width is < 16 or > GridGeometry.Width))
+        {
+            Console.Error.WriteLine("Largeur invalide (16 à 1920) : " + string.Join(' ', args.Skip(2)));
+            return 2;
+        }
+
+        var folder = args[1];
+        Directory.CreateDirectory(folder);
+        using var scene = await PreviewScene.CreateAsync(longTexts: false).ConfigureAwait(false);
+        using var composer = new FrameComposer();
+        var height = (int)Math.Round(width * (double)GridGeometry.Height / GridGeometry.Width);
+        foreach (var definition in Themes.All)
+        {
+            var theme = Resolve(new AppearanceSettings(definition.Theme.Id));
+            using var background = BackgroundFactory.Create(null, theme, null, Warn);
+            using var frame = composer.Compose(PreviewScene.Layout(TextSize.Normal), scene.ByPlacement, theme, background, PreviewScene.Now);
+            using var thumbnail = frame.Resize(new SKImageInfo(width, height, frame.ColorType, SKAlphaType.Opaque), new SKSamplingOptions(SKCubicResampler.Mitchell));
+            var file = Path.Combine(folder, definition.Theme.Id + ".png");
+            SavePng(thumbnail, file);
+            Console.WriteLine("Vignette écrite : " + file);
+        }
+
+        return 0;
     }
 
     // --- Une image à la demande ---

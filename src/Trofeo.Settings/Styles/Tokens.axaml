@@ -47,6 +47,21 @@
   <CornerRadius x:Key="RadiusPanel">8</CornerRadius>
   <CornerRadius x:Key="RadiusControl">6</CornerRadius>
 
+  <!-- Les champs de saisie (Fluent) prennent les jetons de la fenêtre : Raised, contour Line, Accent au focus. -->
+  <SolidColorBrush x:Key="TextControlBackground" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="{StaticResource PanelColor}" />
+  <SolidColorBrush x:Key="TextControlBorderBrush" Color="{StaticResource LineColor}" />
+  <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="{StaticResource MutedColor}" />
+  <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{StaticResource AccentColor}" />
+  <SolidColorBrush x:Key="TextControlForeground" Color="{StaticResource TextColor}" />
+  <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="{StaticResource TextColor}" />
+  <SolidColorBrush x:Key="TextControlForegroundFocused" Color="{StaticResource TextColor}" />
+  <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="{StaticResource MutedColor}" />
+  <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="{StaticResource MutedColor}" />
+  <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="{StaticResource MutedColor}" />
+
   <!-- Le thème Fluent prend l'accent du produit, pas celui de Windows. -->
   <Color x:Key="SystemAccentColor">#7FD1C7</Color>
   <Color x:Key="SystemAccentColorDark1">#6AB9B0</Color>
