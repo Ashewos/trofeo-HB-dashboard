@@ -44,7 +44,7 @@ public class ControlChannelTests
         public ServiceStatus StatusToReturn { get; set; } = SampleStatus();
         public Func<CancellationToken, Task<Reloaded>> OnReload { get; set; } = _ => Task.FromResult(new Reloaded(true, null, []));
         public Func<Guid, CancellationToken, Task<bool>> OnRestart { get; set; } = (_, _) => Task.FromResult(true);
-        public Action<Action<PreviewFrame>>? OnSubscribe { get; set; }
+        public Exception? SubscribeError { get; set; }
 
         public readonly TaskCompletionSource<Action<PreviewFrame>> Subscribed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly TaskCompletionSource Unsubscribed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -64,6 +64,8 @@ public class ControlChannelTests
 
         public IDisposable SubscribePreview(int maxFps, Action<PreviewFrame> onFrame)
         {
+            if (SubscribeError is not null)
+                throw SubscribeError;
             SubscribedMaxFps = maxFps;
             Subscribed.TrySetResult(onFrame);
             return new Subscription(Unsubscribed);
@@ -262,6 +264,25 @@ public class ControlChannelTests
         var frame = await received.Task.WaitAsync(Wait);
         Assert.Equal(180, frame.Rotation);
         Assert.Equal(new byte[] { 0xFF, 0xD8, 9, 8, 7, 0xFF, 0xD9 }, frame.Jpeg);
+    }
+
+    [Fact]
+    public async Task Preview_HandlerThrows_ClientGetsControlException()
+    {
+        var name = NewPipeName();
+        var handler = new FakeHandler { SubscribeError = new InvalidOperationException("Aperçu indisponible") };
+        using var server = new ControlServer(name, handler);
+        server.Start();
+        await using var client = await ConnectAsync(name);
+
+        var ex = await Assert.ThrowsAsync<ControlException>(() => client.SubscribePreviewAsync(12, CancellationToken.None));
+        Assert.Equal("Aperçu indisponible", ex.Message);
+
+        // La connexion reste utilisable, et un nouvel abonnement peut réussir.
+        Assert.True((await client.GetStatusAsync(CancellationToken.None)).Emulated);
+        handler.SubscribeError = null;
+        await client.SubscribePreviewAsync(12, CancellationToken.None);
+        await handler.Subscribed.Task.WaitAsync(Wait);
     }
 
     [Fact]

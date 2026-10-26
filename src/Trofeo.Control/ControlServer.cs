@@ -212,7 +212,14 @@ public sealed class ControlServer(string pipeName, IControlHandler handler) : ID
                 previous?.Dispose();
                 _slot.Clear();
                 if (maxFps > 0)
-                    _preview = _handler.SubscribePreview(maxFps, _slot.Offer);
+                {
+                    try { _preview = _handler.SubscribePreview(maxFps, _slot.Offer); }
+                    catch (Exception ex) when (ex is not OperationCanceledException || !_cts.IsCancellationRequested)
+                    {
+                        // Une erreur du service revient au client en « error », comme pour les autres requêtes.
+                        return new Response(request.Id, MessageTypes.Error) { Message = ex.Message };
+                    }
+                }
             }
             return new Response(request.Id, request.Type);
         }
