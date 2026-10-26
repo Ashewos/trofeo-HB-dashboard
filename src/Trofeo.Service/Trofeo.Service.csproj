@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- La boucle d'affichage et le registre des modules, sans WinForms ni Media Foundation :
+       testables sous Linux, et réutilisables par le logiciel de réglage. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Trofeo.Service.Tests" />
+    <InternalsVisibleTo Include="Trofeo.Display" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Trofeo.Core\Trofeo.Core.csproj" />
+    <ProjectReference Include="..\Trofeo.Device\Trofeo.Device.csproj" />
+    <ProjectReference Include="..\Trofeo.Modules.Agents\Trofeo.Modules.Agents.csproj" />
+    <ProjectReference Include="..\Trofeo.Modules.Clock\Trofeo.Modules.Clock.csproj" />
+    <ProjectReference Include="..\Trofeo.Modules.Monitoring\Trofeo.Modules.Monitoring.csproj" />
+    <ProjectReference Include="..\Trofeo.Modules.Network\Trofeo.Modules.Network.csproj" />
+    <ProjectReference Include="..\Trofeo.Modules.NowPlaying\Trofeo.Modules.NowPlaying.csproj" />
+    <ProjectReference Include="..\Trofeo.Sensors\Trofeo.Sensors.csproj" />
+  </ItemGroup>
+
+</Project>

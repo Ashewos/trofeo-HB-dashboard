@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Trofeo.Core.Shortcuts;
 using Trofeo.ModuleKit;
+using Trofeo.TestDoubles;
 
 namespace Trofeo.Display.Tests;
 

@@ -26,6 +26,7 @@
     <ProjectReference Include="..\Trofeo.Modules.Network\Trofeo.Modules.Network.csproj" />
     <ProjectReference Include="..\Trofeo.Modules.NowPlaying\Trofeo.Modules.NowPlaying.csproj" />
     <ProjectReference Include="..\Trofeo.Sensors\Trofeo.Sensors.csproj" />
+    <ProjectReference Include="..\Trofeo.Service\Trofeo.Service.csproj" />
   </ItemGroup>
 
 </Project>

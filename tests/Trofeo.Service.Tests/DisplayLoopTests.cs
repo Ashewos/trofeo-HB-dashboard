@@ -860,24 +860,6 @@ public sealed class DisplayLoopTests
     }
 }
 
-internal sealed class CapturingTraceListener : TraceListener
-{
-    private readonly object _gate = new();
-    private readonly List<string> _lines = [];
-
-    public string[] Lines
-    {
-        get { lock (_gate) return [.. _lines]; }
-    }
-
-    public override void Write(string? message) => WriteLine(message);
-
-    public override void WriteLine(string? message)
-    {
-        lock (_gate) _lines.Add(message ?? "");
-    }
-}
-
 public sealed class ModuleRegistryTests
 {
     /// <summary>Fournisseur de météo qui n'est jamais interrogé : les réglages de ces tests n'ont pas de lieu.</summary>
@@ -956,29 +938,5 @@ public sealed class ModuleRegistryTests
         var registry = new ModuleRegistry([new Trofeo.Modules.Clock.ClockFactory(new NoWeather())], _ => new FakeSecretStore());
 
         Assert.Null(registry.Create(Placement("meteo"), TimeProvider.System));
-    }
-}
-
-public sealed class TrayIconTests
-{
-    [Theory]
-    [InlineData(ScreenState.Ready, null, "Trofeo dashboard — écran : prêt")]
-    [InlineData(ScreenState.Ready, "ignoré", "Trofeo dashboard — écran : prêt")]
-    [InlineData(ScreenState.Recovering, null, "Trofeo dashboard — écran : reprise…")]
-    [InlineData(ScreenState.Disconnected, null, "Trofeo dashboard — écran : non branché")]
-    [InlineData(ScreenState.Disconnected, "Écran non branché", "Trofeo dashboard — écran : Écran non branché")]
-    [InlineData(ScreenState.Disconnected, ScreenDevice.BusyReason, "Trofeo dashboard — écran : " + ScreenDevice.BusyReason)]
-    public void Tooltip_MapsScreenStateAndReason(ScreenState state, string? reason, string expected)
-    {
-        Assert.Equal(expected, TrayIcon.Tooltip(state, reason));
-    }
-
-    [Fact]
-    public void Tooltip_LongReason_IsTruncatedTo127Chars()
-    {
-        var tooltip = TrayIcon.Tooltip(ScreenState.Disconnected, new string('x', 500));
-
-        Assert.Equal(127, tooltip.Length);
-        Assert.StartsWith("Trofeo dashboard — écran : xxx", tooltip);
     }
 }
