@@ -53,6 +53,7 @@ public sealed class MediaFoundationBackground : IBackground
     private bool _fresh;                // un nouvel échantillon attend son recadrage
     private bool _broken;               // lecture impossible : on garde la dernière image
     private bool _still;                // vidéo d'une seule image : une image fixe, le lecteur est libéré
+    private string? _tuningFailure;      // la cause du refus des réglages du décodeur (il garde alors son défaut)
     private string? _failure;           // la cause de la première panne, pour l'avertissement d'ouverture
     private int _tourSamples;           // échantillons lus pendant le tour en cours
     private int _version = 1;
@@ -68,7 +69,9 @@ public sealed class MediaFoundationBackground : IBackground
     }
 
     /// <summary>Rend null, avec un avertissement, si le fichier manque, n'a pas de flux vidéo ou n'est pas décodable. Ne lève jamais.</summary>
-    public static MediaFoundationBackground? TryOpen(string path, Action<string>? warn)
+    public static MediaFoundationBackground? TryOpen(string path, Action<string>? warn) => TryOpen(path, warn, DecoderTuning.Default);
+
+    internal static MediaFoundationBackground? TryOpen(string path, Action<string>? warn, DecoderTuning tuning)
     {
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
         {
@@ -82,10 +85,14 @@ public sealed class MediaFoundationBackground : IBackground
         {
             if (EnsureStarted())
             {
-                background = Open(path);
+                background = Open(path, tuning);
                 if (background.ReadFirstFrame())
                 {
                     background._warn = warn;
+                    if (background._tuningFailure is { } refused)
+                    {
+                        warn?.Invoke($"Réglage du décodeur vidéo refusé pour {path} ({refused}). Le décodeur garde ses réglages par défaut : la lecture marche, mais elle consomme plus.");
+                    }
                     return background;
                 }
 
@@ -129,7 +136,7 @@ public sealed class MediaFoundationBackground : IBackground
         }
     }
 
-    private static MediaFoundationBackground Open(string path)
+    private static MediaFoundationBackground Open(string path, DecoderTuning tuning)
     {
         using var attributes = MediaFactory.MFCreateAttributes(1);
         attributes.Set(SourceReaderAttributeKeys.EnableVideoProcessing, 1u); // convertit tout format décodé en RGB32
@@ -147,8 +154,10 @@ public sealed class MediaFoundationBackground : IBackground
                 reader.SetCurrentMediaType(SourceReaderIndex.FirstVideoStream, wanted);
             }
 
+            var tuningFailure = DecoderTuner.Apply(reader, tuning); // le décodeur existe depuis le type de sortie
+
             screen = new SKBitmap(BackgroundSupport.ScreenInfo);
-            var background = new MediaFoundationBackground(path, reader, screen);
+            var background = new MediaFoundationBackground(path, reader, screen) { _tuningFailure = tuningFailure };
             reader = null;
             screen = null; // l'instance en est propriétaire
             return background;

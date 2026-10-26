@@ -133,7 +133,15 @@ Trofeo.HardwareCheck.exe --appearance legibility=off
 
 ### Fonds animés
 
-- **Vidéo** : préfère du 1080p, 30 images par seconde au plus. Le décodeur lit chaque image de la vidéo, sans carte graphique (décodage logiciel) : plus la vidéo est lourde, plus le processeur travaille. La lecture boucle et n'a pas de son.
+- **Vidéo** : préfère une vidéo **à la taille de l'écran (1920 × 462)**, 30 images par seconde au plus : elle coûte deux fois moins de processeur et 40 % de mémoire en moins qu'une vidéo 1080p. Le décodeur lit chaque image de la vidéo, sans carte graphique (décodage logiciel) : plus la vidéo est lourde, plus le processeur travaille. La lecture boucle et n'a pas de son.
+- **Coût du décodeur vidéo** : le décodeur n'utilise qu'un seul fil de travail (Windows en prend un par cœur logique par défaut, avec leurs tampons d'images : trois fois plus de mémoire pour le même débit de décodage). Mesuré par `tools/Trofeo.VideoBench` (le processus de lecture seul, 12 images par seconde montrées, 30 i/s lues, 60 s après 10 s de chauffe, sur 20 cœurs logiques) :
+
+  | Vidéo (H.264, 30 i/s) | Mémoire propre | Processeur (un cœur) | Processeur (machine) |
+  |---|---|---|---|
+  | 1920 × 462 | 43 à 46 Mo | environ 20 à 28 % | environ 1,0 à 1,4 % |
+  | 1920 × 1080 | 71 à 74 Mo | environ 42 % | environ 2,1 % |
+
+  Une vidéo 1080p à 60 i/s et 40 Mb/s est encore lue en temps réel (marge d'environ 1,4), mais pas une vidéo 4K. Ces chiffres s'ajoutent à ceux du service sans vidéo.
 - Quand l'écran revient après une absence (câble débranché, veille), la vidéo reprend là où elle en était, comme après une pause : elle ne rattrape pas le temps perdu.
 - **GIF** : il boucle aussi. L'écran ne reçoit jamais plus de 12 images par seconde, quel que soit le fond. Une vidéo d'une seule image est traitée comme une image fixe.
 - **Coût** : toutes les 100 images, le journal (`display.log`) indique le temps moyen de rendu et d'envoi, par exemple `Image 200 envoyée (164573 octets) ; rendu 41 ms, envoi 58 ms en moyenne`. Au-delà de 83 ms au total, 12 images par seconde ne sont plus tenues.

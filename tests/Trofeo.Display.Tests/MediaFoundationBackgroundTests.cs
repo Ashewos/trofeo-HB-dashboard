@@ -226,6 +226,49 @@ public sealed class MediaFoundationBackgroundTests : IDisposable
     }
 
     [Fact]
+    public void Video_DefaultTuning_IsAcceptedByTheDecoder()
+    {
+        // Open() exige zéro avertissement : le décodeur de cette machine accepte bien le réglage par défaut (un fil de travail).
+        Assert.Equal(1, DecoderTuning.Default.WorkerThreads);
+        using var video = Open(Video());
+
+        Assert.True(video.Advance(TimeSpan.FromMilliseconds(250)));
+        AssertColor(Palette[2], Center(video));
+    }
+
+    [Fact]
+    public void Video_TuningRefused_StillPlays_AndWarnsWithTheCause()
+    {
+        var path = Video();
+        var warnings = new List<string>();
+        var refused = new DecoderTuning(1) { Fault = () => throw new COMException("réglage refusé", unchecked((int)0x80004001)) };
+
+        using var video = Assert.IsType<MediaFoundationBackground>(MediaFoundationBackground.TryOpen(path, warnings.Add, refused));
+
+        var warning = Assert.Single(warnings);
+        Assert.Contains("réglage refusé", warning);
+        Assert.Contains("0x80004001", warning);
+        Assert.Contains(path, warning);
+        Assert.Contains("par défaut", warning); // le décodeur garde ses réglages : la lecture marche quand même
+        Assert.True(video.IsAnimated);
+        AssertColor(Palette[0], Center(video));
+        Assert.True(video.Advance(TimeSpan.FromMilliseconds(250)));
+        AssertColor(Palette[2], Center(video));
+    }
+
+    [Fact]
+    public void Video_DecoderKeepsItsDefault_WhenNoTuningIsAsked()
+    {
+        var warnings = new List<string>();
+
+        using var video = Assert.IsType<MediaFoundationBackground>(MediaFoundationBackground.TryOpen(Video(), warnings.Add, new DecoderTuning(null)));
+
+        Assert.Empty(warnings);
+        Assert.True(video.Advance(TimeSpan.FromMilliseconds(250)));
+        AssertColor(Palette[2], Center(video));
+    }
+
+    [Fact]
     public void Video_IsNotFlipped()
     {
         // Haut rouge, bas bleu : une vidéo lue à l'envers (images « bottom-up » de Media Foundation) se verrait ici.
