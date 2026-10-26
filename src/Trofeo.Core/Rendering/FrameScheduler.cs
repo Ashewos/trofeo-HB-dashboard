@@ -12,6 +12,7 @@ public sealed class FrameScheduler : IDisposable
     private bool _hasRendered;
     private long _lastRenderTimestamp;
     private long? _renderStart; // début du rendu en cours, noté par ShouldRender
+    private long _minIntervalTicks;
 
     /// <param name="time">Source de temps (mockable en test).</param>
     /// <param name="maxFps">Plafond d'images par seconde ; doit être strictement positif.</param>
@@ -24,11 +25,28 @@ public sealed class FrameScheduler : IDisposable
         }
 
         _time = time;
-        MinInterval = TimeSpan.FromTicks((long)Math.Round(TimeSpan.TicksPerSecond / maxFps));
+        _minIntervalTicks = IntervalTicks(maxFps);
     }
 
     /// <summary>Durée minimale entre deux envois (1000 / maxFps ms).</summary>
-    public TimeSpan MinInterval { get; }
+    public TimeSpan MinInterval => TimeSpan.FromTicks(Volatile.Read(ref _minIntervalTicks));
+
+    /// <summary>Plus petit et plus grand plafonds acceptés par <see cref="SetMaxFps"/>, en images par seconde.</summary>
+    public const double MinFpsLimit = 1;
+
+    public const double MaxFpsLimit = 12;
+
+    /// <summary>
+    /// Change le plafond d'images par seconde, à chaud ; borné à [1, 12]. Une valeur qui n'est pas un nombre est ignorée.
+    /// Peut être appelé depuis n'importe quel thread : l'intervalle suivant s'en sert.
+    /// </summary>
+    public void SetMaxFps(double maxFps)
+    {
+        if (double.IsNaN(maxFps)) return;
+        Volatile.Write(ref _minIntervalTicks, IntervalTicks(Math.Clamp(maxFps, MinFpsLimit, MaxFpsLimit)));
+    }
+
+    private static long IntervalTicks(double maxFps) => (long)Math.Round(TimeSpan.TicksPerSecond / maxFps);
 
     /// <summary>
     /// Levé par <see cref="MarkDirty"/> et <see cref="Wake"/> : la boucle d'affichage dort dessus

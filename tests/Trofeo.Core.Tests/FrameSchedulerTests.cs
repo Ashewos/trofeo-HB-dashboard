@@ -218,4 +218,41 @@ public class FrameSchedulerTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new FrameScheduler(new FakeTimeProvider(), maxFps));
     }
+
+    [Fact]
+    public void SetMaxFps_ChangesRate_AtRuntime()
+    {
+        var time = new FakeTimeProvider();
+        var scheduler = new FrameScheduler(time);
+
+        scheduler.SetMaxFps(4);
+
+        Assert.Equal(4, CountRendersOverOneSecond(time, scheduler));
+        Assert.Equal(250, scheduler.MinInterval.TotalMilliseconds, precision: 3);
+    }
+
+    [Theory]
+    [InlineData(100, 12)]
+    [InlineData(12.5, 12)]
+    [InlineData(0.2, 1)]
+    [InlineData(0, 1)]
+    [InlineData(-3, 1)]
+    public void SetMaxFps_IsBoundedToOneAndTwelve(double requested, double effective)
+    {
+        var scheduler = new FrameScheduler(new FakeTimeProvider(), maxFps: 6);
+
+        scheduler.SetMaxFps(requested);
+
+        Assert.Equal(1000.0 / effective, scheduler.MinInterval.TotalMilliseconds, precision: 3);
+    }
+
+    [Fact]
+    public void SetMaxFps_NaN_KeepsCurrentRate()
+    {
+        var scheduler = new FrameScheduler(new FakeTimeProvider(), maxFps: 6);
+
+        scheduler.SetMaxFps(double.NaN);
+
+        Assert.Equal(1000.0 / 6, scheduler.MinInterval.TotalMilliseconds, precision: 3);
+    }
 }

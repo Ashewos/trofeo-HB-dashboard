@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Trofeo.Control\Trofeo.Control.csproj" />
     <ProjectReference Include="..\Trofeo.Core\Trofeo.Core.csproj" />
     <ProjectReference Include="..\Trofeo.Device\Trofeo.Device.csproj" />
     <ProjectReference Include="..\Trofeo.Modules.Agents\Trofeo.Modules.Agents.csproj" />
