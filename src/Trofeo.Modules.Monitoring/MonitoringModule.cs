@@ -8,7 +8,7 @@ namespace Trofeo.Modules.Monitoring;
 /// Lignes de monitoring (CPU, GPU, RAM…) avec barre et valeurs, redessinées à chaque relevé de la source de capteurs.
 /// Passe hors ligne si aucun relevé n'arrive pendant 5 s.
 /// </summary>
-public sealed class MonitoringModule : IModule
+public sealed class MonitoringModule : IModule, IModuleNotices
 {
     /// <summary>Délai sans relevé au bout duquel le module est hors ligne.</summary>
     private static readonly TimeSpan OfflineAfter = TimeSpan.FromSeconds(5);
@@ -39,6 +39,7 @@ public sealed class MonitoringModule : IModule
     private bool _disposed;
     private long _lastUpdateTicks;
     private ModuleStatus _status = new(ModuleHealth.Online);
+    private int _fittingRows = -1; // nombre de lignes qui tenaient au dernier rendu ; -1 : pas encore rendu
 
     public MonitoringModule(ModuleDescriptor descriptor, MonitoringSettings settings, ISensorFeed feed, TimeProvider time)
     {
@@ -51,6 +52,22 @@ public sealed class MonitoringModule : IModule
     public ModuleDescriptor Descriptor { get; }
     public ModuleStatus Status => Volatile.Read(ref _status);
     public bool IsAnimating => false;
+
+    /// <summary>
+    /// Une remarque quand le dernier rendu n'a pas pu montrer toutes les lignes choisies ; aucune avant le premier rendu
+    /// ni quand tout tient.
+    /// </summary>
+    public IReadOnlyList<string> Notices
+    {
+        get
+        {
+            var fitting = Volatile.Read(ref _fittingRows);
+            var total = _settings.Rows.Count;
+            if (fitting < 0 || fitting >= total) return [];
+            var (count, verb) = fitting == 1 ? ("1 ligne", "tient") : ($"{fitting} lignes", "tiennent");
+            return [$"{count} sur {total} {verb} à cette taille : agrandis le module ou retire des lignes."];
+        }
+    }
 
     public event EventHandler? Invalidated;
     public event EventHandler? StatusChanged;
@@ -97,12 +114,14 @@ public sealed class MonitoringModule : IModule
         var theme = ctx.Theme;
         var bounds = ctx.Bounds;
 
+        var rowIds = VisibleRows(bounds, scale);
+        Volatile.Write(ref _fittingRows, rowIds.Count);
+
         var left = bounds.Left + MonitoringRows.PaddingX * scale;
         var right = bounds.Right - MonitoringRows.PaddingX * scale;
         var width = right - left;
         if (width <= 0f) return;
 
-        var rowIds = VisibleRows(bounds, scale);
         DrawTitle(canvas, ctx, snapshot, rowIds.Count, left, width);
         if (rowIds.Count == 0) return;
 

@@ -34,6 +34,16 @@ public class SettingsDocumentTests
     }
 
     [Fact]
+    public void Set_UndefinedValue_ActsLikeNull()
+    {
+        var input = Json("""{"a":1,"b":{"c":2}}""");
+
+        Assert.Equal("""{"b":{"c":2}}""", SettingsDocument.Set(input, "a", default(JsonElement)).GetRawText());
+        Assert.Equal("""{"a":1,"b":{}}""", SettingsDocument.Set(input, "b.c", default(JsonElement)).GetRawText());
+        Assert.Equal("""{"a":1,"b":{"c":2}}""", SettingsDocument.Set(input, "x.y", default(JsonElement)).GetRawText());
+    }
+
+    [Fact]
     public void Set_OnNonObjectRoot_StartsFromEmpty()
     {
         Assert.Equal("""{"a":1}""", SettingsDocument.Set(Json("[1,2]"), "a", Json("1")).GetRawText());

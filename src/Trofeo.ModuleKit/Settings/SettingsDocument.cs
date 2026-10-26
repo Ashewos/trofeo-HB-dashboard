@@ -24,9 +24,10 @@ public static class SettingsDocument
         return current.Clone();
     }
 
-    /// <summary>value null : supprime la clé. Crée les objets intermédiaires ; une racine qui n'est pas un objet devient {}.</summary>
+    /// <summary>value null (ou indéfini, <c>default(JsonElement)</c>) : supprime la clé. Crée les objets intermédiaires ; une racine qui n'est pas un objet devient {}.</summary>
     public static JsonElement Set(JsonElement settings, string key, JsonElement? value)
     {
+        if (value is { ValueKind: JsonValueKind.Undefined }) value = null; // GetRawText lèverait sur un élément indéfini
         var root = settings.ValueKind == JsonValueKind.Object
             ? (JsonObject)JsonNode.Parse(settings.GetRawText())!
             : new JsonObject();

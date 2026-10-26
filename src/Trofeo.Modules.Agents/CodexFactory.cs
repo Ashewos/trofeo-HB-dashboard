@@ -6,7 +6,7 @@ namespace Trofeo.Modules.Agents;
 /// Fabrique du module Codex. <paramref name="createSource"/> choisit la source de l'état (les tests y mettent
 /// une source factice).
 /// </summary>
-public sealed class CodexFactory(Func<ModuleContext, IAgentSource> createSource) : IModuleFactory
+public sealed class CodexFactory(Func<ModuleContext, IAgentSource> createSource) : IConfigurableModuleFactory
 {
     private static readonly AgentFlavor Flavor = new(
         "Aucune session Codex ouverte",
@@ -23,7 +23,10 @@ public sealed class CodexFactory(Func<ModuleContext, IAgentSource> createSource)
             [SizePreset.Compact] = new GridSize(6, 3),
             [SizePreset.Ideal] = new GridSize(8, 4),
             [SizePreset.Large] = new GridSize(10, 4),
-        });
+        },
+        AcceptsCommands: true);
+
+    public SettingsSchema Schema { get; } = new(AgentSchema.CommonFields());
 
     /// <summary>Fabrique de production : l'état est lu dans le dossier de Codex de l'utilisateur.</summary>
     public static CodexFactory CreateProduction() =>

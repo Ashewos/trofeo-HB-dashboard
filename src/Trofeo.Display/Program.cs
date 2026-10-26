@@ -71,7 +71,7 @@ static class Program
                 new MonitoringFactory(sensorHub),
                 new NowPlayingFactory(ctx => new SmtcMediaSource(ctx.Log)),
                 NetworkFactory.CreateProduction(http),
-                ClaudeCodeFactory.CreateProduction(),
+                ClaudeCodeFactory.CreateProduction(AppLocator.FindDirectory("mods")),
                 CodexFactory.CreateProduction(),
             ],
             vault.Scope);

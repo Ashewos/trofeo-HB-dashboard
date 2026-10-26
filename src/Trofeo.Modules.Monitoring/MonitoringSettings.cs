@@ -13,7 +13,7 @@ public sealed record MonitoringSettings(string? Title, IReadOnlyList<string> Row
 
     /// <summary>
     /// Lit les réglages sans jamais lever : une forme inattendue donne les valeurs par défaut, les identifiants
-    /// de ligne inconnus ou qui ne sont pas du texte sont ignorés, un titre vide ou blanc vaut <c>null</c>.
+    /// de ligne inconnus, en double (la première occurrence est gardée) ou qui ne sont pas du texte sont ignorés, un titre vide ou blanc vaut <c>null</c>.
     /// </summary>
     public static MonitoringSettings FromJson(JsonElement settings)
     {
@@ -33,7 +33,7 @@ public sealed record MonitoringSettings(string? Title, IReadOnlyList<string> Row
             {
                 if (item.ValueKind != JsonValueKind.String) continue;
                 var id = item.GetString()?.Trim().ToLowerInvariant();
-                if (id is not null && MonitoringRows.IsKnown(id)) rows.Add(id);
+                if (id is not null && MonitoringRows.IsKnown(id) && !rows.Contains(id)) rows.Add(id);
             }
         }
 

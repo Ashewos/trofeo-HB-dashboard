@@ -17,6 +17,10 @@ public interface IWeatherProvider
 {
     /// <exception cref="WeatherException">Réponse indisponible, illisible ou trop lente.</exception>
     Task<WeatherNow> GetCurrentAsync(WeatherLocation where, TemperatureUnit unit, CancellationToken ct);
+
+    /// <summary>Jusqu'à 5 villes correspondant à <paramref name="name"/> ; vide si aucune.</summary>
+    /// <exception cref="WeatherException">Réponse indisponible, illisible ou trop lente.</exception>
+    Task<IReadOnlyList<CitySuggestion>> SearchCityAsync(string name, CancellationToken ct);
 }
 
 /// <summary>Échec d'une requête météo (réseau, statut HTTP, réponse illisible ou délai dépassé).</summary>

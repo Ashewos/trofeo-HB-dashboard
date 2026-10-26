@@ -21,4 +21,15 @@ internal sealed class FakeWeatherProvider : IWeatherProvider
         LastToken = ct;
         return Respond();
     }
+
+    public string? LastSearch { get; private set; }
+
+    /// <summary>Villes programmées pour la recherche ; lever une exception simule un échec.</summary>
+    public Func<string, Task<IReadOnlyList<CitySuggestion>>> Search { get; set; } = _ => Task.FromResult<IReadOnlyList<CitySuggestion>>([]);
+
+    public Task<IReadOnlyList<CitySuggestion>> SearchCityAsync(string name, CancellationToken ct)
+    {
+        LastSearch = name;
+        return Search(name);
+    }
 }

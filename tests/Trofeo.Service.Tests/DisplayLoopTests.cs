@@ -868,6 +868,9 @@ public sealed class ModuleRegistryTests
         public Task<Trofeo.Modules.Clock.WeatherNow> GetCurrentAsync(
             Trofeo.Modules.Clock.WeatherLocation where, Trofeo.Modules.Clock.TemperatureUnit unit, CancellationToken ct) =>
             throw new InvalidOperationException("Aucune météo attendue.");
+
+        public Task<IReadOnlyList<Trofeo.Modules.Clock.CitySuggestion>> SearchCityAsync(string name, CancellationToken ct) =>
+            throw new InvalidOperationException("Aucune recherche attendue.");
     }
 
     private sealed class CapturingFactory(Action<ModuleContext> capture) : IModuleFactory

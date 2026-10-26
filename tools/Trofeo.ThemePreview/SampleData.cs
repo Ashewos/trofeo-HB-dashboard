@@ -287,6 +287,9 @@ internal sealed class PreviewScene : IDisposable
     {
         public Task<WeatherNow> GetCurrentAsync(WeatherLocation where, TemperatureUnit unit, CancellationToken ct) =>
             Task.FromResult(longTexts ? new WeatherNow(-12.4, 96, true) : new WeatherNow(12, 2, true));
+
+        public Task<IReadOnlyList<CitySuggestion>> SearchCityAsync(string name, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<CitySuggestion>>([]);
     }
 
     /// <summary>
