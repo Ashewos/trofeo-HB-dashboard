@@ -1,0 +1,58 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Les jetons de la fenêtre : ceux de l'écran Classique, pour que la fenêtre et la dalle forment un seul objet.
+    Plan 5, « Design de la fenêtre ». Chaque couleur existe en Color (…Color) et en pinceau (sans suffixe).
+  -->
+
+  <!-- Couleurs -->
+  <Color x:Key="InkColor">#0E1116</Color>       <!-- fond de la fenêtre (le fond de l'écran) -->
+  <Color x:Key="PanelColor">#151920</Color>     <!-- colonnes et cartes -->
+  <Color x:Key="RaisedColor">#1C212A</Color>    <!-- survol, élément choisi, champs -->
+  <Color x:Key="LineColor">#262C37</Color>      <!-- séparateurs, cadre de la bande -->
+  <Color x:Key="TextColor">#ECEEF0</Color>      <!-- texte -->
+  <Color x:Key="MutedColor">#8C929C</Color>     <!-- texte secondaire (4,5:1 au moins sur Panel) -->
+  <Color x:Key="AccentColor">#7FD1C7</Color>    <!-- sélection, focus, bouton principal (texte Ink dessus) -->
+  <Color x:Key="AmberColor">#F2B84B</Color>     <!-- mode émulé, avertissements -->
+  <Color x:Key="RefuseColor">#E5604F</Color>    <!-- place refusée, hors ligne -->
+  <Color x:Key="OnlineColor">#6FD08C</Color>    <!-- en ligne -->
+  <Color x:Key="IdleColor">#5B606D</Color>      <!-- non configuré -->
+
+  <SolidColorBrush x:Key="Ink" Color="{StaticResource InkColor}" />
+  <SolidColorBrush x:Key="Panel" Color="{StaticResource PanelColor}" />
+  <SolidColorBrush x:Key="Raised" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="Line" Color="{StaticResource LineColor}" />
+  <SolidColorBrush x:Key="Text" Color="{StaticResource TextColor}" />
+  <SolidColorBrush x:Key="Muted" Color="{StaticResource MutedColor}" />
+  <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}" />
+  <SolidColorBrush x:Key="Amber" Color="{StaticResource AmberColor}" />
+  <SolidColorBrush x:Key="Refuse" Color="{StaticResource RefuseColor}" />
+  <SolidColorBrush x:Key="Online" Color="{StaticResource OnlineColor}" />
+  <SolidColorBrush x:Key="Idle" Color="{StaticResource IdleColor}" />
+
+  <!-- Polices de l'écran. Barlow SemiBold : onglets, titres, noms de modules ; Barlow Regular : chiffres ; Manrope : texte courant. -->
+  <FontFamily x:Key="BodyFont">avares://Trofeo.Settings/Assets/Fonts#Manrope</FontFamily>
+  <FontFamily x:Key="NumberFont">avares://Trofeo.Settings/Assets/Fonts#Barlow Semi Condensed</FontFamily>
+  <FontFamily x:Key="HeadingFont">avares://Trofeo.Settings/Assets/Fonts#Barlow Semi Condensed SemiBold, avares://Trofeo.Settings/Assets/Fonts#Barlow Semi Condensed</FontFamily>
+
+  <!-- Échelle : 12, 13, 15, 20 et 28 px. -->
+  <x:Double x:Key="FontSizeCaption">12</x:Double>
+  <x:Double x:Key="FontSizeBody">13</x:Double>
+  <x:Double x:Key="FontSizeLead">15</x:Double>
+  <x:Double x:Key="FontSizeTitle">20</x:Double>
+  <x:Double x:Key="FontSizeDisplay">28</x:Double>
+
+  <!-- Formes : rayon 10 pour le cadre de la bande, 8 pour les panneaux, 6 pour les contrôles. -->
+  <CornerRadius x:Key="RadiusFrame">10</CornerRadius>
+  <CornerRadius x:Key="RadiusPanel">8</CornerRadius>
+  <CornerRadius x:Key="RadiusControl">6</CornerRadius>
+
+  <!-- Le thème Fluent prend l'accent du produit, pas celui de Windows. -->
+  <Color x:Key="SystemAccentColor">#7FD1C7</Color>
+  <Color x:Key="SystemAccentColorDark1">#6AB9B0</Color>
+  <Color x:Key="SystemAccentColorDark2">#559F97</Color>
+  <Color x:Key="SystemAccentColorDark3">#418079</Color>
+  <Color x:Key="SystemAccentColorLight1">#99DCD3</Color>
+  <Color x:Key="SystemAccentColorLight2">#B2E6DF</Color>
+  <Color x:Key="SystemAccentColorLight3">#CBF0EB</Color>
+</ResourceDictionary>

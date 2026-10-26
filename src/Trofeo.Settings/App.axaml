@@ -1,0 +1,29 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Trofeo.Settings.ViewModels"
+             xmlns:views="clr-namespace:Trofeo.Settings.Views"
+             x:Class="Trofeo.Settings.App"
+             RequestedThemeVariant="Dark">
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://Trofeo.Settings/Styles/Tokens.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://Trofeo.Settings/Styles/Controls.axaml" />
+  </Application.Styles>
+
+  <!-- Un onglet = un modèle de vue = une vue. -->
+  <Application.DataTemplates>
+    <DataTemplate DataType="vm:LayoutTabViewModel"><views:LayoutTabView /></DataTemplate>
+    <DataTemplate DataType="vm:AppearanceTabViewModel"><views:AppearanceTabView /></DataTemplate>
+    <DataTemplate DataType="vm:ModulesTabViewModel"><views:ModulesTabView /></DataTemplate>
+    <DataTemplate DataType="vm:ShortcutsTabViewModel"><views:ShortcutsTabView /></DataTemplate>
+    <DataTemplate DataType="vm:SettingsTabViewModel"><views:SettingsTabView /></DataTemplate>
+  </Application.DataTemplates>
+</Application>

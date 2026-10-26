@@ -1,0 +1,7 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Trofeo.Settings.ViewModels"
+             x:Class="Trofeo.Settings.Views.ShortcutsTabView"
+             x:DataType="vm:ShortcutsTabViewModel">
+  <!-- Le contenu de l'onglet arrive avec les tâches 10 à 13. -->
+</UserControl>

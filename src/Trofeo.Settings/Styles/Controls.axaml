@@ -1,0 +1,173 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:Trofeo.Settings.Controls">
+  <!-- Les contrôles de la fenêtre. La hiérarchie se lit aux rayons et aux fonds, sans ombres. -->
+
+  <!-- Base : fond, police et texte de l'écran. -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource Ink}" />
+    <Setter Property="Foreground" Value="{DynamicResource Text}" />
+    <Setter Property="FontFamily" Value="{DynamicResource BodyFont}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+  </Style>
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="{DynamicResource BodyFont}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <Setter Property="Foreground" Value="{DynamicResource Text}" />
+  </Style>
+  <Style Selector="TextBlock.heading">
+    <Setter Property="FontFamily" Value="{DynamicResource HeadingFont}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeTitle}" />
+  </Style>
+  <Style Selector="TextBlock.lead">
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeLead}" />
+  </Style>
+  <!-- Titre de section : casse de phrase, Muted, sans capitales ni espacement de lettres. -->
+  <Style Selector="TextBlock.section">
+    <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+  </Style>
+  <Style Selector="TextBlock.number">
+    <Setter Property="FontFamily" Value="{DynamicResource NumberFont}" />
+  </Style>
+  <Style Selector="TextBlock.error">
+    <Setter Property="Foreground" Value="{DynamicResource Refuse}" />
+  </Style>
+
+  <!-- Focus visible : contour de 2 px en Accent au bord du contrôle, doublé d'un liseré Ink de 2 px à l'intérieur pour qu'il se lise aussi sur un bouton Accent. -->
+  <Style Selector=":is(Control)">
+    <Setter Property="FocusAdorner">
+      <FocusAdornerTemplate>
+        <Border BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="6">
+          <Border BorderBrush="{DynamicResource Ink}" BorderThickness="2" CornerRadius="4" />
+        </Border>
+      </FocusAdornerTemplate>
+    </Setter>
+  </Style>
+
+  <!-- Panneaux et cartes. -->
+  <Style Selector="Border.panel">
+    <Setter Property="Background" Value="{DynamicResource Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusPanel}" />
+  </Style>
+
+  <!-- Boutons : secondaire (Raised) et principal (Accent, texte Ink). -->
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="Foreground" Value="{DynamicResource Text}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="16,9" />
+    <Setter Property="FontFamily" Value="{DynamicResource BodyFont}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+  </Style>
+  <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Line}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="Foreground" Value="{DynamicResource Text}" />
+  </Style>
+  <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Panel}" />
+    <Setter Property="Foreground" Value="{DynamicResource Text}" />
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource Accent}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+    <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#99DCD3" />
+    <Setter Property="BorderBrush" Value="#99DCD3" />
+    <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+  </Style>
+  <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#6AB9B0" />
+    <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+  </Style>
+
+  <!-- Pastille de l'écran : un point de couleur et un texte. -->
+  <Style Selector="Border.pill">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="12,6" />
+  </Style>
+  <!-- Mode émulé, reprise de l'écran : le cadre de la pastille passe à l'ambre. -->
+  <Style Selector="Border.pill.amber">
+    <Setter Property="BorderBrush" Value="{DynamicResource Amber}" />
+  </Style>
+  <Style Selector="Ellipse.dot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Fill" Value="{DynamicResource Idle}" />
+  </Style>
+  <Style Selector="Ellipse.dot.online"><Setter Property="Fill" Value="{DynamicResource Online}" /></Style>
+  <Style Selector="Ellipse.dot.amber"><Setter Property="Fill" Value="{DynamicResource Amber}" /></Style>
+  <Style Selector="Ellipse.dot.refuse"><Setter Property="Fill" Value="{DynamicResource Refuse}" /></Style>
+  <Style Selector="Ellipse.dot.idle"><Setter Property="Fill" Value="{DynamicResource Idle}" /></Style>
+
+  <!-- Onglets : texte en Barlow SemiBold, un filet Accent sous l'onglet choisi. -->
+  <Style Selector="ListBox.tabs">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="ItemsPanel">
+      <ItemsPanelTemplate>
+        <StackPanel Orientation="Horizontal" Spacing="4" />
+      </ItemsPanelTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ListBox.tabs > ListBoxItem">
+    <Setter Property="Padding" Value="14,0" />
+    <Setter Property="Height" Value="40" />
+    <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Border Name="Back" Background="Transparent" CornerRadius="6" />
+          <ContentPresenter Name="Label"
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            VerticalContentAlignment="Center" />
+          <Border Name="Underline" Height="2" Margin="14,0" VerticalAlignment="Bottom" Background="Transparent" CornerRadius="1" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ListBox.tabs > ListBoxItem:pointerover /template/ Border#Back">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+  </Style>
+  <Style Selector="ListBox.tabs > ListBoxItem:selected">
+    <Setter Property="Foreground" Value="{DynamicResource Text}" />
+  </Style>
+  <Style Selector="ListBox.tabs > ListBoxItem:selected /template/ Border#Underline">
+    <Setter Property="Background" Value="{DynamicResource Accent}" />
+  </Style>
+  <Style Selector="ListBox.tabs > ListBoxItem TextBlock">
+    <Setter Property="FontFamily" Value="{DynamicResource HeadingFont}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeLead}" />
+    <Setter Property="Foreground" Value="{Binding $parent[ContentPresenter].Foreground}" />
+  </Style>
+
+  <!-- La bande : cadre de rayon 10 en Line ; le texte d'attente en Muted. -->
+  <Style Selector="controls|ScreenStrip">
+    <Setter Property="FrameBrush" Value="{DynamicResource Line}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusFrame}" />
+  </Style>
+  <Style Selector="controls|ScreenStrip > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeLead}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+</Styles>

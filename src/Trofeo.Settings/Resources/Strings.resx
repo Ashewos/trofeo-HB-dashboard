@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- Textes de la fenêtre de réglage (français ; ils tutoient). Une clé = une propriété de Texts.cs. -->
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>Réglages du Trofeo</value>
+    <comment>Titre de la fenêtre.</comment>
+  </data>
+  <data name="AppName" xml:space="preserve">
+    <value>Trofeo</value>
+    <comment>Nom du produit, à gauche de l'en-tête.</comment>
+  </data>
+  <data name="TabsName" xml:space="preserve">
+    <value>Sections des réglages</value>
+    <comment>Nom accessible de la barre d'onglets.</comment>
+  </data>
+  <data name="TabLayout" xml:space="preserve">
+    <value>Disposition</value>
+  </data>
+  <data name="TabAppearance" xml:space="preserve">
+    <value>Personnalisation</value>
+  </data>
+  <data name="TabModules" xml:space="preserve">
+    <value>Modules</value>
+  </data>
+  <data name="TabShortcuts" xml:space="preserve">
+    <value>Raccourcis</value>
+  </data>
+  <data name="TabSettings" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
+  <data name="ScreenOnline" xml:space="preserve">
+    <value>Écran branché</value>
+    <comment>Pastille de l'écran : l'écran répond.</comment>
+  </data>
+  <data name="ScreenIdle" xml:space="preserve">
+    <value>Écran non branché</value>
+    <comment>Pastille de l'écran : aucun écran.</comment>
+  </data>
+  <data name="ScreenRecovering" xml:space="preserve">
+    <value>Reprise de l'écran…</value>
+    <comment>Pastille de l'écran : le service reprend la liaison.</comment>
+  </data>
+  <data name="EmulatedMode" xml:space="preserve">
+    <value>Mode émulé</value>
+    <comment>Pastille ambre : le service compose sans écran branché.</comment>
+  </data>
+  <data name="LinkConnecting" xml:space="preserve">
+    <value>Connexion au service…</value>
+    <comment>Pastille pendant la connexion au service.</comment>
+  </data>
+  <data name="LinkStopped" xml:space="preserve">
+    <value>Service arrêté</value>
+    <comment>Pastille quand le service ne tourne pas.</comment>
+  </data>
+  <data name="StripName" xml:space="preserve">
+    <value>Aperçu de l'écran</value>
+    <comment>Nom accessible de la bande.</comment>
+  </data>
+  <data name="StripWaiting" xml:space="preserve">
+    <value>En attente de l'écran…</value>
+    <comment>Texte de la bande tant qu'aucune image n'est arrivée.</comment>
+  </data>
+  <data name="ServiceStoppedMessage" xml:space="preserve">
+    <value>Le service d'affichage ne tourne pas. Sans lui, l'écran reste éteint et rien ne peut être réglé.</value>
+  </data>
+  <data name="StartService" xml:space="preserve">
+    <value>Démarrer le service</value>
+  </data>
+  <data name="ServiceNotFound" xml:space="preserve">
+    <value>Le service d'affichage est introuvable. Lance Trofeo.Display.exe toi-même.</value>
+  </data>
+  <data name="LinkLost" xml:space="preserve">
+    <value>Le service d'affichage ne répond pas.</value>
+    <comment>Erreur quand la liaison est coupée.</comment>
+  </data>
+  <data name="LayoutChangedOutside" xml:space="preserve">
+    <value>La disposition a changé en dehors des réglages : elle a été relue.</value>
+  </data>
+  <data name="ReloadRefused" xml:space="preserve">
+    <value>Le service n'a pas appliqué la disposition.</value>
+    <comment>Le service refuse sans donner de motif.</comment>
+  </data>
+  <data name="SaveFailed" xml:space="preserve">
+    <value>Impossible d'écrire la disposition : {0}</value>
+    <comment>{0} : la cause.</comment>
+  </data>
+</root>

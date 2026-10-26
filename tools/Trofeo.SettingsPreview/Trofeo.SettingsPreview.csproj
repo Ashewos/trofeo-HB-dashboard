@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Images PNG de la fenêtre de réglage, rendues sans affichage, avec un faux service. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
+    <!-- Horloge simulée : les vrais modules de la bande avancent le temps à la main (voir ThemePreview). -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Trofeo.Settings\Trofeo.Settings.csproj" />
+    <ProjectReference Include="..\..\src\Trofeo.Sensors\Trofeo.Sensors.csproj" />
+    <ProjectReference Include="..\..\src\Trofeo.Modules.Agents\Trofeo.Modules.Agents.csproj" />
+    <ProjectReference Include="..\..\src\Trofeo.Modules.Monitoring\Trofeo.Modules.Monitoring.csproj" />
+    <ProjectReference Include="..\..\src\Trofeo.Modules.NowPlaying\Trofeo.Modules.NowPlaying.csproj" />
+    <ProjectReference Include="..\..\src\Trofeo.Modules.Clock\Trofeo.Modules.Clock.csproj" />
+    <ProjectReference Include="..\..\src\Trofeo.Modules.Network\Trofeo.Modules.Network.csproj" />
+  </ItemGroup>
+
+  <!-- La scène de ThemePreview (les cinq vrais modules sur de fausses données) et le faux service des tests : liés, pas copiés. -->
+  <ItemGroup>
+    <Compile Include="..\Trofeo.ThemePreview\SampleData.cs" Link="Shared\PreviewScene.cs" />
+    <Compile Include="..\..\tests\Trofeo.Settings.Tests\FakeServiceLink.cs" Link="Shared\FakeServiceLink.cs" />
+    <Compile Include="..\..\tests\Trofeo.Settings.Tests\SampleData.cs" Link="Shared\SampleServiceData.cs" />
+  </ItemGroup>
+
+</Project>

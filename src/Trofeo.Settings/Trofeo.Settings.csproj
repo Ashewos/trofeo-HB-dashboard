@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Le logiciel de réglage : un processus à part, qui ne parle au service d'affichage que par Trofeo.Control. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <AssemblyName>Trofeo.Settings</AssemblyName>
+    <RootNamespace>Trofeo.Settings</RootNamespace>
+    <!-- Les liaisons de données sont compilées partout (x:DataType) : une faute de nom est une erreur de compilation. -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Trofeo.Control\Trofeo.Control.csproj" />
+    <ProjectReference Include="..\Trofeo.Core\Trofeo.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Les polices de l'écran, liées depuis Trofeo.Core (licences OFL comprises). -->
+  <ItemGroup>
+    <AvaloniaResource Include="..\Trofeo.Core\Assets\Fonts\Manrope-Medium.ttf" Link="Assets\Fonts\Manrope-Medium.ttf" />
+    <AvaloniaResource Include="..\Trofeo.Core\Assets\Fonts\BarlowSemiCondensed-Regular.ttf" Link="Assets\Fonts\BarlowSemiCondensed-Regular.ttf" />
+    <AvaloniaResource Include="..\Trofeo.Core\Assets\Fonts\BarlowSemiCondensed-SemiBold.ttf" Link="Assets\Fonts\BarlowSemiCondensed-SemiBold.ttf" />
+    <Content Include="..\Trofeo.Core\Assets\Fonts\OFL-Manrope.txt" Link="Assets\Fonts\OFL-Manrope.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Trofeo.Core\Assets\Fonts\OFL-BarlowSemiCondensed.txt" Link="Assets\Fonts\OFL-BarlowSemiCondensed.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Trofeo.Settings.Tests" />
+    <InternalsVisibleTo Include="Trofeo.SettingsPreview" />
+  </ItemGroup>
+
+</Project>
