@@ -70,7 +70,7 @@ for (var i = 0; i < args.Length; i++)
                 + " | --set-secret <portée> <clé> (valeur sur l'entrée standard) | --clear-secret <portée> <clé> | --city <nom>"
                 + " | --claude-statusline install <chemin de Trofeo.StatusLine.exe> | uninstall | status"
                 + " | --appearance [theme=<id>] [opacity=<0..1|theme>] [font=<famille|theme>]"
-                + " [background=theme|color:#hex|image:<chemin>|gif:<chemin>|video:<chemin>]");
+                + " [background=theme|color:#hex|image:<chemin>|gif:<chemin>|video:<chemin>] [legibility=on|off|theme]");
             return 2;
     }
 }

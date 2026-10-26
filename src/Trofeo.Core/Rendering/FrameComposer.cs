@@ -12,6 +12,7 @@ public sealed class FrameComposer : IDisposable
 
     private readonly RateLimitedErrorLog _errors;
     private readonly Backdrop _backdrop = new();
+    private readonly PanelAlphaSmoother _alpha = new(); // opacité des panneaux sur un fond animé, par rectangle
 
     // Fond uni de la surcharge sans fond, gardé tant que la couleur du thème ne change pas.
     private ColorBackground? _legacyBackground;
@@ -65,7 +66,7 @@ public sealed class FrameComposer : IDisposable
             {
                 var rect = ToRect(GridGeometry.ModuleRect(
                     placement.Column, placement.Row, placement.Columns, placement.Rows, theme.Grid));
-                PaintPanel(canvas, rect, theme, background);
+                PaintPanel(canvas, rect, theme, background, now);
 
                 if (!modules.TryGetValue(placement.InstanceId, out var module))
                 {
@@ -84,7 +85,7 @@ public sealed class FrameComposer : IDisposable
                 {
                     _errors.Report($"Échec du rendu du module {placement.TypeId} ({placement.InstanceId}) : {ex}");
                     canvas.RestoreToCount(saved);
-                    PaintErrorPanel(canvas, rect, theme, background);
+                    PaintErrorPanel(canvas, rect, theme, background, now);
                 }
                 finally
                 {
@@ -117,19 +118,32 @@ public sealed class FrameComposer : IDisposable
         canvas.DrawImage(background.Current, 0, 0, paint);
     }
 
-    private void PaintPanel(SKCanvas canvas, SKRect rect, ThemeDefinition theme, IBackground background)
+    /// <summary>
+    /// Peint le panneau. Sur un fond fixe, l'opacité est celle que la garde de lisibilité veut tout de suite. Sur un fond animé,
+    /// elle est lissée dans le temps (<see cref="PanelAlphaSmoother"/>) : une tache claire qui passe sous le panneau ne le fait
+    /// pas clignoter. Garde coupée : l'opacité choisie, sans mesure ni lissage.
+    /// </summary>
+    private void PaintPanel(SKCanvas canvas, SKRect rect, ThemeDefinition theme, IBackground background, DateTimeOffset now)
     {
         var blurred = theme.Panel.Kind == PanelKind.Glass ? _backdrop.Get(background, theme.Panel) : null;
-        PanelPainter.Paint(canvas, rect, theme, blurred, background.Current, _backdrop.BrightestLuminance(background, rect));
+        if (!theme.LegibilityGuard)
+        {
+            PanelPainter.Paint(canvas, rect, theme, blurred, background.Current);
+            return;
+        }
+
+        float target = PanelPainter.TargetAlpha(theme, _backdrop.BrightestLuminance(background, rect));
+        float alpha = background.IsAnimated ? _alpha.Smooth(rect, target, now) : target;
+        PanelPainter.Paint(canvas, rect, theme, blurred, background.Current, alpha: alpha);
     }
 
     /// <summary>Efface ce que le module a pu peindre avant d'échouer, puis affiche le message d'erreur.</summary>
-    private void PaintErrorPanel(SKCanvas canvas, SKRect rect, ThemeDefinition theme, IBackground background)
+    private void PaintErrorPanel(SKCanvas canvas, SKRect rect, ThemeDefinition theme, IBackground background, DateTimeOffset now)
     {
         canvas.Save();
         PanelPainter.ClipToPanel(canvas, rect, theme); // le module n'a rien pu peindre au-delà : l'ombre et la bordure restent
         DrawBackground(canvas, background);
-        PaintPanel(canvas, rect, theme, background);
+        PaintPanel(canvas, rect, theme, background, now);
 
         using var font = ModuleDrawing.Font(theme.Theme, 24f);
         float maxWidth = rect.Width - 16f;

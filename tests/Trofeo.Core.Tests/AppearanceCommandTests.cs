@@ -114,6 +114,65 @@ public sealed class AppearanceCommandTests : IDisposable
         Assert.Equal(before, File.ReadAllBytes(LayoutPath));
     }
 
+    [Theory]
+    [InlineData("legibility=off", false)]
+    [InlineData("legibility=OFF", false)]
+    [InlineData("legibility=on", true)]
+    [InlineData("legibility=ON", true)]
+    public void Run_Legibility_OnOff_IsStored(string arg, bool expected)
+    {
+        var original = SampleLayout();
+        new LayoutStore(LayoutPath).Save(original);
+
+        var code = Run("opacity=0.2", arg);
+
+        Assert.Equal(0, code);
+        var appearance = Reload().Appearance!;
+        Assert.Equal(expected, appearance.Legibility);
+        Assert.Equal(0.2f, appearance.PanelOpacity); // les autres réglages sont gardés
+        Assert.Equal(original.Placements.Count, Reload().Placements.Count);
+    }
+
+    [Fact]
+    public void Run_Legibility_Theme_RestoresTheDefault()
+    {
+        Run("legibility=off");
+        Assert.False(Reload().Appearance!.Legibility);
+
+        var code = Run("legibility=theme");
+
+        Assert.Equal(0, code);
+        Assert.Null(Reload().Appearance!.Legibility);
+    }
+
+    [Theory]
+    [InlineData("legibility=peut-etre")]
+    [InlineData("legibility=")]
+    [InlineData("legibility=1")]
+    public void Run_Legibility_UnknownValue_ExitsWith2AndWritesNothing(string arg)
+    {
+        new LayoutStore(LayoutPath).Save(SampleLayout());
+        var before = File.ReadAllBytes(LayoutPath);
+
+        var code = Run("opacity=0.4", arg);
+
+        Assert.Equal(2, code);
+        Assert.Contains("legibility", _err.ToString());
+        Assert.Equal(before, File.ReadAllBytes(LayoutPath));
+    }
+
+    [Fact]
+    public void Run_Describe_ShowsLegibility()
+    {
+        Run();
+        Assert.Contains("Lisibilité", _out.ToString());
+        Assert.Contains("garde active", _out.ToString());
+
+        _out.GetStringBuilder().Clear();
+        Run("legibility=off");
+        Assert.Contains("garde coupée", _out.ToString());
+    }
+
     [Fact]
     public void Run_UnknownTheme_ListsTheKnownOnes()
     {

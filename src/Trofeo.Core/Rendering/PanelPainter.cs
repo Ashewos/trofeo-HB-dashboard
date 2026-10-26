@@ -19,28 +19,44 @@ internal static class PanelPainter
     /// </summary>
     /// <param name="backdrop">Le fond flouté de <see cref="Backdrop.Get"/> ; null hors verre.</param>
     /// <param name="background">Le fond net de l'écran ; sert à mesurer la luminance quand elle n'est pas donnée.</param>
-    /// <param name="backdropLuminance">Luminance de la zone la plus claire du fond sous <paramref name="rect"/> (<see cref="Backdrop.BrightestLuminance(IBackground, SKRect)"/>) ; sinon mesurée sur <paramref name="background"/>.</param>
+    /// <param name="backdropLuminance">Luminance de la zone la plus claire du fond sous <paramref name="rect"/> (<see cref="Backdrop.BrightestLuminance(IBackground, SKRect)"/>) ; sinon mesurée sur <paramref name="background"/>. Inutile quand la garde est coupée.</param>
+    /// <param name="alpha">L'opacité à appliquer, quand l'appelant l'a lissée dans le temps ; sinon celle de <see cref="TargetAlpha"/>.</param>
     public static void Paint(
-        SKCanvas canvas, SKRect rect, ThemeDefinition theme, SKImage? backdrop, SKImage background, float? backdropLuminance = null)
+        SKCanvas canvas, SKRect rect, ThemeDefinition theme, SKImage? backdrop, SKImage background,
+        float? backdropLuminance = null, float? alpha = null)
     {
         var look = theme.Panel;
-        bool glass = look.Kind == PanelKind.Glass;
-        float lBackdrop = backdropLuminance ?? MeasureOnce(background, rect);
-        float alpha = LegibleAlpha(
-            lBackdrop, RelativeLuminance(theme.Theme.Panel), theme.Theme.PanelOpacity, glass ? GlassSheenLuminance : 0f);
+        float applied = alpha
+            ?? TargetAlpha(theme, theme.LegibilityGuard ? backdropLuminance ?? MeasureOnce(background, rect) : 0f);
 
         switch (look.Kind)
         {
             case PanelKind.Glass:
-                PaintGlass(canvas, rect, theme, backdrop, alpha);
+                PaintGlass(canvas, rect, theme, backdrop, applied);
                 break;
             case PanelKind.Pixel:
-                PaintPixel(canvas, rect, theme, alpha);
+                PaintPixel(canvas, rect, theme, applied);
                 break;
             default:
-                PaintMatte(canvas, rect, theme, alpha);
+                PaintMatte(canvas, rect, theme, applied);
                 break;
         }
+    }
+
+    /// <summary>
+    /// L'opacité voulue du panneau devant une zone du fond de luminance <paramref name="backdropLuminance"/> : celle de la garde
+    /// de lisibilité (<see cref="LegibleAlpha"/>, avec le reflet du verre), ou exactement l'opacité choisie quand le thème a
+    /// coupé la garde (<see cref="ThemeDefinition.LegibilityGuard"/>).
+    /// </summary>
+    public static float TargetAlpha(ThemeDefinition theme, float backdropLuminance)
+    {
+        if (!theme.LegibilityGuard) return theme.Theme.PanelOpacity;
+
+        return LegibleAlpha(
+            backdropLuminance,
+            RelativeLuminance(theme.Theme.Panel),
+            theme.Theme.PanelOpacity,
+            theme.Panel.Kind == PanelKind.Glass ? GlassSheenLuminance : 0f);
     }
 
     /// <summary>Le rognage d'un module : le contour du panneau (arrondi, ou angles vifs en Pixel).</summary>

@@ -14,7 +14,7 @@ public static class AppearanceCommand
     /// <summary>Le texte d'aide, tel qu'il est affiché sur une erreur d'arguments.</summary>
     public const string Usage =
         "Usage : Trofeo.HardwareCheck --appearance [theme=<id>] [opacity=<0..1|theme>] [font=<famille|theme>]"
-        + " [background=theme|color:#hex|image:<chemin>|gif:<chemin>|video:<chemin>]";
+        + " [background=theme|color:#hex|image:<chemin>|gif:<chemin>|video:<chemin>] [legibility=on|off|theme]";
 
     private const string FromTheme = "theme";
 
@@ -67,7 +67,8 @@ public static class AppearanceCommand
                 "opacity" => ApplyOpacity(updated, value),
                 "font" => ApplyFont(updated, value, fonts, output),
                 "background" => ApplyBackground(updated, value),
-                _ => (updated, $"Réglage « {key} » inconnu (theme, opacity, font ou background).\n{Usage}"),
+                "legibility" => ApplyLegibility(updated, value),
+                _ => (updated, $"Réglage « {key} » inconnu (theme, opacity, font, background ou legibility).\n{Usage}"),
             };
             if (problem is not null) return Fail(error, problem, 2);
             updated = next;
@@ -131,6 +132,16 @@ public static class AppearanceCommand
         return (settings with { Font = value }, null);
     }
 
+    private static (AppearanceSettings, string?) ApplyLegibility(AppearanceSettings settings, string value)
+    {
+        // « on » est le défaut : null et true veulent dire la même chose, mais « on » reste écrit tel quel pour qu'on le voie dans le fichier.
+        if (string.Equals(value, FromTheme, StringComparison.OrdinalIgnoreCase)) return (settings with { Legibility = null }, null);
+        if (string.Equals(value, "on", StringComparison.OrdinalIgnoreCase)) return (settings with { Legibility = true }, null);
+        if (string.Equals(value, "off", StringComparison.OrdinalIgnoreCase)) return (settings with { Legibility = false }, null);
+
+        return (settings, $"Lisibilité « {value} » invalide : on (garde active), off (garde coupée) ou « theme » pour le défaut (legibility=on|off|theme).");
+    }
+
     private static (AppearanceSettings, string?) ApplyBackground(AppearanceSettings settings, string value)
     {
         if (string.Equals(value, FromTheme, StringComparison.OrdinalIgnoreCase)) return (settings with { Background = null }, null);
@@ -159,10 +170,11 @@ public static class AppearanceCommand
 
     private static void Describe(AppearanceSettings settings, TextWriter output)
     {
-        output.WriteLine($"Thème    : {settings.Theme}");
-        output.WriteLine($"Opacité  : {(settings.PanelOpacity is { } opacity ? opacity.ToString("0.##", CultureInfo.InvariantCulture) : "celle du thème")}");
-        output.WriteLine($"Police   : {(string.IsNullOrWhiteSpace(settings.Font) ? "celle du thème" : settings.Font)}");
-        output.WriteLine($"Fond     : {DescribeBackground(settings.Background)}");
+        output.WriteLine($"Thème      : {settings.Theme}");
+        output.WriteLine($"Opacité    : {(settings.PanelOpacity is { } opacity ? opacity.ToString("0.##", CultureInfo.InvariantCulture) : "celle du thème")}");
+        output.WriteLine($"Police     : {(string.IsNullOrWhiteSpace(settings.Font) ? "celle du thème" : settings.Font)}");
+        output.WriteLine($"Fond       : {DescribeBackground(settings.Background)}");
+        output.WriteLine($"Lisibilité : {(settings.Legibility == false ? "garde coupée" : "garde active")}");
     }
 
     private static string DescribeBackground(BackgroundSettings? background) => background?.Kind switch

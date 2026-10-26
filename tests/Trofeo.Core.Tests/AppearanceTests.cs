@@ -52,6 +52,27 @@ public sealed class AppearanceTests
     }
 
     [Fact]
+    public void Resolve_Legibility_DefaultKeepsTheGuard()
+    {
+        Assert.True(Resolve(AppearanceSettings.Default).LegibilityGuard);
+        Assert.True(Resolve(new AppearanceSettings(Legibility: null)).LegibilityGuard);
+        Assert.True(Resolve(new AppearanceSettings(Legibility: true)).LegibilityGuard);
+        Assert.True(Resolve(new AppearanceSettings("pixel")).LegibilityGuard);
+    }
+
+    [Theory]
+    [InlineData("classique")]
+    [InlineData("liquid-glass")]
+    [InlineData("pixel")]
+    public void Resolve_LegibilityOff_DisablesTheGuardOfAnyTheme(string theme)
+    {
+        var def = Resolve(new AppearanceSettings(theme, Legibility: false));
+
+        Assert.False(def.LegibilityGuard);
+        Assert.Equal(Themes.Find(theme)!.Theme.PanelOpacity, def.Theme.PanelOpacity); // le reste ne bouge pas
+    }
+
+    [Fact]
     public void Resolve_Opacity_ReplacesThemeOpacity()
     {
         var def = Resolve(new AppearanceSettings(PanelOpacity: 0.4f));

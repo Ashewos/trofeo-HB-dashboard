@@ -7,8 +7,13 @@ namespace Trofeo.Core.Rendering;
 /// <param name="PanelOpacity">Opacité du fond des panneaux (0 à 1) ; <c>null</c> : celle du thème.</param>
 /// <param name="Font">Nom de famille de la police ; <c>null</c> : celle du thème.</param>
 /// <param name="Background">Fond de l'écran ; <c>null</c> : celui du thème.</param>
+/// <param name="Legibility">
+/// Garde de lisibilité (le panneau s'assombrit sur un fond clair pour que le texte reste lisible) : <c>null</c> ou
+/// <c>true</c>, activée (défaut) ; <c>false</c>, coupée : le panneau garde l'opacité choisie, quel que soit le fond.
+/// </param>
 public sealed record AppearanceSettings(
-    string Theme = "classique", float? PanelOpacity = null, string? Font = null, BackgroundSettings? Background = null)
+    string Theme = "classique", float? PanelOpacity = null, string? Font = null, BackgroundSettings? Background = null,
+    bool? Legibility = null)
 {
     /// <summary>Aucun réglage : Classique tel quel.</summary>
     public static AppearanceSettings Default { get; } = new();

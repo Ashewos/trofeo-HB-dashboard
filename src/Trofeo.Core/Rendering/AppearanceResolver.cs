@@ -5,6 +5,7 @@ public static class AppearanceResolver
 {
     /// <summary>
     /// Thème inconnu : Classique, avec un avertissement. Opacité bornée à [0, 1] ; NaN : celle du thème, avec un avertissement.
+    /// <c>Legibility</c> à faux : la garde de lisibilité est coupée (<see cref="ThemeDefinition.LegibilityGuard"/>).
     /// Police : <see cref="FontResolver"/> ; si elle est trouvée, <c>Typeface</c> et <c>FeedTypeface</c> la prennent, et
     /// <c>TypefaceScale</c> comme <c>FeedScale</c> prennent l'agrandissement de cette police
     /// (<see cref="EmbeddedFonts.ScaleOf"/> : 1,24 pour VT323, même en Classique ; 1 pour toute autre police, du système comprise). Si elle est introuvable, le thème reste tel quel ; si c'est la police du thème elle-même, le fil la prend aussi.
@@ -24,6 +25,11 @@ public static class AppearanceResolver
                 warn?.Invoke("Opacité des modules invalide : thème par défaut utilisé.");
             else
                 definition = definition with { Theme = definition.Theme with { PanelOpacity = Math.Clamp(opacity, 0f, 1f) } };
+        }
+
+        if (settings.Legibility == false)
+        {
+            definition = definition with { LegibilityGuard = false };
         }
 
         if (!string.IsNullOrWhiteSpace(settings.Font))

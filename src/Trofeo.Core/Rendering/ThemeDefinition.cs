@@ -49,5 +49,10 @@ public sealed record BackgroundSettings(BackgroundKind Kind, string? Color = nul
 /// <summary>Le fond par défaut d'un thème : une couleur, ou « Aurore » (<paramref name="Aurora"/> = true, la couleur sert alors de secours).</summary>
 public sealed record ThemeBackground(SKColor Color, bool Aurora);
 
-/// <summary>Un thème complet : palette, écarts du damier, dessin du panneau et fond par défaut.</summary>
-public sealed record ThemeDefinition(Theme Theme, GridSpacing Grid, PanelLook Panel, ThemeBackground DefaultBackground);
+/// <summary>
+/// Un thème complet : palette, écarts du damier, dessin du panneau et fond par défaut.
+/// <paramref name="LegibilityGuard"/> : la garde de lisibilité assombrit le panneau sur un fond clair ; faux, le panneau garde
+/// exactement l'opacité choisie, quel que soit le fond (réglage <c>Legibility</c>, désactivable par l'utilisateur).
+/// </summary>
+public sealed record ThemeDefinition(
+    Theme Theme, GridSpacing Grid, PanelLook Panel, ThemeBackground DefaultBackground, bool LegibilityGuard = true);

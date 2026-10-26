@@ -258,6 +258,42 @@ public sealed class LayoutStoreTests : IDisposable
         Assert.False(File.Exists(FilePath + ".bad"));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(null)]
+    public void SaveLoad_Legibility_RoundTrips(bool? legibility)
+    {
+        var store = new LayoutStore(FilePath);
+
+        store.Save(DashboardLayout.Default with { Appearance = new AppearanceSettings("pixel", Legibility: legibility) });
+
+        Assert.Equal(legibility, store.Load().Appearance!.Legibility);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void Load_AppearanceWithoutLegibility_IsNullAndValid()
+    {
+        var warnings = new List<string>();
+        File.WriteAllText(FilePath, WithAppearance(LayoutJson(180, (0, 0, 4, 2)), """{"Theme":"pixel","PanelOpacity":0.4}"""));
+
+        var layout = new LayoutStore(FilePath, warnings.Add).Load();
+
+        Assert.Null(layout.Appearance!.Legibility);
+        Assert.Equal(0.4f, layout.Appearance.PanelOpacity);
+        Assert.Empty(warnings);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+
+    [Fact]
+    public void Load_AppearanceWithLegibilityFalse_IsRead()
+    {
+        File.WriteAllText(FilePath, WithAppearance(LayoutJson(180, (0, 0, 4, 2)), """{"Theme":"pixel","Legibility":false}"""));
+
+        Assert.False(new LayoutStore(FilePath).Load().Appearance!.Legibility);
+    }
+
     [Fact]
     public void Load_UnknownTheme_KeepsPlacements()
     {
