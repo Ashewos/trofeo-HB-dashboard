@@ -94,6 +94,61 @@ public sealed class HotkeyRouterTests
     }
 
     [Fact]
+    public void Router_Replace_RemovesEverythingThenRegistersTheNewOnes()
+    {
+        var registrar = new FakeRegistrar();
+        using var router = new HotkeyRouter(registrar, [Next, Third], _ => null);
+        router.RegisterAll();
+
+        var failures = router.Replace([Third]);
+
+        Assert.Empty(failures);
+        Assert.Equal([1, 2], registrar.Unregistered.Order());
+        Assert.Equal((1, 6u | NoRepeat, 0x74u), registrar.Registered[^1]);
+        Assert.Equal(3, registrar.Registered.Count);
+    }
+
+    [Fact]
+    public void Router_Replace_ReturnsFailuresInFrench()
+    {
+        var registrar = new FakeRegistrar { Refused = { 1 } };
+        using var router = new HotkeyRouter(registrar, [], _ => null);
+
+        var failures = router.Replace([Next, new ShortcutBinding("Foo", ModuleCommandKind.NextTab), Third]);
+
+        Assert.Equal(
+            [
+                "Raccourci « Ctrl+Alt+Right » indisponible : déjà pris par une autre application.",
+                "Raccourci « Foo » indisponible : touches illisibles.",
+            ],
+            failures);
+        Assert.Equal([3], registrar.Registered.Select(r => r.Id));
+    }
+
+    [Fact]
+    public void Router_Replace_RoutesHotkeysToTheNewBindings()
+    {
+        var target = new FakeTarget();
+        using var router = new HotkeyRouter(new FakeRegistrar(), [Next], _ => target);
+        router.RegisterAll();
+
+        router.Replace([Third]);
+        router.OnHotkey(1);
+        router.OnHotkey(2); // n'existe plus
+
+        Assert.Equal([new ModuleCommand(ModuleCommandKind.SelectTab, 2)], target.Commands);
+    }
+
+    [Fact]
+    public void Router_Replace_AfterDispose_Throws()
+    {
+        var router = new HotkeyRouter(new FakeRegistrar(), [Next], _ => null);
+        router.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => router.Replace([Next]));
+    }
+
+    [Fact]
     public void Router_OnHotkey_SendsCommandToTarget()
     {
         var target = new FakeTarget();

@@ -1,0 +1,182 @@
+using System.Diagnostics;
+using System.Reflection;
+using Trofeo.Control;
+using Trofeo.Core.Layout;
+using Trofeo.Core.Shortcuts;
+using Trofeo.Device;
+using Trofeo.ModuleKit;
+
+namespace Trofeo.Display;
+
+/// <summary>
+/// Ce que le service répond à la fenêtre de réglage : poignée de main, état, rechargement à chaud de la disposition,
+/// recherches et actions des modules, aperçu de l'écran.
+/// </summary>
+/// <param name="screen">L'état du lien avec l'écran (fourni par le programme, qui connaît le périphérique).</param>
+/// <param name="sensors">L'état de l'assistant des capteurs (fourni par le programme).</param>
+/// <param name="buildConfig">Fabrique la configuration à appliquer (thème, fond) à partir d'une disposition.</param>
+/// <param name="hotkeys">Pose les raccourcis après un rechargement ; <c>null</c> : pas de raccourcis.</param>
+/// <param name="buildWarnings">
+/// Reçoit les avertissements de <paramref name="buildConfig"/> (apparence, fond) : ils rejoignent ceux du rechargement.
+/// <paramref name="buildConfig"/> doit les lui adresser.
+/// </param>
+public sealed class ServiceControlHandler(
+    LayoutStore store, DisplayLoop loop, ModuleRegistry registry, Func<ScreenInfo> screen, Func<SensorInfo> sensors,
+    ProcessMeter meter, Func<DashboardLayout, LoopConfig> buildConfig, IHotkeyHost? hotkeys, WarningSink? buildWarnings = null)
+    : IControlHandler
+{
+    private static readonly string ServiceVersion = ReadVersion();
+
+    // Un rechargement à la fois : deux fenêtres de réglage ne s'entremêlent pas.
+    private readonly SemaphoreSlim _reloadGate = new(1, 1);
+
+    public Welcome Hello()
+    {
+        var types = new List<ModuleTypeInfo>();
+        foreach (var d in registry.Types)
+        {
+            var schema = registry.Factory(d.TypeId) is IConfigurableModuleFactory configurable ? configurable.Schema : SettingsSchema.Empty;
+            types.Add(new ModuleTypeInfo(d.TypeId, d.DisplayName, d.MinSize, d.Presets, d.AcceptsCommands, schema));
+        }
+
+        return new Welcome(ServiceVersion, ControlPipe.ProtocolVersion, types);
+    }
+
+    public ServiceStatus GetStatus()
+    {
+        var status = loop.Status;
+        var modules = status.Modules
+            .Select(m => new ModuleState(m.InstanceId, m.TypeId, m.Status.Health, m.Status.ActionMessage, m.Notices))
+            .ToList();
+        return new ServiceStatus(
+            screen(), status.Emulated, modules, meter.Read(),
+            new FrameInfo(status.FramesSent, status.RenderMs, status.SendMs), sensors());
+    }
+
+    /// <summary>L'état du lien avec l'écran tel que la fenêtre de réglage le connaît.</summary>
+    public static ScreenInfo ToScreenInfo(ScreenStatus status) => new(
+        status.State switch
+        {
+            ScreenState.Ready => LinkScreenState.Ready,
+            ScreenState.Recovering => LinkScreenState.Recovering,
+            _ => LinkScreenState.Disconnected,
+        },
+        status.Reason);
+
+    public async Task<Reloaded> ReloadAsync(CancellationToken ct)
+    {
+        await _reloadGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // Le fichier d'abord : illisible ou invalide, l'écran ne change pas et rien n'est copié en .bad.
+            var loaded = store.TryLoad();
+            if (loaded.Layout is not { } layout)
+                return new Reloaded(false, loaded.Error ?? "La disposition n'a pas pu être lue.", []);
+
+            var warnings = new List<string>(loaded.Warnings);
+
+            buildWarnings?.Drain(); // ce qu'une fabrication précédente (le démarrage) a laissé ne regarde pas ce rechargement
+            LoopConfig config;
+            try
+            {
+                config = buildConfig(layout);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Trace.TraceError($"Rechargement : l'apparence n'a pas pu être appliquée : {ex}");
+                return new Reloaded(false, $"L'apparence n'a pas pu être appliquée : {ex.Message}", []);
+            }
+
+            if (buildWarnings is not null) warnings.AddRange(buildWarnings.Drain());
+
+            warnings.AddRange(await loop.ApplyAsync(config).ConfigureAwait(false));
+
+            if (hotkeys is not null)
+            {
+                try
+                {
+                    warnings.AddRange(await hotkeys.ApplyAsync(layout.Shortcuts ?? ShortcutDefaults.All).ConfigureAwait(false));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Trace.TraceWarning($"Rechargement : raccourcis non mis à jour : {ex.Message}");
+                    warnings.Add($"Les raccourcis n'ont pas pu être mis à jour : {ex.Message}");
+                }
+            }
+
+            Trace.TraceInformation($"Disposition rechargée : {layout.Placements.Count} module(s), {warnings.Count} avertissement(s).");
+            return new Reloaded(true, null, warnings);
+        }
+        finally
+        {
+            _reloadGate.Release();
+        }
+    }
+
+    public Task<bool> RestartModuleAsync(Guid instanceId, CancellationToken ct) => loop.RestartAsync(instanceId);
+
+    public async Task<IReadOnlyList<LookupResult>> LookupAsync(string typeId, string fieldKey, string query, CancellationToken ct)
+    {
+        if (registry.Factory(typeId) is not IConfigurableModuleFactory factory) return [];
+
+        try
+        {
+            return await factory.LookupAsync(fieldKey, query, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            // Un module en panne (réseau, service distant) ne doit pas faire tomber le service.
+            Trace.TraceWarning($"Recherche « {fieldKey} » du module « {typeId} » en échec : {ex.Message}");
+            return [];
+        }
+    }
+
+    public async Task<ActionResult> RunActionAsync(Guid instanceId, string actionKey, CancellationToken ct)
+    {
+        var layout = loop.Layout;
+        var placed = layout.Placements.FirstOrDefault(p => p.InstanceId == instanceId);
+        var placement = placed ?? layout.Shelf?.FirstOrDefault(p => p.InstanceId == instanceId);
+        if (placement is null) return new ActionResult(false, "Module introuvable dans la disposition.");
+
+        if (registry.Factory(placement.TypeId) is not IConfigurableModuleFactory factory)
+            return new ActionResult(false, "Action inconnue.");
+
+        ActionResult result;
+        try
+        {
+            result = await factory.RunActionAsync(actionKey, placement.Settings, registry.SecretsFor(placement.TypeId), ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            Trace.TraceWarning($"Action « {actionKey} » du module « {placement.TypeId} » en échec : {ex.Message}");
+            return new ActionResult(false, $"L'action a échoué : {ex.Message}");
+        }
+
+        // Un module gardé ne relit pas ses secrets : on le recrée pour que l'action (oubli d'une empreinte, nouvelle clé)
+        // prenne effet tout de suite. Un module rangé n'est pas à l'écran, il n'y a rien à redémarrer.
+        if (result.Ok && placed is not null)
+        {
+            try
+            {
+                await loop.RestartAsync(instanceId).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Trace.TraceWarning($"Redémarrage du module « {placement.TypeId} » après l'action « {actionKey} » en échec : {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    public IDisposable SubscribePreview(int maxFps, Action<PreviewFrame> onFrame) => loop.SubscribePreview(maxFps, onFrame);
+
+    private static string ReadVersion()
+    {
+        var info = typeof(ServiceControlHandler).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (string.IsNullOrWhiteSpace(info)) return typeof(ServiceControlHandler).Assembly.GetName().Version?.ToString(3) ?? "0";
+        var plus = info.IndexOf('+'); // « 0.2.0+hash » : sans le hash du commit
+        return plus > 0 ? info[..plus] : info;
+    }
+}

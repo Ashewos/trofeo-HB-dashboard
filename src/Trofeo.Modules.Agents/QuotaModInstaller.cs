@@ -66,7 +66,15 @@ public sealed class QuotaModInstaller(
         }
         catch (OperationCanceledException)
         {
-            process.Kill(entireProcessTree: true);
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // Le processus s'est terminé entre-temps : rien à arrêter.
+            }
+
             ct.ThrowIfCancellationRequested();
             return (-1, "La commande a dépassé 60 s.");
         }

@@ -9,6 +9,7 @@ namespace Trofeo.Display;
 public sealed class ModuleRegistry
 {
     private readonly Dictionary<string, IModuleFactory> _factories;
+    private readonly IReadOnlyList<ModuleDescriptor> _types;
     private readonly Func<string, ISecretStore> _secretsFor;
 
     /// <param name="factories">Les fabriques des types de modules connus.</param>
@@ -16,11 +17,22 @@ public sealed class ModuleRegistry
     public ModuleRegistry(IEnumerable<IModuleFactory> factories, Func<string, ISecretStore> secretsFor)
     {
         _secretsFor = secretsFor;
-        _factories = factories.ToDictionary(f => f.Descriptor.TypeId);
+        var list = factories.ToList();
+        _factories = list.ToDictionary(f => f.Descriptor.TypeId);
         Descriptors = _factories.ToDictionary(f => f.Key, f => f.Value.Descriptor);
+        _types = [.. list.Select(f => f.Descriptor)]; // dans l'ordre d'enregistrement
     }
 
     public IReadOnlyDictionary<string, ModuleDescriptor> Descriptors { get; }
+
+    /// <summary>Les types connus, dans l'ordre où ils ont été enregistrés.</summary>
+    public IReadOnlyList<ModuleDescriptor> Types => _types;
+
+    /// <summary>La fabrique d'un type ; <c>null</c> si le type est inconnu.</summary>
+    public IModuleFactory? Factory(string typeId) => _factories.GetValueOrDefault(typeId);
+
+    /// <summary>Le coffre à secrets d'un type de module.</summary>
+    public ISecretStore SecretsFor(string typeId) => _secretsFor(typeId);
 
     /// <summary>Crée le module d'un emplacement. Type inconnu ou création en échec : journalisé, <c>null</c>.</summary>
     public IModule? Create(ModulePlacement p, TimeProvider time)

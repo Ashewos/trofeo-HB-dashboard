@@ -79,13 +79,19 @@ internal sealed class LoopRig : IDisposable
     public FrameScheduler Scheduler { get; }
     public DisplayLoop Loop { get; }
     public List<ProbeModule> Created { get; } = [];
+    public ModuleRegistry Registry { get; }
 
-    public LoopRig(DashboardLayout? layout = null, IBackground? background = null, ThemeDefinition? theme = null)
+    /// <param name="extraFactories">Des types de modules en plus de « fake » et « other ».</param>
+    /// <param name="secrets">Le coffre de chaque type ; par défaut un coffre en mémoire neuf à chaque appel.</param>
+    public LoopRig(
+        DashboardLayout? layout = null, IBackground? background = null, ThemeDefinition? theme = null,
+        IReadOnlyList<IModuleFactory>? extraFactories = null, Func<string, ISecretStore>? secrets = null)
     {
         Screen = new ScreenDevice(Usb, Time);
         Scheduler = new FrameScheduler(Time);
-        var registry = new ModuleRegistry([new ProbeFactory("fake", this), new ProbeFactory("other", this)], _ => new FakeSecretStore());
-        Loop = new DisplayLoop(layout ?? Layout(Place(A, "fake")), registry, Screen, Scheduler, Time, theme, background);
+        IModuleFactory[] factories = [new ProbeFactory("fake", this), new ProbeFactory("other", this), .. extraFactories ?? []];
+        Registry = new ModuleRegistry(factories, secrets ?? (_ => new FakeSecretStore()));
+        Loop = new DisplayLoop(layout ?? Layout(Place(A, "fake")), Registry, Screen, Scheduler, Time, theme, background);
     }
 
     public static JsonElement Json(string json = "{}") => JsonDocument.Parse(json).RootElement.Clone();
