@@ -75,11 +75,11 @@ public class MonitoringSettingsTests
     }
 
     [Fact]
-    public void Monitoring_Schema_HasTitleAndRows()
+    public void Monitoring_Schema_HasTitleRowsAndGpu()
     {
         var fields = ((IConfigurableModuleFactory)new MonitoringFactory(null!)).Schema.Fields;
 
-        Assert.Equal(["title", "rows"], fields.Select(f => f.Key));
+        Assert.Equal(["title", "rows", "gpu"], fields.Select(f => f.Key));
 
         var title = Assert.IsType<TextField>(fields[0]);
         Assert.Equal("Titre", title.Label);

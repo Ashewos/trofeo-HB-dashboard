@@ -286,4 +286,74 @@ public class SensorMapperTests
 
         Assert.Empty(SensorMapper.Map(sensors, elevated: false).Values);
     }
+    private const string IntelGpu = "Intel(R) Graphics";
+
+    private static List<RawSensor> TwoGpus() =>
+    [
+        Cpu(RawKind.Load, "CPU Total", 34),
+        // Listée d'abord : l'iGPU ne doit pas passer devant la carte dédiée.
+        Gpu(RawKind.Load, "GPU Core", 7, RawHardware.GpuIntel, IntelGpu),
+        Gpu(RawKind.SmallData, "GPU Memory Total", 128, RawHardware.GpuIntel, IntelGpu),
+        Gpu(RawKind.Load, "GPU Core", 61),
+        Gpu(RawKind.Temperature, "GPU Core", 64),
+        Gpu(RawKind.SmallData, "GPU Memory Total", 12288),
+    ];
+
+    [Fact]
+    public void Map_TwoGpus_ListsBothInRankOrder()
+    {
+        var snap = SensorMapper.Map(TwoGpus(), elevated: false);
+
+        Assert.NotNull(snap.Gpus);
+        Assert.Equal([NvidiaGpu, IntelGpu], snap.Gpus.Select(g => g.Name));
+        Assert.Equal(61, snap.Gpus[0].Values[SensorKeys.GpuLoad]);
+        Assert.Equal(64, snap.Gpus[0].Values[SensorKeys.GpuTemp]);
+        Assert.Equal(12288, snap.Gpus[0].Values[SensorKeys.GpuVramTotal]);
+        Assert.Equal(7, snap.Gpus[1].Values[SensorKeys.GpuLoad]);
+        Assert.False(snap.Gpus[1].Values.ContainsKey(SensorKeys.GpuTemp));
+        // La carte retenue reste dans Values, comme avant.
+        Assert.Equal(NvidiaGpu, snap.GpuName);
+        Assert.Equal(61, snap.Values[SensorKeys.GpuLoad]);
+    }
+
+    [Fact]
+    public void Map_NoGpu_GivesEmptyList()
+    {
+        var snap = SensorMapper.Map([Cpu(RawKind.Load, "CPU Total", 34)], elevated: false);
+
+        Assert.NotNull(snap.Gpus);
+        Assert.Empty(snap.Gpus);
+    }
+
+    [Fact]
+    public void ForGpu_SwapsGpuValuesAndName()
+    {
+        var snap = SensorMapper.Map(TwoGpus(), elevated: false);
+
+        var intel = snap.ForGpu(IntelGpu);
+
+        Assert.Equal(IntelGpu, intel.GpuName);
+        Assert.Equal(7, intel.Values[SensorKeys.GpuLoad]);
+        Assert.Equal(128, intel.Values[SensorKeys.GpuVramTotal]);
+        // La température de la NVIDIA ne doit pas rester sur la ligne de l'Intel.
+        Assert.False(intel.Values.ContainsKey(SensorKeys.GpuTemp));
+        Assert.Equal(34, intel.Values[SensorKeys.CpuLoad]);
+        Assert.Equal(snap.CpuName, intel.CpuName);
+        Assert.Equal(snap.Elevated, intel.Elevated);
+        Assert.Same(snap.Gpus, intel.Gpus);
+        // Le relevé d'origine n'est pas modifié.
+        Assert.Equal(61, snap.Values[SensorKeys.GpuLoad]);
+    }
+
+    [Fact]
+    public void ForGpu_UnknownOrNull_ReturnsSame()
+    {
+        var snap = SensorMapper.Map(TwoGpus(), elevated: false);
+
+        Assert.Same(snap, snap.ForGpu(null));
+        Assert.Same(snap, snap.ForGpu("Carte inconnue"));
+        Assert.Same(snap, snap.ForGpu(NvidiaGpu.ToLowerInvariant())); // la casse compte
+        var old = new SensorSnapshot("CPU", "GPU", new Dictionary<string, double>(), Elevated: false);
+        Assert.Same(old, old.ForGpu("GPU"));
+    }
 }

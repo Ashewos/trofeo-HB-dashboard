@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Trofeo.ModuleKit;
 using Trofeo.Sensors;
 
@@ -32,7 +33,20 @@ public sealed class MonitoringFactory(ISensorFeed feed) : IConfigurableModuleFac
                 new SettingOption("disk", "Disque"),
             ],
             MonitoringSettings.DefaultRows),
+        new LookupField("gpu", "Carte graphique surveillée", Searchable: false)
+        {
+            EmptyLabel = "Automatique (celle qui a le plus de mémoire)",
+        },
     ]);
+
+    /// <summary>Les cartes graphiques du dernier relevé ; le libellé et la valeur sont le nom du matériel.</summary>
+    public Task<IReadOnlyList<LookupResult>> LookupAsync(string fieldKey, string query, CancellationToken ct)
+    {
+        IReadOnlyList<LookupResult> results = fieldKey != "gpu" || feed.Latest?.Gpus is not { } gpus
+            ? []
+            : gpus.Select(g => new LookupResult(g.Name, JsonSerializer.SerializeToElement(g.Name))).ToList();
+        return Task.FromResult(results);
+    }
 
     public IModule Create(ModuleContext context) =>
         new MonitoringModule(Descriptor, MonitoringSettings.FromJson(context.Settings), feed, context.Time);

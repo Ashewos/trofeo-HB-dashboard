@@ -273,4 +273,47 @@ public class SensorPipeTests
         var back = SensorPipe.TryParse(bytes.AsSpan(0, bytes.Length - 1));
         Assert.Equal(34.0, back!.Values["cpu.load"]);
     }
+
+    [Fact]
+    public void Snapshot_WithoutGpus_RoundTripsThroughPipeFormat()
+    {
+        // Un ancien assistant n'écrit pas « gpus » : le relevé relu a Gpus à null, et la ligne reste identique à l'ancien format.
+        var old = SensorPipe.TryParse(Encoding.UTF8.GetBytes("{\"cpuName\":\"CPU X\",\"gpuName\":\"GPU Y\",\"elevated\":true,\"values\":{\"gpu.load\":5}}"));
+        Assert.NotNull(old);
+        Assert.Null(old.Gpus);
+        Assert.Equal(5, old.Values["gpu.load"]);
+
+        var bytes = SensorPipe.Serialize(Sample());
+        Assert.DoesNotContain("gpus", Encoding.UTF8.GetString(bytes));
+        var back = SensorPipe.TryParse(bytes.AsSpan(0, bytes.Length - 1));
+        Assert.Null(back!.Gpus);
+    }
+
+    [Fact]
+    public void Snapshot_WithGpus_RoundTripsThroughPipeFormat_AndOldReadersIgnoreThem()
+    {
+        var snapshot = Sample() with
+        {
+            Gpus =
+            [
+                new GpuReading("GPU Y", new Dictionary<string, double> { [SensorKeys.GpuLoad] = 61, ["bad"] = double.NaN }),
+                new GpuReading("iGPU", new Dictionary<string, double> { [SensorKeys.GpuLoad] = 7 }),
+            ],
+        };
+
+        var bytes = SensorPipe.Serialize(snapshot);
+        var back = SensorPipe.TryParse(bytes.AsSpan(0, bytes.Length - 1));
+
+        Assert.NotNull(back?.Gpus);
+        Assert.Equal(["GPU Y", "iGPU"], back.Gpus.Select(g => g.Name));
+        Assert.Equal(61, back.Gpus[0].Values[SensorKeys.GpuLoad]);
+        Assert.Single(back.Gpus[0].Values); // la valeur non finie est omise
+        Assert.Equal(7, back.Gpus[1].Values[SensorKeys.GpuLoad]);
+        Assert.Equal("CPU X", back.CpuName);
+
+        // Un ancien client (qui ne connaît pas « gpus ») lit la même ligne sans broncher : les champs inconnus sont ignorés.
+        using var doc = System.Text.Json.JsonDocument.Parse(bytes.AsSpan(0, bytes.Length - 1).ToArray());
+        Assert.Equal("GPU Y", doc.RootElement.GetProperty("gpuName").GetString());
+        Assert.Equal(34, doc.RootElement.GetProperty("values").GetProperty("cpu.load").GetDouble());
+    }
 }

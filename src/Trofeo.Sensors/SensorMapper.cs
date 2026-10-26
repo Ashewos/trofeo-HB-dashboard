@@ -8,8 +8,8 @@ public static class SensorMapper
     private static readonly string[] CpuTempCandidates = ["CPU Package", "Core (Tctl/Tdie)", "Core Max", "Core Average"];
 
     /// <summary>
-    /// Construit le relevé neutre. Le processeur est le premier matériel <c>Cpu</c> ; la carte graphique est
-    /// la plus dotée en mémoire (voir <see cref="ChooseGpu"/>). Si plusieurs matériels de même famille et de même nom coexistent, leurs capteurs sont confondus.
+    /// Construit le relevé neutre. Le processeur est le premier matériel <c>Cpu</c> ; la carte graphique retenue est
+    /// la plus dotée en mémoire (voir <see cref="RankGpus"/>) ; toutes les cartes sont aussi listées dans <see cref="SensorSnapshot.Gpus"/>. Si plusieurs matériels de même famille et de même nom coexistent, leurs capteurs sont confondus.
     /// </summary>
     public static SensorSnapshot Map(IEnumerable<RawSensor> sensors, bool elevated)
     {
@@ -20,40 +20,38 @@ public static class SensorMapper
         if (cpuName is not null)
             MapCpu(all.Where(s => s.Hardware == RawHardware.Cpu && s.HardwareName == cpuName).ToList(), values);
 
-        var gpuName = ChooseGpu(all, out var gpuSensors);
-        if (gpuSensors is not null)
-            MapGpu(gpuSensors, values);
+        var gpus = RankGpus(all).Select(g =>
+        {
+            var gpuValues = new Dictionary<string, double>();
+            MapGpu(g.Sensors, gpuValues);
+            return new GpuReading(g.Name, gpuValues);
+        }).ToList();
+        // La carte retenue (la première) alimente aussi Values, comme avant.
+        var gpuName = gpus.Count > 0 ? gpus[0].Name : null;
+        if (gpus.Count > 0)
+            foreach (var (key, value) in gpus[0].Values) values[key] = value;
 
         Set(values, SensorKeys.DiskTemp,
             Max(all.Where(s => s.Hardware == RawHardware.Storage && s.Kind == RawKind.Temperature), IsValidTemperature));
 
-        return new SensorSnapshot(cpuName, gpuName, values, elevated);
+        return new SensorSnapshot(cpuName, gpuName, values, elevated, gpus);
     }
 
     /// <summary>
-    /// Choisit la carte graphique parmi toutes les familles : celle dont la « GPU Memory Total » valide est la plus grande
+    /// Classe les cartes graphiques de toutes les familles : d'abord celle dont la « GPU Memory Total » valide est la plus grande
     /// (la carte dédiée, pas l'iGPU qui n'en déclare que peu). Sans mémoire connue, ou à égalité : NVIDIA, puis AMD, puis Intel,
-    /// puis la première rencontrée.
+    /// puis l'ordre de rencontre. La première est la carte retenue.
     /// </summary>
-    private static string? ChooseGpu(IReadOnlyList<RawSensor> all, out List<RawSensor>? chosen)
-    {
-        var groups = all
+    private static List<(string Name, List<RawSensor> Sensors)> RankGpus(IReadOnlyList<RawSensor> all) =>
+        all
             .Where(s => GpuRank(s.Hardware) >= 0)
             .GroupBy(s => (s.Hardware, s.HardwareName))
             .Select(g => (Key: g.Key, Sensors: g.ToList()))
             .Select(g => (g.Key, g.Sensors, Memory: First(g.Sensors.Where(s => s.Kind == RawKind.SmallData && s.Name == "GPU Memory Total"), IsValid)))
             .OrderByDescending(g => g.Memory ?? -1)
             .ThenBy(g => GpuRank(g.Key.Hardware))
+            .Select(g => (g.Key.HardwareName, g.Sensors))
             .ToList();
-
-        if (groups.Count == 0)
-        {
-            chosen = null;
-            return null;
-        }
-        chosen = groups[0].Sensors;
-        return groups[0].Key.HardwareName;
-    }
 
     private static int GpuRank(RawHardware hardware) => hardware switch
     {

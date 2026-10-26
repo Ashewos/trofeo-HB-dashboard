@@ -3,17 +3,18 @@ using System.Text.Json;
 namespace Trofeo.Modules.Monitoring;
 
 /// <summary>
-/// Réglages du module Monitoring PC, lus de <c>{"title":"...","rows":["cpu","gpu","ram"]}</c>.
+/// Réglages du module Monitoring PC, lus de <c>{"title":"...","rows":["cpu","gpu","ram"],"gpu":"NVIDIA GeForce RTX 5070"}</c>.
 /// <paramref name="Title"/> vaut <c>null</c> quand aucun titre n'est choisi (le nom du matériel est alors affiché).
+/// <paramref name="Gpu"/> est le nom exact de la carte graphique surveillée ; <c>null</c> : choix automatique (celle qui a le plus de mémoire).
 /// </summary>
-public sealed record MonitoringSettings(string? Title, IReadOnlyList<string> Rows)
+public sealed record MonitoringSettings(string? Title, IReadOnlyList<string> Rows, string? Gpu = null)
 {
     /// <summary>Lignes affichées quand les réglages n'en donnent aucune de valide.</summary>
     public static readonly IReadOnlyList<string> DefaultRows = ["cpu", "gpu", "ram"];
 
     /// <summary>
     /// Lit les réglages sans jamais lever : une forme inattendue donne les valeurs par défaut, les identifiants
-    /// de ligne inconnus, en double (la première occurrence est gardée) ou qui ne sont pas du texte sont ignorés, un titre vide ou blanc vaut <c>null</c>.
+    /// de ligne inconnus, en double (la première occurrence est gardée) ou qui ne sont pas du texte sont ignorés, un titre ou un nom de carte vide ou blanc vaut <c>null</c>.
     /// </summary>
     public static MonitoringSettings FromJson(JsonElement settings)
     {
@@ -24,6 +25,13 @@ public sealed record MonitoringSettings(string? Title, IReadOnlyList<string> Row
         {
             var text = t.GetString()?.Trim();
             if (!string.IsNullOrEmpty(text)) title = text;
+        }
+
+        string? gpu = null;
+        if (settings.TryGetProperty("gpu", out var g) && g.ValueKind == JsonValueKind.String)
+        {
+            var text = g.GetString()?.Trim();
+            if (!string.IsNullOrEmpty(text)) gpu = text;
         }
 
         var rows = new List<string>();
@@ -37,6 +45,6 @@ public sealed record MonitoringSettings(string? Title, IReadOnlyList<string> Row
             }
         }
 
-        return new MonitoringSettings(title, rows.Count > 0 ? rows : DefaultRows);
+        return new MonitoringSettings(title, rows.Count > 0 ? rows : DefaultRows, gpu);
     }
 }

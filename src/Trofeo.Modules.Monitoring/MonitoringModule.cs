@@ -40,6 +40,7 @@ public sealed class MonitoringModule : IModule, IModuleNotices
     private long _lastUpdateTicks;
     private ModuleStatus _status = new(ModuleHealth.Online);
     private int _fittingRows = -1; // nombre de lignes qui tenaient au dernier rendu ; -1 : pas encore rendu
+    private bool _gpuMissing;      // la carte choisie manquait au dernier relevé rendu
 
     public MonitoringModule(ModuleDescriptor descriptor, MonitoringSettings settings, ISensorFeed feed, TimeProvider time)
     {
@@ -54,18 +55,26 @@ public sealed class MonitoringModule : IModule, IModuleNotices
     public bool IsAnimating => false;
 
     /// <summary>
-    /// Une remarque quand le dernier rendu n'a pas pu montrer toutes les lignes choisies ; aucune avant le premier rendu
-    /// ni quand tout tient.
+    /// Les remarques du dernier rendu, la carte graphique d'abord : la carte choisie manquait au relevé (le choix
+    /// automatique a servi), puis toutes les lignes choisies n'ont pas pu tenir. Aucune avant le premier rendu.
     /// </summary>
     public IReadOnlyList<string> Notices
     {
         get
         {
+            var notices = new List<string>(2);
+            if (Volatile.Read(ref _gpuMissing) && _settings.Gpu is { } gpu)
+                notices.Add($"Carte « {gpu} » introuvable : choix automatique.");
+
             var fitting = Volatile.Read(ref _fittingRows);
             var total = _settings.Rows.Count;
-            if (fitting < 0 || fitting >= total) return [];
-            var (count, verb) = fitting == 1 ? ("1 ligne", "tient") : ($"{fitting} lignes", "tiennent");
-            return [$"{count} sur {total} {verb} à cette taille : agrandis le module ou retire des lignes."];
+            if (fitting >= 0 && fitting < total)
+            {
+                var (count, verb) = fitting == 1 ? ("1 ligne", "tient") : ($"{fitting} lignes", "tiennent");
+                notices.Add($"{count} sur {total} {verb} à cette taille : agrandis le module ou retire des lignes.");
+            }
+
+            return notices;
         }
     }
 
@@ -109,7 +118,9 @@ public sealed class MonitoringModule : IModule, IModuleNotices
 
     public void Render(SKCanvas canvas, ModuleRenderContext ctx)
     {
-        var snapshot = _feed.Latest;
+        var latest = _feed.Latest;
+        var snapshot = latest?.ForGpu(_settings.Gpu);
+        Volatile.Write(ref _gpuMissing, IsGpuMissing(latest));
         var scale = ctx.TextScale;
         var theme = ctx.Theme;
         var bounds = ctx.Bounds;
@@ -198,7 +209,17 @@ public sealed class MonitoringModule : IModule, IModuleNotices
 
     /// <summary>Titre de la première ligne : l'indice du pilote si besoin, sinon le titre choisi ou le nom du matériel.</summary>
     /// <param name="drawnRows">Nombre de lignes réellement dessinées (les premières des réglages).</param>
-    internal string CurrentTitle(int drawnRows = int.MaxValue) => TitleLine(_feed.Latest, drawnRows).Text;
+    internal string CurrentTitle(int drawnRows = int.MaxValue) => TitleLine(CurrentSnapshot, drawnRows).Text;
+
+    /// <summary>
+    /// Le dernier relevé vu avec la carte graphique choisie. Sans choix, ou si la carte manque au relevé (ancien
+    /// assistant sans liste de cartes compris), c'est le relevé tel quel, avec la carte retenue automatiquement.
+    /// </summary>
+    internal SensorSnapshot? CurrentSnapshot => _feed.Latest?.ForGpu(_settings.Gpu);
+
+    /// <summary>Vrai si une carte est choisie mais que ce relevé ne la liste pas.</summary>
+    private bool IsGpuMissing(SensorSnapshot? latest) =>
+        latest is not null && _settings.Gpu is { } wanted && latest.Gpus?.Any(g => g.Name == wanted) != true;
 
     /// <summary>Les lignes qui tiennent dans <paramref name="bounds"/> : les premières des réglages.</summary>
     internal IReadOnlyList<string> VisibleRows(SKRect bounds, float textScale) =>
