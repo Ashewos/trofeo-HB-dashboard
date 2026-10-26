@@ -133,7 +133,7 @@ Trofeo.HardwareCheck.exe --appearance legibility=off
 
 ### Fonds animés
 
-- **Vidéo** : préfère une vidéo **à la taille de l'écran (1920 × 462)**, 30 images par seconde au plus : elle coûte deux fois moins de processeur et 40 % de mémoire en moins qu'une vidéo 1080p. Le décodeur lit chaque image de la vidéo, sans carte graphique (décodage logiciel) : plus la vidéo est lourde, plus le processeur travaille. La lecture boucle et n'a pas de son.
+- **Vidéo** : préfère une vidéo **à la taille de l'écran (1920 × 462)**, 30 images par seconde au plus : elle coûte jusqu'à deux fois moins de processeur et 40 % de mémoire en moins qu'une vidéo 1080p. Avec la mémoire du service (environ 40 à 50 Mo), une vidéo à la taille de l'écran reste sous les 100 Mo, une vidéo 1080p les dépasse (environ 110 à 125 Mo). Le décodeur lit chaque image de la vidéo, sans carte graphique (décodage logiciel) : plus la vidéo est lourde, plus le processeur travaille. La lecture boucle et n'a pas de son.
 - **Coût du décodeur vidéo** : le décodeur n'utilise qu'un seul fil de travail (Windows en prend un par cœur logique par défaut, avec leurs tampons d'images : trois fois plus de mémoire pour le même débit de décodage). Mesuré par `tools/Trofeo.VideoBench` (le processus de lecture seul, 12 images par seconde montrées, 30 i/s lues, 60 s après 10 s de chauffe, sur 20 cœurs logiques) :
 
   | Vidéo (H.264, 30 i/s) | Mémoire propre | Processeur (un cœur) | Processeur (machine) |

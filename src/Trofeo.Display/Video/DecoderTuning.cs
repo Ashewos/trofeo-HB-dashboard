@@ -8,7 +8,8 @@ namespace Trofeo.Display.Video;
 /// Par défaut, il prend un fil de travail par cœur logique (20 sur le PC d'Alex), chacun avec ses tampons d'images : 223 Mo
 /// de mémoire propre pour une vidéo 1080p, 111 Mo pour une vidéo 1920 × 462. Un seul fil : 73 Mo et 43 Mo, un quart de
 /// processeur de moins, et le même débit de décodage (115 images/s en 1080p, pour 30 demandées) : le goulot n'est pas là.
-/// Mesures complètes dans le rapport de la tâche 12 du plan 4 (banc : <c>tools/Trofeo.VideoBench</c>).
+/// Mesuré avec <c>tools/Trofeo.VideoBench</c> (chiffres dans le README, « Fonds animés »). Sur un flux très lourd
+/// (1080p60 à 40 Mb/s), un seul fil fait monter le pire Advance de 200 à 330 ms ; deux fils l'éviteraient pour environ 20 Mo de plus.
 /// </summary>
 internal sealed record DecoderTuning(int? WorkerThreads = 1)
 {
@@ -89,15 +90,18 @@ internal static class DecoderTuner
         var iid = CodecApiId;
         int hr = Marshal.QueryInterface(decoder.NativePointer, in iid, out var pointer);
         Marshal.ThrowExceptionForHR(hr);
+        ICodecApi? codec = null;
         try
         {
-            var codec = (ICodecApi)Marshal.GetObjectForIUnknown(pointer);
+            codec = (ICodecApi)Marshal.GetObjectForIUnknown(pointer);
             object value = threads;
             var api = NumWorkerThreads;
             Marshal.ThrowExceptionForHR(codec.SetValue(ref api, ref value));
         }
         finally
         {
+            // Le RCW tient sa propre référence : sans libération explicite, le décodeur et ses tampons vivraient jusqu'au GC.
+            if (codec is not null) Marshal.FinalReleaseComObject(codec);
             Marshal.Release(pointer);
         }
     }
