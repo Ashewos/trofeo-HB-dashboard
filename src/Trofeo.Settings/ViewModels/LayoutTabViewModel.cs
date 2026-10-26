@@ -20,24 +20,24 @@ namespace Trofeo.Settings.ViewModels;
 public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
 {
     private readonly IServiceLink _link;
+    private readonly EditSession _session;
     private readonly LayoutDocument _document;
-    private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, ModuleTypeInfo> _types = [];
     private LayoutEditor _editor = new(new Dictionary<string, ModuleDescriptor>());
-    private LayoutHistory _history = new();
-    private int _epoch;
     private Welcome? _welcome;
     private Guid? _selectedId;
     private PlacedModuleItem? _selectedItem;
     private Drag? _drag;
     private bool _refreshing;
 
-    public LayoutTabViewModel(IServiceLink link, LayoutDocument document) : base(Texts.TabLayout)
+    public LayoutTabViewModel(IServiceLink link, EditSession session) : base(Texts.TabLayout)
     {
         _link = link;
-        _document = document;
+        _session = session;
+        _document = session.Document;
         _link.Changed += OnLinkChanged;
         _document.Replaced += OnReplaced;
+        _session.Changed += Refresh;
         Refresh();
     }
 
@@ -45,6 +45,7 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
     {
         _link.Changed -= OnLinkChanged;
         _document.Replaced -= OnReplaced;
+        _session.Changed -= Refresh;
     }
 
     /// <summary>Les modules placés, dans l'ordre du fichier.</summary>
@@ -178,7 +179,7 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
     /// <summary>Commence à déplacer un module saisi au point <paramref name="screen"/> (pixels de l'écran).</summary>
     public void BeginMove(Guid id, Point screen)
     {
-        if (!CanEdit || _document.Current.Placements.FirstOrDefault(p => p.InstanceId == id) is not { } origin)
+        if (!CanEdit || _session.IsBusy || _document.Current.Placements.FirstOrDefault(p => p.InstanceId == id) is not { } origin)
             return;
         var (column, row) = GridGeometry.CellAt((float)screen.X, (float)screen.Y, Spacing);
         StartDrag(new Drag(origin, ResizeEdge.Right, isResize: false, column, row));
@@ -187,7 +188,7 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
     /// <summary>Commence à redimensionner un module par l'une de ses huit poignées.</summary>
     public void BeginResize(Guid id, ResizeEdge edge)
     {
-        if (!CanEdit || _document.Current.Placements.FirstOrDefault(p => p.InstanceId == id) is not { } origin)
+        if (!CanEdit || _session.IsBusy || _document.Current.Placements.FirstOrDefault(p => p.InstanceId == id) is not { } origin)
             return;
         StartDrag(new Drag(origin, edge, isResize: true, 0, 0));
     }
@@ -379,43 +380,29 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
 
     /// <summary>
     /// Une modification : calculée sur la disposition du moment, refusée avec son motif, ignorée si elle ne change rien,
-    /// sinon enregistrée. Les modifications se suivent une à une.
+    /// sinon enregistrée. <see cref="EditSession"/> les fait se suivre une à une et tient l'historique.
     /// </summary>
     private async Task EditAsync(Func<LayoutEditor, DashboardLayout, EditResult> edit, string? typeId = null)
     {
         if (!CanEdit)
             return;
 
-        await _gate.WaitAsync().ConfigureAwait(true);
-        try
+        Notice = null;
+        SaveMessage = null;
+        EditResult? refused = null;
+        DashboardLayout? basis = null;
+        var outcome = await _session.ApplyAsync(layout =>
         {
-            Notice = null;
-            SaveMessage = null;
-            var current = _document.Current;
-            var result = edit(_editor, current);
-            if (!result.Ok)
-            {
-                Notice = ReasonOf(current, result, typeId);
-                return;
-            }
+            basis = layout;
+            var result = edit(_editor, layout);
+            refused = result.Ok ? null : result;
+            return result.Ok ? result.Layout : null;
+        }).ConfigureAwait(true);
 
-            if (Same(current, result.Layout))
-                return;
-
-            var epoch = _epoch;
-            var outcome = await _document.SaveAsync(result.Layout).ConfigureAwait(true);
-            if (outcome.Saved && epoch == _epoch)
-            {
-                _history.Push(current);
-            }
-
-            SaveMessage = outcome.Message;
-            Refresh();
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        if (refused is not null && basis is not null)
+            Notice = ReasonOf(basis, refused, typeId);
+        SaveMessage = outcome?.Message;
+        Refresh();
     }
 
     private async Task StepHistoryAsync(bool undo)
@@ -423,41 +410,12 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
         if (!CanEdit || IsDragging)
             return;
 
-        await _gate.WaitAsync().ConfigureAwait(true);
-        try
-        {
-            Notice = null;
-            SaveMessage = null;
-            var epoch = _epoch;
-            var target = undo ? _history.Undo(_document.Current) : _history.Redo(_document.Current);
-            if (target is null)
-                return;
-
-            var outcome = await _document.SaveAsync(target).ConfigureAwait(true);
-            if (!outcome.Saved && epoch == _epoch)
-            {
-                // Rien n'a été appliqué : l'historique revient comme il était.
-                if (undo) _history.Redo(target);
-                else _history.Undo(target);
-            }
-
-            SaveMessage = outcome.Message;
-            Refresh();
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        Notice = null;
+        SaveMessage = null;
+        var outcome = await (undo ? _session.UndoAsync() : _session.RedoAsync()).ConfigureAwait(true);
+        SaveMessage = outcome?.Message;
+        Refresh();
     }
-
-    /// <summary>Même disposition, élément par élément (le moteur d'édition rend une disposition égale mais neuve).</summary>
-    internal static bool Same(DashboardLayout a, DashboardLayout b) =>
-        a.Rotation == b.Rotation
-        && a.MaxFps == b.MaxFps
-        && Equals(a.Appearance, b.Appearance)
-        && ReferenceEquals(a.Shortcuts, b.Shortcuts)
-        && a.Placements.SequenceEqual(b.Placements)
-        && (a.Shelf ?? []).SequenceEqual(b.Shelf ?? []);
 
     private string? ReasonOf(DashboardLayout layout, EditResult result, string? typeId) => result.Error switch
     {
@@ -487,9 +445,7 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
 
     private void OnReplaced()
     {
-        // Le fichier a changé en dehors des réglages : l'historique ne vaut plus rien, et le glissement non plus.
-        _history = new LayoutHistory();
-        _epoch++;
+        // Le fichier a changé en dehors des réglages (l'historique est vidé par la session) : le glissement ne vaut plus rien.
         CancelDrag();
         Notice = null;
     }
@@ -507,6 +463,8 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
                 pair => pair.Key,
                 pair => new ModuleDescriptor(pair.Value.TypeId, pair.Value.DisplayName, pair.Value.MinSize, pair.Value.Presets, pair.Value.AcceptsCommands)));
             CanEdit = _welcome is not null;
+            if (!CanEdit)
+                CancelDrag();
 
             var layout = _document.Current;
             var placed = layout.Placements.Select(p => new PlacedModuleItem(p, NameOf(p.TypeId))).ToList();
@@ -541,8 +499,8 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
 
             HasPlaced = Placed.Count > 0;
             HasShelved = Shelved.Count > 0;
-            CanUndo = _history.CanUndo;
-            CanRedo = _history.CanRedo;
+            CanUndo = _session.CanUndo;
+            CanRedo = _session.CanRedo;
 
             if (_selectedId is { } id && Placed.All(p => p.Id != id))
                 _selectedId = null;

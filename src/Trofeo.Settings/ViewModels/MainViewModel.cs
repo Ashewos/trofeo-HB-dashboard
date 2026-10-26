@@ -17,7 +17,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public MainViewModel(IServiceLink link, LayoutDocument document, EditorPreferences preferences)
     {
         _link = link;
-        LayoutTab = new LayoutTabViewModel(link, document);
+        Session = new EditSession(document);
+        LayoutTab = new LayoutTabViewModel(link, Session);
         Document = document;
         Preferences = preferences;
         Tabs =
@@ -36,6 +37,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public IServiceLink Link => _link;
 
     /// <summary>L'onglet Disposition : le damier de la fenêtre travaille avec lui.</summary>
+    /// <summary>Les modifications de la disposition et leur historique, communs à tous les onglets (Ctrl+Z, Ctrl+Y).</summary>
+    public EditSession Session { get; }
+
     public LayoutTabViewModel LayoutTab { get; }
     public LayoutDocument Document { get; }
     public EditorPreferences Preferences { get; }
@@ -140,6 +144,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _link.Changed -= Refresh;
         _link.FrameReceived -= ShowFrame;
         LayoutTab.Dispose();
+        Session.Dispose();
         PreviewImage?.Dispose();
         PreviewImage = null;
     }

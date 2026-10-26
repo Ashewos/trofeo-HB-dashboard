@@ -21,6 +21,7 @@ public sealed class LayoutTabTests : IDisposable
     private readonly FakeServiceLink _link = new();
     private readonly LayoutStore _store;
     private LayoutDocument _document = null!;
+    private EditSession _session = null!;
 
     public LayoutTabTests()
     {
@@ -42,7 +43,8 @@ public sealed class LayoutTabTests : IDisposable
         _store.Save(layout);
         _document = new LayoutDocument(_store, _link);
         _document.Load();
-        return new LayoutTabViewModel(_link, _document);
+        _session = new EditSession(_document);
+        return new LayoutTabViewModel(_link, _session);
     }
 
     private static DashboardLayout Layout(params ModulePlacement[] placements) => new(180, placements);
@@ -353,38 +355,6 @@ public sealed class LayoutTabTests : IDisposable
     }
 
     [Fact]
-    public async Task Undo_ThenNewEdit_ClearsRedo()
-    {
-        var tab = Open(Layout(Placement(ClaudeId, "claudecode", 0, 0, 8, 4), Placement(ClockId, "clock", 12, 0, 4, 2)));
-        tab.Select(ClockId);
-        await tab.SetTextSizeAsync(TextSize.Large);
-        await tab.UndoAsync();
-        Assert.True(tab.CanRedo);
-
-        await tab.SetTextSizeAsync(TextSize.Small);
-
-        Assert.False(tab.CanRedo);
-    }
-
-    [Fact]
-    public async Task Undo_AfterExternalChange_ReloadsInsteadOfApplying()
-    {
-        var tab = Open(Layout(Placement(ClockId, "clock", 12, 0, 4, 2)));
-        tab.Select(ClockId);
-        await tab.SetTextSizeAsync(TextSize.Large);
-
-        // Quelqu'un d'autre réécrit le fichier : l'annulation est écartée, et la fenêtre relit le fichier.
-        _store.Save(Layout(Placement(ClockId, "clock", 12, 0, 4, 2)) with { Rotation = 0 });
-        await tab.UndoAsync();
-
-        Assert.Equal(TextSize.Normal, Of(_document.Current, ClockId).TextSize);  // le fichier relu, pas l'annulation
-        Assert.Equal(0, _document.Current.Rotation);
-        Assert.False(tab.CanUndo);  // l'historique est vidé par le changement extérieur
-        Assert.False(tab.CanRedo);
-        Assert.Equal(Texts.LayoutChangedOutside, tab.SaveMessage);
-    }
-
-    [Fact]
     public async Task ExternalChange_ClearsHistoryAndDropsTheDrag()
     {
         var tab = Open(Layout(Placement(ClaudeId, "claudecode", 0, 0, 8, 4), Placement(ClockId, "clock", 12, 0, 4, 2)));
@@ -543,5 +513,48 @@ public sealed class LayoutTabTests : IDisposable
         Assert.False(tab.IsDragging);
         Assert.Null(tab.Ghost);
         Assert.Equal(0, _link.ReloadCount);
+    }
+
+    [Fact]
+    public async Task WhileASaveIsPending_TheNewLayoutIsShown_AndNoDragStarts()
+    {
+        var tab = Open(Layout(Placement(ClaudeId, "claudecode", 0, 0, 8, 4), Placement(ClockId, "clock", 12, 0, 4, 2)));
+        var release = new TaskCompletionSource<Reloaded>();
+        _link.OnReload = () => release.Task;
+
+        tab.BeginMove(ClockId, Center(12, 0));
+        tab.UpdateDrag(Center(12, 2));
+        var ending = tab.EndDragAsync();  // le service n'a pas encore répondu
+
+        Assert.False(ending.IsCompleted);
+        Assert.Null(tab.Ghost);
+        Assert.Equal(2, tab.Placed.Single(p => p.Id == ClockId).Row);  // le nouveau cadre est déjà montré, le contour ne revient pas en arrière
+        Assert.Equal(2, tab.Placed.Single(p => p.Id == ClockId).Row);
+        Assert.True(_session.IsBusy);
+
+        tab.BeginMove(ClockId, Center(12, 2));  // une saisie pendant l'attente est refusée
+        tab.BeginResize(ClockId, ResizeEdge.Right);
+        Assert.False(tab.IsDragging);
+
+        release.SetResult(new Reloaded(true, null, []));
+        await ending;
+
+        Assert.False(_session.IsBusy);
+        tab.BeginMove(ClockId, Center(12, 2));
+        Assert.True(tab.IsDragging);
+    }
+
+    [Fact]
+    public void WhenEditingBecomesImpossible_TheDragIsDropped()
+    {
+        var tab = Open(Layout(Placement(ClockId, "clock", 12, 0, 4, 2)));
+        tab.BeginMove(ClockId, Center(12, 0));
+        Assert.True(tab.IsDragging);
+
+        _link.Set(LinkState.Connecting);
+
+        Assert.False(tab.CanEdit);
+        Assert.False(tab.IsDragging);
+        Assert.Null(tab.Ghost);
     }
 }

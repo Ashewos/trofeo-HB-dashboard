@@ -53,7 +53,7 @@ public sealed class GridOverlayTests : IDisposable
     /// <summary>Une bande de 1152 px de large (marge de 24 px de chaque côté dans une fenêtre de 1200 px) et son damier.</summary>
     private (ScreenStrip Strip, GridOverlay Overlay, LayoutTabViewModel Tab) Show(LayoutDocument document)
     {
-        var tab = new LayoutTabViewModel(_link, document);
+        var tab = new LayoutTabViewModel(_link, new EditSession(document));
         var strip = new ScreenStrip();
         var overlay = new GridOverlay { Strip = strip, Model = tab };
         var grid = new Grid { Margin = new Thickness(24), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top };
@@ -220,6 +220,70 @@ public sealed class GridOverlayTests : IDisposable
         window.KeyPress(Key.Y, RawInputModifiers.Control, PhysicalKey.Y, null);
         Assert.Equal(2, tab.Placed.Single(p => p.Id == ClockId).Row);
         Assert.Equal(3, _link.ReloadCount);
+    }
+
+    [AvaloniaFact]
+    public void Pointer_RightButton_DoesNotStartADrag()
+    {
+        var (strip, _, tab) = Show(Document(Placement(ClaudeId, "claudecode", 0, 0, 8, 4), Placement(ClockId, "clock", 12, 0, 4, 2)));
+
+        _window!.MouseDown(InWindow(strip, Center(13, 0)), MouseButton.Right);
+
+        Assert.False(tab.IsDragging);
+        Assert.Null(tab.SelectedId);
+        _window!.MouseUp(InWindow(strip, Center(13, 0)), MouseButton.Right);
+    }
+
+    [AvaloniaFact]
+    public void Pointer_SecondButtonDuringDrag_IsIgnored()
+    {
+        var (strip, _, tab) = Show(Document(Placement(ClaudeId, "claudecode", 0, 0, 8, 4), Placement(ClockId, "clock", 12, 0, 4, 2)));
+        _window!.MouseDown(InWindow(strip, Center(13, 0)), MouseButton.Left);
+        _window!.MouseMove(InWindow(strip, Center(13, 2)));
+        var ghost = tab.Ghost;
+
+        // Un appui du bouton droit pendant le glissement ne démarre rien et ne change pas le cadre.
+        _window!.MouseDown(InWindow(strip, Center(2, 3)), MouseButton.Right);
+
+        Assert.True(tab.IsDragging);
+        Assert.Equal(ghost, tab.Ghost);
+        Assert.Equal(ClockId, tab.SelectedId);
+        Assert.Equal(0, _link.ReloadCount);
+    }
+
+    [AvaloniaFact]
+    public void HidingTheGrid_DropsTheDrag()
+    {
+        var (strip, overlay, tab) = Show(Document(Placement(ClaudeId, "claudecode", 0, 0, 8, 4), Placement(ClockId, "clock", 12, 0, 4, 2)));
+        _window!.MouseDown(InWindow(strip, Center(13, 0)), MouseButton.Left);
+        _window!.MouseMove(InWindow(strip, Center(13, 2)));
+        Assert.True(tab.IsDragging);
+
+        overlay.IsVisible = false;
+
+        Assert.False(tab.IsDragging);
+        Assert.Null(tab.Ghost);
+        Assert.Equal(0, _link.ReloadCount);
+    }
+
+    [AvaloniaFact]
+    public void CtrlZ_WorksOnEveryTab_AndUndoesTheLastEditWhicheverTabMadeIt()
+    {
+        var document = Document(Placement(ClaudeId, "claudecode", 0, 0, 8, 4), Placement(ClockId, "clock", 12, 0, 4, 2));
+        using var model = new MainViewModel(_link, document, new EditorPreferences());
+        var window = new MainWindow { DataContext = model };
+        _window = window;
+        window.Show();
+
+        model.SelectedTab = model.Tabs[1];  // un autre onglet que Disposition
+        _ = model.Session.ApplyAsync(layout => layout with { Rotation = 0 });
+        Assert.Equal(0, document.Current.Rotation);
+
+        window.KeyPress(Key.Z, RawInputModifiers.Control, PhysicalKey.Z, null);
+        Assert.Equal(180, document.Current.Rotation);
+
+        window.KeyPress(Key.Y, RawInputModifiers.Control, PhysicalKey.Y, null);
+        Assert.Equal(0, document.Current.Rotation);
     }
 
     private static (byte R, byte G, byte B) Pixel(Avalonia.Media.Imaging.WriteableBitmap frame, int x, int y)

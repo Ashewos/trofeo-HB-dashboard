@@ -1,0 +1,136 @@
+using Trofeo.Core.Layout;
+
+namespace Trofeo.Settings.Services;
+
+/// <summary>
+/// Les modifications de la disposition, au-dessus de <see cref="LayoutDocument"/> : un seul historique d'annulation
+/// (<see cref="LayoutHistory"/>) pour toute la fenêtre, et une seule modification à la fois. Tous les onglets enregistrent par
+/// ici, donc Ctrl+Z annule la dernière modification, de quelque onglet qu'elle vienne, sans jamais en défaire une autre en
+/// silence. Un changement du fichier en dehors des réglages (<see cref="LayoutDocument.Replaced"/>) vide l'historique.
+/// Tout se passe sur le fil de l'interface.
+/// </summary>
+public sealed class EditSession : IDisposable
+{
+    private readonly LayoutDocument _document;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private LayoutHistory _history = new();
+    private int _epoch;
+    private int _pending;
+
+    public EditSession(LayoutDocument document)
+    {
+        _document = document;
+        _document.Replaced += OnReplaced;
+    }
+
+    public LayoutDocument Document => _document;
+
+    public bool CanUndo => _history.CanUndo;
+
+    public bool CanRedo => _history.CanRedo;
+
+    /// <summary>Une modification est en cours ou attend son tour : la disposition montrée est en train de changer.</summary>
+    public bool IsBusy => _pending > 0;
+
+    /// <summary>
+    /// Levé quand la disposition du document change (dès qu'elle est écrite, sans attendre la réponse du service), quand
+    /// le fichier est relu, quand l'historique change et quand <see cref="IsBusy"/> change.
+    /// </summary>
+    public event Action? Changed;
+
+    public void Dispose() => _document.Replaced -= OnReplaced;
+
+    /// <summary>
+    /// Une modification : <paramref name="edit"/> reçoit la disposition du moment et rend la nouvelle, ou <c>null</c> (refus,
+    /// rien à faire). Une disposition rendue identique à l'actuelle n'écrit rien et n'entre pas dans l'historique. Rend le
+    /// résultat de l'enregistrement, ou <c>null</c> si rien n'a été enregistré.
+    /// </summary>
+    public async Task<SaveOutcome?> ApplyAsync(Func<DashboardLayout, DashboardLayout?> edit)
+    {
+        Begin();
+        await _gate.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            var current = _document.Current;
+            if (edit(current) is not { } edited || Same(current, edited))
+                return null;
+
+            var epoch = _epoch;
+            var save = _document.SaveAsync(edited);
+            Changed?.Invoke(); // la disposition est écrite : on la montre sans attendre le service
+            var outcome = await save.ConfigureAwait(true);
+            if (outcome.Saved && epoch == _epoch)
+                _history.Push(current);
+            return outcome;
+        }
+        finally
+        {
+            _gate.Release();
+            End();
+        }
+    }
+
+    public Task<SaveOutcome?> UndoAsync() => StepAsync(undo: true);
+
+    public Task<SaveOutcome?> RedoAsync() => StepAsync(undo: false);
+
+    private async Task<SaveOutcome?> StepAsync(bool undo)
+    {
+        Begin();
+        await _gate.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            var epoch = _epoch;
+            var target = undo ? _history.Undo(_document.Current) : _history.Redo(_document.Current);
+            if (target is null)
+                return null;
+
+            var save = _document.SaveAsync(target);
+            Changed?.Invoke();
+            var outcome = await save.ConfigureAwait(true);
+            if (!outcome.Saved && epoch == _epoch)
+            {
+                // Rien n'a été appliqué : l'historique revient comme il était.
+                if (undo) _history.Redo(target);
+                else _history.Undo(target);
+            }
+
+            return outcome;
+        }
+        finally
+        {
+            _gate.Release();
+            End();
+        }
+    }
+
+    private void Begin()
+    {
+        _pending++;
+        if (_pending == 1)
+            Changed?.Invoke();
+    }
+
+    private void End()
+    {
+        _pending--;
+        Changed?.Invoke();
+    }
+
+    private void OnReplaced()
+    {
+        // Le fichier a changé en dehors des réglages : l'historique ne vaut plus rien.
+        _history = new LayoutHistory();
+        _epoch++;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Même disposition, élément par élément (le moteur d'édition rend une disposition égale mais neuve).</summary>
+    internal static bool Same(DashboardLayout a, DashboardLayout b) =>
+        a.Rotation == b.Rotation
+        && a.MaxFps == b.MaxFps
+        && Equals(a.Appearance, b.Appearance)
+        && ReferenceEquals(a.Shortcuts, b.Shortcuts)
+        && a.Placements.SequenceEqual(b.Placements)
+        && (a.Shelf ?? []).SequenceEqual(b.Shelf ?? []);
+}

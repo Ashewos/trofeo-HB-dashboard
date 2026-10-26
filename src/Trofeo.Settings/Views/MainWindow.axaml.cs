@@ -20,24 +20,29 @@ public partial class MainWindow : Window
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (e.Handled || DataContext is not MainViewModel { IsGridVisible: true } model)
+        if (e.Handled || DataContext is not MainViewModel model)
             return;
 
-        // Dans l'onglet Disposition : Échap abandonne le glissement, Ctrl+Z annule, Ctrl+Y (ou Ctrl+Maj+Z) rétablit.
-        var layout = model.LayoutTab;
-        if (e.Key == Key.Escape && layout.IsDragging)
+        // Échap abandonne un glissement du damier.
+        if (e.Key == Key.Escape && model.LayoutTab.IsDragging)
         {
-            layout.CancelDrag();
+            model.LayoutTab.CancelDrag();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+Z annule, Ctrl+Y (ou Ctrl+Maj+Z) rétablit : la dernière modification, de quelque onglet qu'elle vienne.
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) || model.LayoutTab.IsDragging)
+            return;
+        var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        if (e.Key == Key.Z && !shift)
+        {
+            _ = model.LayoutTab.UndoAsync();
             e.Handled = true;
         }
-        else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.Z && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        else if (e.Key == Key.Y || e.Key == Key.Z && shift)
         {
-            _ = layout.UndoAsync();
-            e.Handled = true;
-        }
-        else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && (e.Key == Key.Y || e.Key == Key.Z && e.KeyModifiers.HasFlag(KeyModifiers.Shift)))
-        {
-            _ = layout.RedoAsync();
+            _ = model.LayoutTab.RedoAsync();
             e.Handled = true;
         }
     }

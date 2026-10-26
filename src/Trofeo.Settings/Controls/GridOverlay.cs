@@ -33,6 +33,12 @@ public sealed class GridOverlay : Avalonia.Controls.Control
     static GridOverlay()
     {
         AffectsRender<GridOverlay>(StripProperty, ModelProperty);
+        // Le damier disparaît (autre onglet, service arrêté) : un glissement en cours est abandonné.
+        IsVisibleProperty.Changed.AddClassHandler<GridOverlay>((overlay, change) =>
+        {
+            if (change.NewValue is false)
+                overlay.Model?.CancelDrag();
+        });
         ModelProperty.Changed.AddClassHandler<GridOverlay>((overlay, change) =>
         {
             if (change.OldValue is LayoutTabViewModel old)
@@ -61,7 +67,12 @@ public sealed class GridOverlay : Avalonia.Controls.Control
         set => SetValue(ModelProperty, value);
     }
 
-    private void OnModelChanged(object? sender, PropertyChangedEventArgs e) => InvalidateVisual();
+    private void OnModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(LayoutTabViewModel.CanEdit) && Model is { CanEdit: false } model)
+            model.CancelDrag();
+        InvalidateVisual();
+    }
 
     /// <summary>La case sous un point de la bande (coordonnées du contrôle), selon les écarts du thème.</summary>
     public (int Column, int Row) CellAt(Point stripPoint)
@@ -165,7 +176,9 @@ public sealed class GridOverlay : Avalonia.Controls.Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (Strip is not { } strip || Model is not { } model || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        // Seul le bouton gauche commence un glissement, et pas pendant un autre.
+        if (Strip is not { } strip || Model is not { } model || model.IsDragging
+            || e.GetCurrentPoint(this).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
             return;
 
         Focus();
@@ -214,7 +227,8 @@ public sealed class GridOverlay : Avalonia.Controls.Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (Model is not { IsDragging: true } model)
+        if (e.InitialPressMouseButton != MouseButton.Left || e.GetCurrentPoint(this).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonReleased
+            || Model is not { IsDragging: true } model)
             return;
 
         _ = model.EndDragAsync(); // enregistre si le cadre est libre ; EndDragAsync ne laisse plus de glissement dès son premier pas
