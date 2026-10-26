@@ -22,7 +22,7 @@ public partial class App : Application
         // Sans durée de vie de bureau (tests sans affichage, aperçus), l'appelant monte sa propre fenêtre.
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var link = new ServiceLink();
+            var link = new ServiceLink(post: action => Dispatcher.UIThread.Post(action));
             var store = new LayoutStore(Path.Combine(AppPaths.SettingsDir, "layout.json"));
             var document = new LayoutDocument(store, link);
             document.Load();

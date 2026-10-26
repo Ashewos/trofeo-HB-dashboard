@@ -65,6 +65,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private int _previewRotation;
 
+    /// <summary>Fenêtre réduite : plus d'images à décoder ni à demander au service ; reprise à la restauration.</summary>
+    public void SetPreviewPaused(bool paused) => _link.SetPreviewPaused(paused);
+
     [RelayCommand]
     private async Task StartServiceAsync()
     {

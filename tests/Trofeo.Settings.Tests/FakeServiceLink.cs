@@ -33,6 +33,10 @@ public sealed class FakeServiceLink : IServiceLink
 
     public void SetRealTimePreview(bool realTime) => RealTime = realTime;
 
+    public bool Paused { get; private set; }
+
+    public void SetPreviewPaused(bool paused) => Paused = paused;
+
     public Task<Reloaded> ReloadAsync()
     {
         ReloadCount++;

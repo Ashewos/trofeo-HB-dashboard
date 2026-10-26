@@ -34,7 +34,9 @@ public class ServiceLinkTests
             new ScreenInfo(LinkScreenState.Ready, null), false, [],
             new ProcessInfo(1, 2, 0), new FrameInfo(0, 0, 0), new SensorInfo(false, false, false));
 
-        public Task<Reloaded> ReloadAsync(CancellationToken ct) => Task.FromResult(new Reloaded(true, null, []));
+        public Func<CancellationToken, Task<Reloaded>> OnReload { get; set; } = _ => Task.FromResult(new Reloaded(true, null, []));
+
+        public Task<Reloaded> ReloadAsync(CancellationToken ct) => OnReload(ct);
         public Task<bool> RestartModuleAsync(Guid instanceId, CancellationToken ct) => Task.FromResult(true);
 
         public Task<IReadOnlyList<LookupResult>> LookupAsync(string typeId, string fieldKey, string query, CancellationToken ct) =>
@@ -128,6 +130,190 @@ public class ServiceLinkTests
         server.Start();
         await WaitUntilAsync(() => handler.Subscriptions.Count >= 1, "abonnement");
         Assert.Equal(12, handler.Subscriptions.First());
+    }
+
+    /// <summary>Un « fil de l'interface » de pacotille : les envois s'accumulent jusqu'à ce que le test les exécute.</summary>
+    private sealed class StalledUi
+    {
+        private readonly ConcurrentQueue<Action> _queue = new();
+        public int Pending => _queue.Count;
+        public void Post(Action action) => _queue.Enqueue(action);
+
+        public void Pump()
+        {
+            while (_queue.TryDequeue(out var action))
+                action();
+        }
+    }
+
+    private static ServiceLink NewLink(string pipe, StalledUi ui) => new(
+        pipe, retryDelay: TimeSpan.FromMilliseconds(60), connectTimeout: TimeSpan.FromMilliseconds(150),
+        statusInterval: TimeSpan.FromMilliseconds(80), post: ui.Post);
+
+    /// <summary>Une liaison qui n'aura rien à dire pendant le test : un seul échec de connexion, puis une longue attente.</summary>
+    private static ServiceLink NewSilentLink(StalledUi ui) => new(
+        NewPipeName(), retryDelay: TimeSpan.FromHours(1), connectTimeout: TimeSpan.FromMilliseconds(50), post: ui.Post);
+
+    [Fact]
+    public async Task Link_Events_AreRaisedThroughThePoster_NeverInline()
+    {
+        var pipe = NewPipeName();
+        using var server = new ControlServer(pipe, new Handler());
+        server.Start();
+        var ui = new StalledUi();
+        await using var link = NewLink(pipe, ui);
+        var changedOn = new ConcurrentQueue<int>();
+        link.Changed += () => changedOn.Enqueue(Environment.CurrentManagedThreadId);
+
+        // La liaison est connectée côté pool, mais rien n'est arrivé « à l'interface » tant que le test ne passe pas la main.
+        await WaitUntilAsync(() => ui.Pending > 0, "premier envoi vers l'interface");
+        Assert.Equal(LinkState.Connecting, link.State);
+        Assert.Empty(changedOn);
+
+        ui.Pump();
+        Assert.Equal(LinkState.Connected, link.State);
+        Assert.All(changedOn, id => Assert.Equal(Environment.CurrentManagedThreadId, id));
+        Assert.NotEmpty(changedOn);
+    }
+
+    [Fact]
+    public async Task Frames_Coalesced_WhenUiStalls()
+    {
+        var ui = new StalledUi();
+        await using var link = NewSilentLink(ui);
+        var received = new List<(PreviewFrame Frame, int Thread)>();
+        link.FrameReceived += frame => received.Add((frame, Environment.CurrentManagedThreadId));
+
+        var frames = Enumerable.Range(0, 100).Select(i => new PreviewFrame([(byte)i], 180)).ToArray();
+        await Task.Run(() =>
+        {
+            foreach (var frame in frames)
+                link.ReceiveFrame(frame);
+        }, TestContext.Current.CancellationToken);
+
+        // Cent images pendant que l'interface est bloquée : un seul envoi en attente, et c'est la dernière image qui part.
+        Assert.Equal(1, ui.Pending);
+        Assert.Empty(received);
+        ui.Pump();
+        var delivered = Assert.Single(received);
+        Assert.Same(frames[^1], delivered.Frame);
+        Assert.Equal(Environment.CurrentManagedThreadId, delivered.Thread);
+
+        // L'interface a repris : l'image suivante repart tout de suite.
+        link.ReceiveFrame(frames[0]);
+        Assert.Equal(1, ui.Pending);
+        ui.Pump();
+        Assert.Equal(2, received.Count);
+    }
+
+    [Fact]
+    public async Task Frames_AfterDispose_AreNotPosted()
+    {
+        var ui = new StalledUi();
+        var link = NewSilentLink(ui);
+        var received = 0;
+        link.FrameReceived += _ => received++;
+
+        link.ReceiveFrame(new PreviewFrame([1], 0));
+        Assert.Equal(1, ui.Pending);
+        await link.DisposeAsync();
+
+        link.ReceiveFrame(new PreviewFrame([2], 0));
+        Assert.Equal(1, ui.Pending);   // pas de nouvel envoi
+        ui.Pump();                     // et celui qui attendait ne livre plus rien
+        Assert.Equal(0, received);
+    }
+
+    [Fact]
+    public async Task Link_Paused_SubscribesAtZeroThenBack()
+    {
+        var pipe = NewPipeName();
+        var handler = new Handler();
+        using var server = new ControlServer(pipe, handler);
+        server.Start();
+        await using var link = NewLink(pipe);
+        await WaitUntilAsync(() => handler.Subscriptions.Count >= 1, "abonnement");
+
+        link.SetPreviewPaused(true);
+        // L'arrêt (0 i/s) désabonne côté service : on le voit à l'abonnement suivant.
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        link.SetRealTimePreview(true);   // choisi pendant la pause : rien n'est demandé tant qu'elle dure
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        Assert.Equal([4], handler.Subscriptions.ToArray());
+
+        link.SetPreviewPaused(false);
+        await WaitUntilAsync(() => handler.Subscriptions.Count >= 2, "reprise de l'aperçu");
+        Assert.Equal(12, handler.Subscriptions.Last());
+    }
+
+    [Fact]
+    public async Task Link_Disposed_RequestsFailWithLinkCut()
+    {
+        var pipe = NewPipeName();
+        using var server = new ControlServer(pipe, new Handler());
+        server.Start();
+        var link = NewLink(pipe);
+        await WaitUntilAsync(() => link.State == LinkState.Connected, "connexion");
+        await link.DisposeAsync();
+
+        foreach (var request in new Func<Task>[]
+                 {
+                     () => link.ReloadAsync(),
+                     () => link.LookupAsync("clock", "city", "Ly"),
+                     () => link.RunActionAsync(Guid.NewGuid(), "x"),
+                     () => link.RestartModuleAsync(Guid.NewGuid()),
+                 })
+        {
+            var ex = await Assert.ThrowsAsync<ControlException>(request);
+            Assert.Equal("Le lien avec le service est coupé.", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task Link_DisposedDuringRequest_FailsWithLinkCut_AndSaveReportsIt()
+    {
+        var pipe = NewPipeName();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new Handler
+        {
+            OnReload = async ct =>
+            {
+                started.TrySetResult();
+                await Task.Delay(Timeout.Infinite, ct);
+                return new Reloaded(true, null, []);
+            },
+        };
+        using var server = new ControlServer(pipe, handler);
+        server.Start();
+        var link = NewLink(pipe);
+        await WaitUntilAsync(() => link.State == LinkState.Connected, "connexion");
+
+        // La fenêtre se ferme pendant que le service travaille : l'appelant reçoit une erreur française, pas une annulation.
+        var dir = Path.Combine(Path.GetTempPath(), "trofeo-settings-link-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new Trofeo.Core.Layout.LayoutStore(Path.Combine(dir, "layout.json"));
+            store.Save(Trofeo.Core.Layout.DashboardLayout.Default);
+            var document = new LayoutDocument(store, link);
+            document.Load();
+
+            var saving = document.SaveAsync(Trofeo.Core.Layout.DashboardLayout.Default with { MaxFps = 6 });
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await link.DisposeAsync();
+
+            var outcome = await saving;
+            Assert.True(outcome.Saved);
+            Assert.Equal("Le lien avec le service est coupé.", outcome.Message);
+
+            // Et une sauvegarde après la fermeture le dit aussi, sans exception.
+            var after = await document.SaveAsync(Trofeo.Core.Layout.DashboardLayout.Default with { MaxFps = 7 });
+            Assert.True(after.Saved);
+            Assert.Equal("Le lien avec le service est coupé.", after.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Fact]

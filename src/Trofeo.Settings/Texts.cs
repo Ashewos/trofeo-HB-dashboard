@@ -55,6 +55,8 @@ public static class Texts
     public static string ServiceNotFound => Get();
     /// <summary>Erreur quand la liaison est coupée.</summary>
     public static string LinkLost => Get();
+    /// <summary>Erreur quand la liaison se ferme pendant une demande (fermeture de la fenêtre, coupure).</summary>
+    public static string LinkCut => Get();
     /// <summary>La disposition a changé en dehors des réglages : elle a été relue.</summary>
     public static string LayoutChangedOutside => Get();
     /// <summary>Le service refuse sans donner de motif.</summary>

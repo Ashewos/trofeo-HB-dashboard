@@ -108,6 +108,20 @@ public sealed class MainWindowTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void Preview_PausedWhileMinimized()
+    {
+        _link.Set(LinkState.Connected, SampleData.Welcome(), SampleData.Status());
+        var (window, _) = Open();
+        Assert.False(_link.Paused);
+
+        window.WindowState = WindowState.Minimized;
+        Assert.True(_link.Paused);
+
+        window.WindowState = WindowState.Normal;
+        Assert.False(_link.Paused);
+    }
+
+    [AvaloniaFact]
     public void MainWindow_Defaults_AreTheSpecifiedSize()
     {
         _link.Set(LinkState.Connected, SampleData.Welcome(), SampleData.Status());

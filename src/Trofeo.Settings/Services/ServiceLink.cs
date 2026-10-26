@@ -20,12 +20,14 @@ public sealed class ServiceLink : IServiceLink
     private readonly TimeSpan _connectTimeout;
     private readonly TimeSpan _statusInterval;
     private readonly ServiceStarter _starter;
-    private readonly SynchronizationContext? _ui;
+    private readonly Action<Action>? _post;
     private readonly CancellationTokenSource _cts = new();
     private readonly object _gate = new();
     private readonly Task _loop;
     private ControlClient? _client;
-    private int _fps = NormalFps;
+    private bool _realTime;
+    private bool _paused;
+    private PreviewFrame? _pendingFrame;
     private int _failures;
     private int _disposed;
 
@@ -34,17 +36,20 @@ public sealed class ServiceLink : IServiceLink
     /// <param name="connectTimeout">Durée d'une tentative (1 s).</param>
     /// <param name="statusInterval">Délai entre deux lectures de l'état (1 s).</param>
     /// <param name="starter">Lanceur du service (celui de l'application par défaut).</param>
-    /// <param name="ui">Où lever les événements ; par défaut le contexte du fil appelant (le fil de l'interface).</param>
+    /// <param name="post">
+    /// Comment lever les événements sur le fil de l'interface (<c>Dispatcher.UIThread.Post</c> dans l'application).
+    /// Sans lui, ils sont levés en ligne sur le fil de la liaison : réservé aux tests.
+    /// </param>
     public ServiceLink(
         string pipeName = ControlPipe.Name, TimeSpan? retryDelay = null, TimeSpan? connectTimeout = null,
-        TimeSpan? statusInterval = null, ServiceStarter? starter = null, SynchronizationContext? ui = null)
+        TimeSpan? statusInterval = null, ServiceStarter? starter = null, Action<Action>? post = null)
     {
         _pipeName = pipeName;
         _retryDelay = retryDelay ?? TimeSpan.FromSeconds(2);
         _connectTimeout = connectTimeout ?? TimeSpan.FromSeconds(1);
         _statusInterval = statusInterval ?? TimeSpan.FromSeconds(1);
         _starter = starter ?? ServiceStarter.Default;
-        _ui = ui ?? SynchronizationContext.Current;
+        _post = post;
         _loop = Task.Run(RunAsync);
     }
 
@@ -57,27 +62,62 @@ public sealed class ServiceLink : IServiceLink
 
     public void SetRealTimePreview(bool realTime)
     {
+        lock (_gate)
+            _realTime = realTime;
+        Resubscribe();
+    }
+
+    public void SetPreviewPaused(bool paused)
+    {
+        lock (_gate)
+            _paused = paused;
+        Resubscribe();
+    }
+
+    /// <summary>Images par seconde demandées : 0 en pause, sinon 4 ou 12. Appelé sous <see cref="_gate"/>.</summary>
+    private int WantedFps() => _paused ? 0 : _realTime ? RealTimeFps : NormalFps;
+
+    private void Resubscribe()
+    {
         ControlClient? client;
-        var fps = realTime ? RealTimeFps : NormalFps;
+        int fps;
         lock (_gate)
         {
-            _fps = fps;
             client = _client;
+            fps = WantedFps();
         }
 
         if (client is not null)
             _ = SubscribeQuietlyAsync(client, fps);
     }
 
-    public Task<Reloaded> ReloadAsync() => Current().ReloadAsync(_cts.Token);
+    public Task<Reloaded> ReloadAsync() => RequestAsync((client, ct) => client.ReloadAsync(ct));
 
     public Task<IReadOnlyList<LookupResult>> LookupAsync(string typeId, string fieldKey, string query) =>
-        Current().LookupAsync(typeId, fieldKey, query, _cts.Token);
+        RequestAsync((client, ct) => client.LookupAsync(typeId, fieldKey, query, ct));
 
     public Task<ActionResult> RunActionAsync(Guid instanceId, string actionKey) =>
-        Current().RunActionAsync(instanceId, actionKey, _cts.Token);
+        RequestAsync((client, ct) => client.RunActionAsync(instanceId, actionKey, ct));
 
-    public Task<bool> RestartModuleAsync(Guid instanceId) => Current().RestartModuleAsync(instanceId, _cts.Token);
+    public Task<bool> RestartModuleAsync(Guid instanceId) =>
+        RequestAsync((client, ct) => client.RestartModuleAsync(instanceId, ct));
+
+    /// <summary>
+    /// Une demande au service. Une liaison fermée ou coupée en route (annulation, objet libéré) devient une
+    /// <see cref="ControlException"/> en français : l'appelant (fermeture de la fenêtre comprise) ne voit jamais l'exception technique.
+    /// </summary>
+    private async Task<T> RequestAsync<T>(Func<ControlClient, CancellationToken, Task<T>> request)
+    {
+        var client = Current();
+        try
+        {
+            return await request(client, _cts.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
+        {
+            throw new ControlException(Texts.LinkCut);
+        }
+    }
 
     public Task<bool> StartServiceAsync()
     {
@@ -94,6 +134,8 @@ public sealed class ServiceLink : IServiceLink
 
     private ControlClient Current()
     {
+        if (Volatile.Read(ref _disposed) != 0)
+            throw new ControlException(Texts.LinkCut);
         lock (_gate)
             return _client ?? throw new ControlException(Texts.LinkLost);
     }
@@ -150,13 +192,13 @@ public sealed class ServiceLink : IServiceLink
     {
         var lost = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         client.Disconnected += () => lost.TrySetResult();
-        client.FrameReceived += frame => Post(() => FrameReceived?.Invoke(frame));
+        client.FrameReceived += ReceiveFrame;
 
         int fps;
         lock (_gate)
         {
             _client = client;
-            fps = _fps;
+            fps = WantedFps();
         }
 
         await client.SubscribePreviewAsync(fps, ct).ConfigureAwait(false);
@@ -194,18 +236,39 @@ public sealed class ServiceLink : IServiceLink
         });
     }
 
+    /// <summary>
+    /// Une image arrive du service (fil de lecture). Au plus un envoi est en attente vers l'interface : une image plus
+    /// récente remplace celle qui attend (la dernière gagne), si bien qu'une interface bloquée n'empile jamais d'images.
+    /// </summary>
+    internal void ReceiveFrame(PreviewFrame frame)
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+            return;
+        if (Interlocked.Exchange(ref _pendingFrame, frame) is null)
+            Post(DeliverFrame);
+    }
+
+    private void DeliverFrame()
+    {
+        var frame = Interlocked.Exchange(ref _pendingFrame, null);
+        if (frame is null || Volatile.Read(ref _disposed) != 0)
+            return;
+        FrameReceived?.Invoke(frame);
+    }
+
     private void Post(Action action)
     {
-        if (_ui is null)
+        if (_post is null)
             action();
         else
-            _ui.Post(_ => action(), null);
+            _post(action);
     }
 
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
+        Volatile.Write(ref _pendingFrame, null);
         await _cts.CancelAsync().ConfigureAwait(false);
         try { await _loop.WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false); }
         catch (Exception) { /* la boucle se termine d'elle-même ; rien à remonter à la fermeture */ }

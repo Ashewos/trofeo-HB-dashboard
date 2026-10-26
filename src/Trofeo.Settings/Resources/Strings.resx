@@ -77,6 +77,10 @@
     <value>Le service d'affichage ne répond pas.</value>
     <comment>Erreur quand la liaison est coupée.</comment>
   </data>
+  <data name="LinkCut" xml:space="preserve">
+    <value>Le lien avec le service est coupé.</value>
+    <comment>Erreur quand la liaison se ferme pendant une demande (fermeture de la fenêtre, coupure).</comment>
+  </data>
   <data name="LayoutChangedOutside" xml:space="preserve">
     <value>La disposition a changé en dehors des réglages : elle a été relue.</value>
   </data>

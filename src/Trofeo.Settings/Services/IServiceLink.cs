@@ -29,6 +29,16 @@ public interface IServiceLink : IAsyncDisposable
     /// <summary>Aperçu à 12 images par seconde (<c>true</c>) ou à 4 (<c>false</c>).</summary>
     void SetRealTimePreview(bool realTime);
 
+    /// <summary>
+    /// Met l'aperçu en pause (<c>true</c> : plus aucune image demandée, par exemple fenêtre réduite) ou le reprend à 4 ou
+    /// 12 images par seconde.
+    /// </summary>
+    void SetPreviewPaused(bool paused);
+
+    /// <summary>
+    /// Les demandes au service. Liaison absente ou fermée (fermeture de la fenêtre comprise) : <see cref="ControlException"/>
+    /// avec un message en français, jamais <see cref="ObjectDisposedException"/> ni <see cref="OperationCanceledException"/>.
+    /// </summary>
     Task<Reloaded> ReloadAsync();
     Task<IReadOnlyList<LookupResult>> LookupAsync(string typeId, string fieldKey, string query);
     Task<ActionResult> RunActionAsync(Guid instanceId, string actionKey);
