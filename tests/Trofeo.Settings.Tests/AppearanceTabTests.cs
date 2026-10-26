@@ -504,6 +504,45 @@ public sealed class AppearanceTabTests : IDisposable
     }
 
     [Fact]
+    public async Task ReloadWarning_AppearanceUnchangedInTheWindow_ButServiceRebuiltIt_IsShown()
+    {
+        // Le service redémarré (ou le fichier réécrit à la main) reconstruit le fond au premier rechargement, même pour une
+        // modification de module : son avertissement ne doit pas être perdu.
+        var tab = Open(new AppearanceSettings("classique", Background: new BackgroundSettings(BackgroundKind.Image, Path: @"C:\fonds\photo.png")));
+        ReloadWith(BackgroundMissing);
+
+        await _session.ApplyAsync(l => l with { Placements = [Clock() with { TextSize = TextSize.Large }] });
+
+        Assert.Equal(BackgroundMissing, tab.BackgroundWarning);
+    }
+
+    [Fact]
+    public async Task Background_File_PickerFails_ShowsTheFrenchMessage_AndSavesNothing()
+    {
+        var tab = Open();
+        _picker.Failure = "Le sélecteur de fichier n'a pas pu s'ouvrir : accès refusé.";
+        await tab.SetBackgroundKindAsync(BackgroundKind.Image);
+
+        await tab.ChooseFileAsync();
+
+        Assert.Equal("Le sélecteur de fichier n'a pas pu s'ouvrir : accès refusé.", tab.FileError);
+        Assert.True(tab.HasFileError);
+        Assert.Equal(0, _link.ReloadCount);
+
+        _picker.Failure = null;                 // la prochaine tentative réussit : l'erreur s'efface
+        _picker.Result = Path.Combine(_dir, "a.png");
+        await tab.ChooseFileAsync();
+        Assert.False(tab.HasFileError);
+        Assert.Equal(1, _link.ReloadCount);
+    }
+
+    [Fact]
+    public void Texts_PickFailed_IsFrench()
+    {
+        Assert.Equal("Le sélecteur de fichier n'a pas pu s'ouvrir : x", string.Format(Texts.AppearancePickFailed, "x"));
+    }
+
+    [Fact]
     public async Task ReloadWarning_Undo_OfAnAppearanceChange_TakesTheReloadWarnings()
     {
         var tab = Open();

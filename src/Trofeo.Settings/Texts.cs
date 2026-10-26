@@ -193,4 +193,6 @@ public static class Texts
     public static string AppearanceLegibility => Get();
     /// <summary>Explication sous l'interrupteur.</summary>
     public static string AppearanceLegibilityHelp => Get();
+    /// <summary>{0} : la cause. Le sélecteur de fichier de Windows a échoué.</summary>
+    public static string AppearancePickFailed => Get();
 }

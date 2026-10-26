@@ -144,7 +144,11 @@ public sealed partial class AppearanceTabViewModel : TabViewModel, IDisposable
     /// <summary>« Celle du thème », les polices embarquées, un séparateur, puis les polices du système.</summary>
     public IReadOnlyList<FontItem> Fonts { get; }
 
-    /// <summary>La police en cours ; <c>null</c> si elle n'est pas dans la liste (non installée). Choisir une ligne enregistre.</summary>
+    /// <summary>
+    /// La police en cours ; <c>null</c> si elle n'est pas dans la liste (non installée). Lecture seule : la liste suit le
+    /// focus (les flèches déplacent la sélection), donc choisir une ligne n'enregistre pas ; la vue appelle
+    /// <see cref="SetFontAsync"/> au clic ou à Entrée.
+    /// </summary>
     public FontItem? SelectedFont
     {
         get
@@ -153,12 +157,6 @@ public sealed partial class AppearanceTabViewModel : TabViewModel, IDisposable
             if (string.IsNullOrWhiteSpace(font))
                 return Fonts[0];
             return Fonts.FirstOrDefault(f => f.IsChoice && f.Value is not null && string.Equals(f.Value, font.Trim(), StringComparison.OrdinalIgnoreCase));
-        }
-        set
-        {
-            if (_refreshing || value is null)
-                return; // la liste se remplit ou se vide : elle ne choisit rien.
-            _ = SetFontAsync(value);
         }
     }
 
@@ -190,6 +188,13 @@ public sealed partial class AppearanceTabViewModel : TabViewModel, IDisposable
             return path[(path.LastIndexOfAny(['\\', '/']) + 1)..];
         }
     }
+
+    /// <summary>Le sélecteur de fichier n'a pas pu s'ouvrir (message en français) ; <c>null</c> sinon.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFileError))]
+    private string? _fileError;
+
+    public bool HasFileError => !string.IsNullOrEmpty(FileError);
 
     public bool HasFileName => FileName is not null;
     public string FileLabel => FileName ?? Texts.AppearanceNoFile;
@@ -231,6 +236,7 @@ public sealed partial class AppearanceTabViewModel : TabViewModel, IDisposable
             _draftKind = kind;
         }
 
+        FileError = null;
         Refresh();
     }
 
@@ -268,7 +274,18 @@ public sealed partial class AppearanceTabViewModel : TabViewModel, IDisposable
         if (Picker is not { } picker || !ShowsFile)
             return;
 
-        var path = await picker.PickAsync(BackgroundFiles.Title(kind), BackgroundFiles.TypeName(kind), BackgroundFiles.Extensions(kind)).ConfigureAwait(true);
+        FileError = null;
+        string? path;
+        try
+        {
+            path = await picker.PickAsync(BackgroundFiles.Title(kind), BackgroundFiles.TypeName(kind), BackgroundFiles.Extensions(kind)).ConfigureAwait(true);
+        }
+        catch (FilePickerException ex)
+        {
+            FileError = ex.Message; // sélecteur impossible à ouvrir : dit en français sous le bouton
+            return;
+        }
+
         if (string.IsNullOrEmpty(path))
             return; // l'utilisateur a annulé
 

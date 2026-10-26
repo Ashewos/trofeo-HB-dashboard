@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Trofeo.Settings.Services;
 using Trofeo.Settings.ViewModels;
 
@@ -21,6 +22,11 @@ public partial class AppearanceTabView : UserControl
         OpacitySlider.AddHandler(Thumb.DragCompletedEvent, OnOpacityReleased, RoutingStrategies.Bubble, handledEventsToo: true);
         OpacitySlider.AddHandler(KeyUpEvent, OnOpacityReleased, RoutingStrategies.Bubble, handledEventsToo: true);
 
+        // La liste des polices : les flèches (et la frappe) ne font que déplacer la sélection ; la police ne s'enregistre qu'au
+        // clic (ou au toucher) sur une ligne, ou à Entrée. Sinon chaque flèche réécrirait le fichier et rechargerait le service.
+        FontList.AddHandler(PointerReleasedEvent, OnFontClicked, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
+        FontList.AddHandler(KeyDownEvent, OnFontKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+
         // Un champ de couleur quitté est validé comme avec Entrée.
         HexBox.LostFocus += (_, _) => (DataContext as AppearanceTabViewModel)?.ApplyColorTextCommand.Execute(null);
     }
@@ -33,6 +39,20 @@ public partial class AppearanceTabView : UserControl
         {
             model.Picker = new StorageFilePicker(top);
         }
+    }
+
+    private void OnFontClicked(object? sender, PointerReleasedEventArgs e)
+    {
+        if (e.InitialPressMouseButton != MouseButton.Left || DataContext is not AppearanceTabViewModel model)
+            return;
+        if ((e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is FontItem item)
+            _ = model.SetFontAsync(item);
+    }
+
+    private void OnFontKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && DataContext is AppearanceTabViewModel model && FontList.SelectedItem is FontItem item)
+            _ = model.SetFontAsync(item);
     }
 
     private void OnOpacityReleased(object? sender, RoutedEventArgs e) =>

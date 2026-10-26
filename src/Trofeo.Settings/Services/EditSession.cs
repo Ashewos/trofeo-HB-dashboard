@@ -150,7 +150,10 @@ public sealed class EditSession : IDisposable
 
         var (appearance, other) = WarningRouter.Route(outcome.Warnings);
         OtherWarnings = other;
-        if (!Equals(before.Appearance, after.Appearance))
+        // Le service décide sur l'apparence qu'il a lui-même appliquée (redémarré, fichier réécrit à la main) : s'il en
+        // signale une, c'est qu'il a reconstruit le thème, même si la fenêtre n'a rien changé. Sans avertissement et sans
+        // changement d'apparence, il ne répète rien : on garde ce qu'on avait.
+        if (!appearance.IsEmpty || !Equals(before.Appearance, after.Appearance))
             AppearanceWarnings = appearance;
     }
 

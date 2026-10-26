@@ -62,7 +62,7 @@
           <TextBlock Grid.Row="0" Classes="section" Text="{x:Static t:Texts.AppearanceFont}" />
           <ListBox Grid.Row="1" Name="FontList" Classes="modules" MinHeight="200" MaxHeight="270"
                    AutomationProperties.Name="{x:Static t:Texts.AppearanceFont}"
-                   ItemsSource="{Binding Fonts}" SelectedItem="{Binding SelectedFont}">
+                   ItemsSource="{Binding Fonts}" SelectedItem="{Binding SelectedFont, Mode=OneWay}">
             <ListBox.Styles>
               <Style Selector="ListBoxItem" x:DataType="vm:FontItem">
                 <Setter Property="IsEnabled" Value="{Binding IsChoice}" />
@@ -139,6 +139,8 @@
               <TextBlock Name="FileName" Classes="lead" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="260"
                          Classes.muted="{Binding !HasFileName}" Text="{Binding FileLabel}" ToolTip.Tip="{Binding FileName}" />
             </StackPanel>
+            <TextBlock Name="FileError" Classes="error" TextWrapping="Wrap"
+                       Text="{Binding FileError}" IsVisible="{Binding HasFileError}" />
             <TextBlock Name="VideoAdvice" Classes="muted" TextWrapping="Wrap"
                        Text="{x:Static t:Texts.AppearanceVideoAdvice}" IsVisible="{Binding ShowsVideoAdvice}" />
           </StackPanel>

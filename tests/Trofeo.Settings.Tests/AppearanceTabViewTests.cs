@@ -140,14 +140,52 @@ public sealed class AppearanceTabViewTests : IDisposable
         Assert.Equal(0.51f, document.Current.Appearance!.PanelOpacity);
     }
 
+    private ListBoxItem FontRow(string name) =>
+        Named<ListBox>("FontList").GetVisualDescendants().OfType<ListBoxItem>().Single(i => (i.DataContext as FontItem)?.Name == name);
+
     [AvaloniaFact]
-    public async Task FontList_ChoosingARow_SavesTheFont()
+    public async Task FontList_ClickingARow_SavesTheFont()
     {
         var (model, document) = Open();
         var list = Named<ListBox>("FontList");
         Assert.Equal(model.AppearanceTab.Fonts[0], list.SelectedItem);   // « Celle du thème »
 
-        list.SelectedItem = model.AppearanceTab.Fonts.Single(f => f.Name == "Manrope");
+        Click(FontRow("Manrope"));
+
+        await WaitUntil(() => _link.ReloadCount == 1);
+        Assert.Equal("Manrope", document.Current.Appearance!.Font);
+    }
+
+    [AvaloniaFact]
+    public async Task FontList_Keyboard_ArrowsOnlyMoveTheHighlight_EnterSaves()
+    {
+        var (model, document) = Open();
+        var list = Named<ListBox>("FontList");
+        FontRow(model.AppearanceTab.Fonts[0].Name).Focus(NavigationMethod.Tab);
+
+        (Key Key, PhysicalKey Physical)[] keys =
+        [
+            (Key.Down, PhysicalKey.ArrowDown), (Key.Down, PhysicalKey.ArrowDown), (Key.Down, PhysicalKey.ArrowDown),
+            (Key.Up, PhysicalKey.ArrowUp), (Key.End, PhysicalKey.End), (Key.Home, PhysicalKey.Home),
+            (Key.Down, PhysicalKey.ArrowDown), (Key.Down, PhysicalKey.ArrowDown),
+        ];
+        foreach (var (key, physical) in keys)
+        {
+            _window!.KeyPress(key, RawInputModifiers.None, physical, null);
+            _window!.KeyRelease(key, RawInputModifiers.None, physical, null);
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(100);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, _link.ReloadCount);                      // se promener dans la liste n'écrit rien
+        Assert.False(model.Session.CanUndo);
+        Assert.Null(document.Current.Appearance);
+        var highlighted = (FontItem)list.SelectedItem!;
+        Assert.Equal(model.AppearanceTab.Fonts[2], highlighted);   // Home puis deux fois Bas : Manrope
+
+        _window!.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
 
         await WaitUntil(() => _link.ReloadCount == 1);
         Assert.Equal("Manrope", document.Current.Appearance!.Font);
