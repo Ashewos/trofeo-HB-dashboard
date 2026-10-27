@@ -152,6 +152,46 @@ public sealed class DisplayLoopPreviewTests
     }
 
     [Fact]
+    public void Preview_NoScreen_RendersNoFasterThanTheFastestSubscriber()
+    {
+        using var rig = new LoopRig();
+        rig.Created[0].IsAnimating = true; // le plafond de 12 i/s serait atteint sans la limite de l'aperçu
+        var frames = Collect(rig, 4, out var sub);
+        using var _ = sub;
+
+        for (var i = 0; i < 100; i++) // 1 s simulée
+        {
+            rig.Loop.Tick();
+            rig.Time.Advance(TimeSpan.FromMilliseconds(10));
+        }
+
+        Assert.True(rig.Loop.Status.Emulated);
+        Assert.InRange(frames.Count, 3, 5);
+        // Aucun rendu perdu : un rendu par image remise (le module a été dessiné autant de fois que l'aperçu a reçu d'images).
+        Assert.InRange(rig.Created[0].Rects.Count, 3, 5);
+    }
+
+    [Fact]
+    public void Preview_NoScreen_FastestSubscriberSetsTheRate()
+    {
+        using var rig = new LoopRig();
+        rig.Created[0].IsAnimating = true;
+        var slow = Collect(rig, 4, out var slowSub);
+        var fast = Collect(rig, 12, out var fastSub);
+        using var _1 = slowSub;
+        using var _2 = fastSub;
+
+        for (var i = 0; i < 100; i++)
+        {
+            rig.Loop.Tick();
+            rig.Time.Advance(TimeSpan.FromMilliseconds(10));
+        }
+
+        Assert.InRange(fast.Count, 10, 12);
+        Assert.InRange(slow.Count, 3, 4);
+    }
+
+    [Fact]
     public void Preview_Throttled_LatestFrameIsStillDelivered()
     {
         using var rig = new LoopRig();

@@ -99,6 +99,7 @@ public sealed class DisplayLoop : IDisposable
     private FrameComposer _composer;
     private ThemeDefinition _theme;
     private IBackground _background;
+    private double _configuredFps;          // le plafond de la disposition (MaxFps) ; le plafond réel peut être plus bas sans écran
     private long _backgroundStart;
     private TimeSpan? _backgroundDue;       // échéance absolue de l'image suivante du fond, sur l'axe du temps du fond (depuis _backgroundStart)
     private TimeSpan? _backgroundRetryAt;   // fond en échec : prochain essai d'avance, sur le même axe
@@ -162,6 +163,7 @@ public sealed class DisplayLoop : IDisposable
         // Une disposition mal formée ne doit jamais empêcher le service de démarrer : les refus sont journalisés.
         _live = Reconcile(layout, Live.Empty, [], out _);
         if (layout.MaxFps is { } maxFps) _scheduler.SetMaxFps(maxFps);
+        _configuredFps = FpsOf(_scheduler.MinInterval);
         _scheduler.MarkDirty(); // la première image part dès que l'écran est prêt
     }
 
@@ -339,7 +341,7 @@ public sealed class DisplayLoop : IDisposable
         {
             if (cancelled)
             {
-                DisposeQuietly(config.Background); // la boucle en était devenue propriétaire
+                DisposeUnlessCurrent(config.Background); // la boucle en était devenue propriétaire
                 completion.TrySetResult([]);
                 return;
             }
@@ -356,11 +358,20 @@ public sealed class DisplayLoop : IDisposable
 
         if (!queued)
         {
-            DisposeQuietly(config.Background);
+            DisposeUnlessCurrent(config.Background);
             completion.TrySetResult([]);
         }
 
         return completion.Task;
+    }
+
+    /// <summary>
+    /// Une demande annulée libère le fond qu'elle apportait, sauf si c'est celui que la boucle montre déjà (un rechargement qui
+    /// garde le fond le rend tel quel) : <see cref="Dispose"/> le libère, une seule fois.
+    /// </summary>
+    private void DisposeUnlessCurrent(IBackground background)
+    {
+        if (!ReferenceEquals(background, _background)) DisposeQuietly(background);
     }
 
     /// <summary>
@@ -441,7 +452,8 @@ public sealed class DisplayLoop : IDisposable
                 foreach (var module in created) StartModule(module);
             }
 
-            _scheduler.SetMaxFps(layout.MaxFps ?? DefaultMaxFps);
+            _configuredFps = layout.MaxFps ?? DefaultMaxFps;
+            ApplyFpsCap();
             _scheduler.MarkDirty();
         }
 
@@ -706,6 +718,31 @@ public sealed class DisplayLoop : IDisposable
 
     private bool HasSubscribers => _subscribers.Length > 0;
 
+    private static double FpsOf(TimeSpan interval) => (double)TimeSpan.TicksPerSecond / Math.Max(1, interval.Ticks);
+
+    /// <summary>
+    /// Le plafond d'images du moment. Sans écran, l'image ne part nulle part : elle ne sert qu'aux abonnés de l'aperçu, donc le
+    /// plafond ne dépasse pas celui du plus rapide d'entre eux (4 i/s pour un aperçu normal : pas d'encodage perdu à 12 i/s).
+    /// Avec l'écran, c'est celui de la disposition.
+    /// </summary>
+    private void ApplyFpsCap()
+    {
+        var cap = _configuredFps;
+        if (_screen.State != ScreenState.Ready)
+        {
+            TimeSpan? shortest = null;
+            foreach (var subscriber in _subscribers)
+            {
+                if (subscriber.IsDisposed) continue;
+                if (shortest is null || subscriber.Interval < shortest) shortest = subscriber.Interval;
+            }
+
+            if (shortest is { } interval) cap = Math.Min(cap, FpsOf(interval));
+        }
+
+        _scheduler.SetMaxFps(cap);
+    }
+
     /// <summary>Remet <paramref name="frame"/> à chaque abonné (il remplace l'image en attente) puis livre ceux dont le délai est écoulé.</summary>
     private void Publish(PreviewFrame frame)
     {
@@ -787,6 +824,7 @@ public sealed class DisplayLoop : IDisposable
             return NextDelay();
         }
 
+        ApplyFpsCap();
         AdvanceBackground();
         RenderAndSend();
         KeepAlive();

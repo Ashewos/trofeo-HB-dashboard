@@ -91,7 +91,7 @@ public sealed class ServiceControlHandlerTests
 
         public Rig(
             DashboardLayout? layout = null, Func<ScreenInfo>? screen = null, Func<SensorInfo>? sensors = null,
-            Func<DashboardLayout, LoopConfig>? build = null, LoopConfig? initialConfig = null)
+            Func<DashboardLayout, LoopConfig?, LoopConfig>? build = null, LoopConfig? initialConfig = null)
         {
             Directory.CreateDirectory(_dir);
             LayoutPath = Path.Combine(_dir, "layout.json");
@@ -106,7 +106,7 @@ public sealed class ServiceControlHandlerTests
                 screen ?? (() => new ScreenInfo(LinkScreenState.Ready, null)),
                 sensors ?? (() => new SensorInfo(true, false, false)),
                 new ProcessMeter(() => (TimeSpan.Zero, 1, 2), LoopRig.Time, 4),
-                build ?? (layout => LoopConfigFactory.Build(layout, new NoSystemFonts(), null, Sink.Warn)),
+                build ?? ((layout, current) => LoopConfigFactory.Build(layout, new NoSystemFonts(), null, Sink.Warn, current)),
                 Hotkeys, Sink, initialConfig);
         }
 
@@ -234,7 +234,7 @@ public sealed class ServiceControlHandlerTests
     public async Task Reload_SameAppearance_KeepsBackgroundInstance()
     {
         var built = new List<TrackedBackground>();
-        using var rig = new Rig(build: layout =>
+        using var rig = new Rig(build: (layout, _) =>
         {
             var background = new TrackedBackground(SKColors.Red);
             built.Add(background);
@@ -258,7 +258,7 @@ public sealed class ServiceControlHandlerTests
     {
         var builds = 0;
         var startup = new LoopConfig(Layout(Place(A, "fake")), Themes.ClassiqueDefinition, new TrackedBackground(SKColors.Red));
-        using var rig = new Rig(build: layout =>
+        using var rig = new Rig(build: (layout, _) =>
         {
             builds++;
             return new LoopConfig(layout, Themes.ClassiqueDefinition, new TrackedBackground(SKColors.Blue));
@@ -274,7 +274,7 @@ public sealed class ServiceControlHandlerTests
     public async Task Reload_ChangedAppearance_RebuildsBackground()
     {
         var built = new List<TrackedBackground>();
-        using var rig = new Rig(build: layout =>
+        using var rig = new Rig(build: (layout, _) =>
         {
             var background = new TrackedBackground(SKColors.Red);
             built.Add(background);
@@ -308,13 +308,109 @@ public sealed class ServiceControlHandlerTests
     }
 
     [Fact]
+    public async Task Reload_PassesTheAppliedConfigToBuild()
+    {
+        var seen = new List<LoopConfig?>();
+        using var rig = new Rig(build: (layout, current) =>
+        {
+            seen.Add(current);
+            return new LoopConfig(layout, Themes.ClassiqueDefinition, new TrackedBackground(SKColors.Red));
+        });
+        rig.Store.Save(Layout(Place(A, "fake")) with { Appearance = new AppearanceSettings("pixel") });
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+        rig.Store.Save(Layout(Place(A, "fake")) with { Appearance = new AppearanceSettings("pixel", PanelOpacity: 0.5f) });
+
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        Assert.Equal(2, seen.Count);
+        Assert.Null(seen[0]);
+        Assert.NotNull(seen[1]);
+        Assert.Equal(new AppearanceSettings("pixel"), seen[1]!.Layout.Appearance);
+    }
+
+    [Fact]
+    public async Task Reload_OpacityChange_KeepsTheVideoOpen()
+    {
+        var opened = 0;
+        var videos = new List<TrackedBackground>();
+        using var rig = new Rig(build: (layout, current) => LoopConfigFactory.Build(layout, new NoSystemFonts(), _ =>
+        {
+            opened++;
+            var video = new TrackedBackground(SKColors.Red);
+            videos.Add(video);
+            return video;
+        }, _ => { }, current));
+        var video = new BackgroundSettings(BackgroundKind.Video, Path: "clip.mp4");
+        rig.Store.Save(Layout(Place(A, "fake")) with { Appearance = new AppearanceSettings("classique", Background: video) });
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        rig.Store.Save(Layout(Place(A, "fake")) with
+        {
+            Appearance = new AppearanceSettings("classique", PanelOpacity: 0.5f, Font: "Inconnue", Legibility: false, Background: video),
+        });
+        var result = await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        Assert.True(result.Applied);
+        Assert.Equal(1, opened);
+        Assert.False(videos[0].Disposed);
+        Assert.Equal(0.5f, rig.LoopRig.Loop.Layout.Appearance!.PanelOpacity);
+    }
+
+    [Fact]
+    public async Task Reload_UnchangedShortcutsAndCommandableModule_DoNotReapplyHotkeys()
+    {
+        using var rig = new Rig();
+        rig.Hotkeys.Failures.Add("Raccourci « Ctrl+Alt+Left » indisponible : déjà pris.");
+        rig.Store.Save(Layout(Place(A, "fake"), Place(Conf1, "conf", column: 4, columns: 2, rows: 1)));
+        var first = await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        rig.Store.Save(Layout(Place(A, "fake"), Place(Conf1, "conf", column: 6, columns: 2, rows: 1))); // un module déplacé
+        var second = await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        Assert.True(second.Applied);
+        Assert.Single(rig.Hotkeys.Applied);
+        Assert.Contains(first.Warnings, w => w.Contains("Ctrl+Alt+Left"));
+        Assert.DoesNotContain(second.Warnings, w => w.Contains("Ctrl+Alt+Left")); // le refus de la pose précédente n'est pas répété
+    }
+
+    [Fact]
+    public async Task Reload_ShortcutsChanged_ReappliesHotkeys()
+    {
+        using var rig = new Rig();
+        rig.Store.Save(Layout(Place(A, "fake"), Place(Conf1, "conf", column: 4, columns: 2, rows: 1)));
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+        ShortcutBinding[] custom = [new("Ctrl+Alt+Up", ModuleCommandKind.NextTab)];
+
+        rig.Store.Save(Layout(Place(A, "fake"), Place(Conf1, "conf", column: 4, columns: 2, rows: 1)) with { Shortcuts = custom });
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        Assert.Equal(2, rig.Hotkeys.Applied.Count);
+        Assert.Equal(custom, rig.Hotkeys.Applied[1]);
+    }
+
+    [Fact]
+    public async Task Reload_CommandableModuleAppearsOrDisappears_ReappliesHotkeys()
+    {
+        using var rig = new Rig();
+        rig.Store.Save(Layout(Place(A, "fake"), Place(Conf1, "conf", column: 4, columns: 2, rows: 1)));
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        rig.Store.Save(Layout()); // plus de module commandable
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+        rig.Store.Save(Layout(Place(A, "fake"), Place(Conf1, "conf", column: 4, columns: 2, rows: 1))); // il revient
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        Assert.Equal(3, rig.Hotkeys.Applied.Count);
+    }
+
+    [Fact]
     public async Task Reload_BuildConfigFails_ReportsErrorAndKeepsCurrent()
     {
         using var rig = new Rig();
         var failing = new ServiceControlHandler(
             rig.Store, rig.LoopRig.Loop, rig.LoopRig.Registry, () => new ScreenInfo(LinkScreenState.Ready, null),
             () => new SensorInfo(false, false, false), new ProcessMeter(() => (TimeSpan.Zero, 0, 0), rig.LoopRig.Time, 1),
-            _ => throw new InvalidOperationException("police corrompue"), rig.Hotkeys);
+            (_, _) => throw new InvalidOperationException("police corrompue"), rig.Hotkeys);
         var before = rig.LoopRig.Loop.Layout;
         rig.Store.Save(Layout(Place(B, "other")));
 
@@ -478,7 +574,7 @@ public sealed class ServiceControlHandlerTests
         var handler = new ServiceControlHandler(
             rig.Store, rig.LoopRig.Loop, registry, () => new ScreenInfo(LinkScreenState.Ready, null),
             () => new SensorInfo(false, false, false), new ProcessMeter(() => (TimeSpan.Zero, 0, 0), rig.LoopRig.Time, 1),
-            _ => throw new InvalidOperationException(), null);
+            (_, _) => throw new InvalidOperationException(), null);
 
         var welcome = handler.Hello();
 

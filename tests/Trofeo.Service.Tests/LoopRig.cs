@@ -42,6 +42,7 @@ internal sealed class TrackedBackground(SKColor color) : IBackground
 {
     private readonly ColorBackground _inner = new(color);
     public bool Disposed { get; private set; }
+    public int DisposeCount { get; private set; }
     public bool IsAnimated => false;
     public SKImage Current => _inner.Current;
     public int Version => 1;
@@ -51,6 +52,7 @@ internal sealed class TrackedBackground(SKColor color) : IBackground
     public void Dispose()
     {
         Disposed = true;
+        DisposeCount++;
         _inner.Dispose();
     }
 }

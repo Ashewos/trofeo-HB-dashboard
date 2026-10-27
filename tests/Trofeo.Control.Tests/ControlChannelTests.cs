@@ -120,6 +120,15 @@ public class ControlChannelTests
     }
 
     [Fact]
+    public void TimeoutFor_ActionIsLongerThanReloadAndRestart()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(150), ControlClient.TimeoutFor(MessageTypes.Action));
+        Assert.Equal(TimeSpan.FromSeconds(20), ControlClient.TimeoutFor(MessageTypes.Reload));
+        Assert.Equal(TimeSpan.FromSeconds(20), ControlClient.TimeoutFor(MessageTypes.Restart));
+        Assert.Equal(TimeSpan.FromSeconds(10), ControlClient.TimeoutFor(MessageTypes.Status));
+    }
+
+    [Fact]
     public async Task Connect_NoServer_ThrowsTimeout()
     {
         await Assert.ThrowsAsync<TimeoutException>(() =>

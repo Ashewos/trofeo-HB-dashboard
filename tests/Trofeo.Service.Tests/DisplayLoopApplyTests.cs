@@ -321,6 +321,32 @@ public sealed class DisplayLoopApplyTests
     }
 
     [Fact]
+    public async Task Dispose_WithPendingApplyKeepingCurrentBackground_DisposesItOnce()
+    {
+        var background = new TrackedBackground(SKColors.Red);
+        var rig = new LoopRig(background: background);
+        // Un rechargement qui garde le fond le rend tel quel : annulé à l'arrêt, il ne doit pas le libérer une seconde fois.
+        var task = rig.Loop.ApplyAsync(Config(Layout(Place(A)), background: background));
+
+        rig.Dispose();
+
+        Assert.Empty(await task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, background.DisposeCount);
+    }
+
+    [Fact]
+    public async Task Apply_AfterDispose_WithCurrentBackground_DoesNotDisposeItAgain()
+    {
+        var background = new TrackedBackground(SKColors.Red);
+        var rig = new LoopRig(background: background);
+        rig.Dispose();
+
+        await rig.Loop.ApplyAsync(Config(Layout(Place(A)), background: background));
+
+        Assert.Equal(1, background.DisposeCount);
+    }
+
+    [Fact]
     public async Task Restart_RecreatesInstance()
     {
         using var rig = new LoopRig();

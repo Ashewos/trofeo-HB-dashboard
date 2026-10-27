@@ -61,7 +61,7 @@ static class Program
         // Tout ce qui suit est déclaré avant la boucle : libéré après elle, dans l'ordre inverse de la création.
         // Pas de redirection suivie : la session Freebox ne doit jamais partir vers un autre hôte.
         using var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(15) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("trofeo-HB-dashboard/0.2");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd($"trofeo-HB-dashboard/{typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0"}");
 
         // Capteurs : l'assistant élevé s'il tourne, sinon une lecture locale. Aucune panne ici n'arrête le service.
         using var sensorPipe = new SensorPipeClient(SensorPipe.Name, HelperIdentity.IsTrusted, TimeProvider.System);
@@ -94,10 +94,10 @@ static class Program
             Warn(message);
             buildWarnings.Warn(message);
         };
-        LoopConfig BuildConfig(DashboardLayout next) => LoopConfigFactory.Build(
-            next, new SkiaSystemFonts(), path => MediaFoundationBackground.TryOpen(path, warnAndCollect), warnAndCollect);
+        LoopConfig BuildConfig(DashboardLayout next, LoopConfig? current) => LoopConfigFactory.Build(
+            next, new SkiaSystemFonts(), path => MediaFoundationBackground.TryOpen(path, warnAndCollect), warnAndCollect, current);
 
-        var config = BuildConfig(layout);
+        var config = BuildConfig(layout, null);
         var theme = config.Theme;
         Trace.TraceInformation(
             $"Apparence : thème « {theme.Theme.Id} », fond {(layout.Appearance?.Background?.Kind ?? BackgroundKind.Theme)}"

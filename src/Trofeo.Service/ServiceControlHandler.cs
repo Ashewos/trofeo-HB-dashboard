@@ -15,7 +15,11 @@ namespace Trofeo.Display;
 /// </summary>
 /// <param name="screen">L'état du lien avec l'écran (fourni par le programme, qui connaît le périphérique).</param>
 /// <param name="sensors">L'état de l'assistant des capteurs (fourni par le programme).</param>
-/// <param name="buildConfig">Fabrique la configuration à appliquer (thème, fond) à partir d'une disposition.</param>
+/// <param name="buildConfig">
+/// Fabrique la configuration à appliquer (thème, fond) à partir d'une disposition ; le second argument est la configuration
+/// que la boucle applique en ce moment (<c>null</c> avant le premier rechargement d'un handler sans configuration de départ) :
+/// son fond peut être gardé quand rien de ce qui le décide n'a changé.
+/// </param>
 /// <param name="hotkeys">Pose les raccourcis après un rechargement ; <c>null</c> : pas de raccourcis.</param>
 /// <param name="buildWarnings">
 /// Reçoit les avertissements de <paramref name="buildConfig"/> (apparence, fond) : ils rejoignent ceux du rechargement.
@@ -27,7 +31,7 @@ namespace Trofeo.Display;
 /// </param>
 public sealed class ServiceControlHandler(
     LayoutStore store, DisplayLoop loop, ModuleRegistry registry, Func<ScreenInfo> screen, Func<SensorInfo> sensors,
-    ProcessMeter meter, Func<DashboardLayout, LoopConfig> buildConfig, IHotkeyHost? hotkeys, WarningSink? buildWarnings = null,
+    ProcessMeter meter, Func<DashboardLayout, LoopConfig?, LoopConfig> buildConfig, IHotkeyHost? hotkeys, WarningSink? buildWarnings = null,
     LoopConfig? initialConfig = null)
     : IControlHandler
 {
@@ -39,6 +43,12 @@ public sealed class ServiceControlHandler(
     // Ce que la boucle applique en ce moment (thème et fond) et l'apparence dont ils viennent ; sous _reloadGate.
     private LoopConfig? _applied = initialConfig;
     private AppearanceSettings? _appliedAppearance = initialConfig?.Layout.Appearance;
+
+    // Les raccourcis posés en dernier (au démarrage, puis à chaque pose) et s'il y avait alors un module commandable ; sous
+    // _reloadGate. Un rechargement qui ne change ni l'un ni l'autre ne les repose pas : sinon un raccourci pris par une autre
+    // application remettrait son avertissement après chaque modification sans rapport. null : état inconnu, la prochaine pose a lieu.
+    private IReadOnlyList<ShortcutBinding>? _appliedShortcuts = initialConfig is null ? null : initialConfig.Layout.Shortcuts ?? ShortcutDefaults.All;
+    private bool _appliedCommandable = loop.FindCommandTarget(null) is not null;
 
     public Welcome Hello()
     {
@@ -96,7 +106,7 @@ public sealed class ServiceControlHandler(
                 buildWarnings?.Drain(); // ce qu'une fabrication précédente (le démarrage) a laissé ne regarde pas ce rechargement
                 try
                 {
-                    config = buildConfig(layout);
+                    config = buildConfig(layout, _applied);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -113,14 +123,23 @@ public sealed class ServiceControlHandler(
 
             if (hotkeys is not null)
             {
-                try
+                var wanted = layout.Shortcuts ?? ShortcutDefaults.All;
+                var commandable = loop.FindCommandTarget(null) is not null;
+                if (_appliedShortcuts is null || commandable != _appliedCommandable || !_appliedShortcuts.SequenceEqual(wanted))
                 {
-                    warnings.AddRange(await hotkeys.ApplyAsync(layout.Shortcuts ?? ShortcutDefaults.All).ConfigureAwait(false));
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    Trace.TraceWarning($"Rechargement : raccourcis non mis à jour : {ex.Message}");
-                    warnings.Add($"Les raccourcis n'ont pas pu être mis à jour : {ex.Message}");
+                    try
+                    {
+                        // Les refus de cette pose sont rendus une fois ; tant que rien ne change, on ne les répète pas.
+                        warnings.AddRange(await hotkeys.ApplyAsync(wanted).ConfigureAwait(false));
+                        _appliedShortcuts = wanted;
+                        _appliedCommandable = commandable;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _appliedShortcuts = null; // état inconnu : le prochain rechargement réessaie
+                        Trace.TraceWarning($"Rechargement : raccourcis non mis à jour : {ex.Message}");
+                        warnings.Add($"Les raccourcis n'ont pas pu être mis à jour : {ex.Message}");
+                    }
                 }
             }
 

@@ -14,6 +14,17 @@ public sealed class ControlClient : IAsyncDisposable
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LongTimeout = TimeSpan.FromSeconds(20);
 
+    // Une action peut lancer deux commandes de 60 s (installation du mod des quotas) : son délai passe au-dessus.
+    private static readonly TimeSpan ActionTimeout = TimeSpan.FromSeconds(150);
+
+    /// <summary>Le délai d'une requête selon son type : 150 s pour une action, 20 s pour un rechargement ou un redémarrage, 10 s sinon.</summary>
+    internal static TimeSpan TimeoutFor(string requestType) => requestType switch
+    {
+        MessageTypes.Action => ActionTimeout,
+        MessageTypes.Reload or MessageTypes.Restart => LongTimeout,
+        _ => DefaultTimeout,
+    };
+
     private readonly NamedPipeClientStream _pipe;
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -89,7 +100,7 @@ public sealed class ControlClient : IAsyncDisposable
         ?? throw Incomplete();
 
     public async Task<ActionResult> RunActionAsync(Guid instanceId, string actionKey, CancellationToken ct) =>
-        (await SendAsync(new Request(NextId(), MessageTypes.Action) { InstanceId = instanceId, ActionKey = actionKey }, LongTimeout, ct)
+        (await SendAsync(new Request(NextId(), MessageTypes.Action) { InstanceId = instanceId, ActionKey = actionKey }, TimeoutFor(MessageTypes.Action), ct)
             .ConfigureAwait(false)).Action
         ?? throw Incomplete();
 
