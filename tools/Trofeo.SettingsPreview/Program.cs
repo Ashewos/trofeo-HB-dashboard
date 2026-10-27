@@ -82,6 +82,7 @@ internal static class Program
         RenderModules(folder, scratch, jpeg, connected.Welcome, connected.Status);
         RenderShortcuts(folder, scratch, jpeg, connected.Welcome, connected.Status);
         RenderSettings(folder, scratch, jpeg, connected.Welcome, connected.Status);
+        RenderFirstRun(folder, scratch, jpeg, connected.Welcome, connected.Status);
 
         // L'onglet Disposition : un module choisi, des glissements (libre, refusé), l'ajout, l'oubli à confirmer.
         var layoutStatus = connected.Status with
@@ -529,6 +530,78 @@ internal static class Program
             }, system: System());
     }
 
+    /// <summary>L'assistant de première ouverture : chaque étape, et les états qui changent ce qu'elle dit.</summary>
+    private static void RenderFirstRun(string folder, string scratch, byte[] jpeg, Welcome welcome, ServiceStatus status)
+    {
+        static void Run(Task task) => task.GetAwaiter().GetResult();
+        static System.Text.Json.JsonElement Json(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement.Clone();
+        var firstRun = new EditorPreferences(FirstRunDone: false);
+
+        void Connected(FakeServiceLink link) => link.Set(LinkState.Connected, welcome, status);
+        void Busy(FakeServiceLink link) => link.Set(LinkState.Connected, welcome,
+            status with { Screen = new ScreenInfo(LinkScreenState.Disconnected, "Écran utilisé par un autre programme (ferme TRCC)") });
+        void Missing(FakeServiceLink link) => link.Set(LinkState.Connected, welcome,
+            status with { Screen = new ScreenInfo(LinkScreenState.Disconnected, null) });
+        void Emulated(FakeServiceLink link) => link.Set(LinkState.Connected, welcome,
+            status with { Screen = new ScreenInfo(LinkScreenState.Disconnected, null), Emulated = true });
+        void NoDriver(FakeServiceLink link) => link.Set(LinkState.Connected, welcome, status with { Sensors = new SensorInfo(false, false, false) });
+        SystemServices Windows(bool fails = false) => new(
+            new FakeStartupRegistration { Failure = fails ? "Accès refusé" : null }, new FakeElevatedLauncher(),
+            () => @"C:\Trofeo\Trofeo.Display.exe", () => @"C:\Trofeo\Trofeo.SensorHelper.exe", () => 96L * 1024 * 1024);
+        void To(MainViewModel model, FirstRunStep step)
+        {
+            for (var guard = 0; model.FirstRun.Step != step && guard < 20; guard++)
+                model.FirstRun.Skip();
+        }
+
+        void Shot(string name, int width, int height, Action<FakeServiceLink> state, FirstRunStep step,
+            Action<MainViewModel>? more = null, DashboardLayout? layout = null, SystemServices? system = null) =>
+            Render(folder, scratch, name, width, height, jpeg, state, (_, model) =>
+            {
+                To(model, step);
+                more?.Invoke(model);
+            }, layout: layout, system: system ?? Windows(), preferences: firstRun);
+
+        Shot("assistant-1-ecran.png", 1440, 900, Connected, FirstRunStep.Screen);
+        Shot("assistant-1-ecran-trcc.png", 1440, 900, Busy, FirstRunStep.Screen);
+        Shot("assistant-1-ecran-debranche.png", 1440, 900, Missing, FirstRunStep.Screen);
+        Shot("assistant-1-ecran-emule.png", 1440, 900, Emulated, FirstRunStep.Screen);
+        Shot("assistant-2-sens.png", 1440, 900, Connected, FirstRunStep.Orientation);
+        Shot("assistant-3-modules.png", 1440, 900, Connected, FirstRunStep.Modules);
+        Shot("assistant-3-modules-1200x760.png", 1200, 760, Connected, FirstRunStep.Modules);
+
+        // Plus de place : Claude Code occupe toute la largeur, Codex ne tient pas.
+        var full = Base with { Placements = [Base.Placements[0] with { Columns = 16 }] };
+        Shot("assistant-3-modules-sans-place.png", 1440, 900, Connected, FirstRunStep.Modules,
+            model => Run(model.FirstRun.SetModuleAsync("codex", true)), full);
+
+        Shot("assistant-4-claude.png", 1440, 900, Connected, FirstRunStep.ClaudeCode);
+        Shot("assistant-4-claude-confirmation.png", 1440, 900, Connected, FirstRunStep.ClaudeCode,
+            model => Run(model.FirstRun.ClaudeForm!.VisibleFields.OfType<Trofeo.Settings.ViewModels.Fields.ActionFieldViewModel>().Single().RequestAsync()));
+        Shot("assistant-4-claude-confirmation-1200x760.png", 1200, 760, Connected, FirstRunStep.ClaudeCode,
+            model => Run(model.FirstRun.ClaudeForm!.VisibleFields.OfType<Trofeo.Settings.ViewModels.Fields.ActionFieldViewModel>().Single().RequestAsync()));
+
+        Shot("assistant-5-reseau.png", 1440, 900, Connected, FirstRunStep.Network);
+        var unifi = Base with
+        {
+            Placements = [.. Base.Placements.Select(p => p.TypeId == "network" ? p with { Settings = Json("""{"source":"unifi","unifi":{"host":"192.168.1.1"}}""") } : p)],
+        };
+        Shot("assistant-5-reseau-unifi.png", 1440, 900, Connected, FirstRunStep.Network, layout: unifi);
+        Shot("assistant-5-reseau-unifi-1200x760.png", 1200, 760, Connected, FirstRunStep.Network, layout: unifi);
+
+        Shot("assistant-6-meteo.png", 1440, 900, Connected, FirstRunStep.Weather);
+        Shot("assistant-7-temperatures.png", 1440, 900, NoDriver, FirstRunStep.Sensors);
+        Shot("assistant-7-temperatures-actives.png", 1440, 900, Connected, FirstRunStep.Sensors);
+        Shot("assistant-8-demarrage.png", 1440, 900, Connected, FirstRunStep.Startup);
+        Shot("assistant-8-demarrage-1200x760.png", 1200, 760, Connected, FirstRunStep.Startup);
+        Shot("assistant-8-demarrage-refus.png", 1440, 900, Connected, FirstRunStep.Startup,
+            model => Run(model.FirstRun.ContinueAsync()), system: Windows(fails: true));
+
+        // Sans Claude Code : sept étapes, et la quatrième est Réseau.
+        var withoutClaude = Base with { Placements = [.. Base.Placements.Where(p => p.TypeId != "claudecode")] };
+        Shot("assistant-sans-claude-reseau.png", 1440, 900, Connected, FirstRunStep.Network, layout: withoutClaude);
+    }
+
     private static readonly Guid ClaudeId = new("3c1d9f5e-7a2b-4e8c-9b1f-6d2a0e4c8b17");
     private static readonly Guid MonitoringId = new("246ac06d-eec2-4d64-9930-24b64603a03b");
     private static readonly Guid NowPlayingId = new("8ebcc647-ab4b-401d-b2b3-f7a0ebd97b4b");
@@ -559,7 +632,7 @@ internal static class Program
         string folder, string scratch, string name, int width, int height, byte[]? jpeg,
         Action<FakeServiceLink> state, Action<MainWindow, MainViewModel> arrange,
         DashboardLayout? layout = null, string? refuseReload = null, IReadOnlyList<string>? systemFonts = null,
-        ISecretAccess? secrets = null, TimeProvider? time = null, SystemServices? system = null)
+        ISecretAccess? secrets = null, TimeProvider? time = null, SystemServices? system = null, EditorPreferences? preferences = null)
     {
         var link = new FakeServiceLink();
         state(link);
@@ -570,7 +643,7 @@ internal static class Program
         var document = new LayoutDocument(store, link);
         document.Load();
         using var model = new MainViewModel(
-            link, document, new EditorPreferences(), null, systemFonts ?? ["Arial", "Consolas", "Segoe UI"], secrets, time, null, system);
+            link, document, preferences ?? new EditorPreferences(FirstRunDone: true), null, systemFonts ?? ["Arial", "Consolas", "Segoe UI"], secrets, time, null, system);
         var window = new MainWindow { DataContext = model, Width = width, Height = height };
         window.Show();
         if (jpeg is not null)

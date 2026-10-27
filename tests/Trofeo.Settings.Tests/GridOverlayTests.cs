@@ -181,7 +181,7 @@ public sealed class GridOverlayTests : IDisposable
     public void Escape_InTheMainWindow_CancelsDrag()
     {
         var document = Document(Placement(ClaudeId, "claudecode", 0, 0, 8, 4), Placement(ClockId, "clock", 12, 0, 4, 2));
-        using var model = new MainViewModel(_link, document, new EditorPreferences());
+        using var model = new MainViewModel(_link, document, new EditorPreferences(FirstRunDone: true));
         var window = new MainWindow { DataContext = model };
         _window = window;
         window.Show();
@@ -201,7 +201,7 @@ public sealed class GridOverlayTests : IDisposable
     public void CtrlZ_AndCtrlY_UndoAndRedoInTheMainWindow()
     {
         var document = Document(Placement(ClaudeId, "claudecode", 0, 0, 8, 4), Placement(ClockId, "clock", 12, 0, 4, 2));
-        using var model = new MainViewModel(_link, document, new EditorPreferences());
+        using var model = new MainViewModel(_link, document, new EditorPreferences(FirstRunDone: true));
         var window = new MainWindow { DataContext = model };
         _window = window;
         window.Show();
@@ -270,7 +270,7 @@ public sealed class GridOverlayTests : IDisposable
     public void CtrlZ_WorksOnEveryTab_AndUndoesTheLastEditWhicheverTabMadeIt()
     {
         var document = Document(Placement(ClaudeId, "claudecode", 0, 0, 8, 4), Placement(ClockId, "clock", 12, 0, 4, 2));
-        using var model = new MainViewModel(_link, document, new EditorPreferences());
+        using var model = new MainViewModel(_link, document, new EditorPreferences(FirstRunDone: true));
         var window = new MainWindow { DataContext = model };
         _window = window;
         window.Show();

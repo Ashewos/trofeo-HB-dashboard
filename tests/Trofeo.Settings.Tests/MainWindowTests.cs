@@ -29,7 +29,7 @@ public sealed class MainWindowTests : IDisposable
     {
         Directory.CreateDirectory(_dir);
         var document = new LayoutDocument(new LayoutStore(Path.Combine(_dir, "layout.json")), _link);
-        var model = new MainViewModel(_link, document, new EditorPreferences());
+        var model = new MainViewModel(_link, document, new EditorPreferences(FirstRunDone: true));
         _window = new MainWindow { DataContext = model };
         _window.Show();
         return (_window, model);

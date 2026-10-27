@@ -29,6 +29,13 @@ public sealed class FilePickerException(string message, Exception? inner = null)
 /// <summary>Le sélecteur de fichier de la plate-forme (Avalonia <see cref="IStorageProvider"/>), ouvert sur une fenêtre.</summary>
 public sealed class StorageFilePicker(TopLevel owner) : IFilePicker
 {
+    /// <summary>Le sélecteur de fichier est celui de la fenêtre qui porte la vue, sauf si le modèle en a déjà un (tests, aperçus).</summary>
+    public static void EnsureFor(Avalonia.Visual view, Trofeo.Settings.ViewModels.SettingsTabViewModel? model)
+    {
+        if (model is { Picker: null } && TopLevel.GetTopLevel(view) is { } top)
+            model.Picker = new StorageFilePicker(top);
+    }
+
     public async Task<string?> PickAsync(string title, string typeName, IReadOnlyList<string> extensions)
     {
         var options = new FilePickerOpenOptions

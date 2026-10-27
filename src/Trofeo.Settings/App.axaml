@@ -2,6 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Trofeo.Settings.ViewModels"
              xmlns:views="clr-namespace:Trofeo.Settings.Views"
+             xmlns:f="clr-namespace:Trofeo.Settings.ViewModels.Fields"
+             xmlns:fv="clr-namespace:Trofeo.Settings.Views.Fields"
              x:Class="Trofeo.Settings.App"
              RequestedThemeVariant="Dark">
 
@@ -18,8 +20,17 @@
     <StyleInclude Source="avares://Trofeo.Settings/Styles/Controls.axaml" />
   </Application.Styles>
 
-  <!-- Un onglet = un modèle de vue = une vue. -->
   <Application.DataTemplates>
+    <!-- Un champ de formulaire = un modèle de vue = une vue : l'onglet Modules et l'assistant de première ouverture les partagent. -->
+    <DataTemplate DataType="f:ChoiceFieldViewModel"><fv:ChoiceFieldView /></DataTemplate>
+    <DataTemplate DataType="f:ToggleFieldViewModel"><fv:ToggleFieldView /></DataTemplate>
+    <DataTemplate DataType="f:TextFieldViewModel"><fv:TextFieldView /></DataTemplate>
+    <DataTemplate DataType="f:ListFieldViewModel"><fv:ListFieldView /></DataTemplate>
+    <DataTemplate DataType="f:SecretFieldViewModel"><fv:SecretFieldView /></DataTemplate>
+    <DataTemplate DataType="f:LookupFieldViewModel"><fv:LookupFieldView /></DataTemplate>
+    <DataTemplate DataType="f:ActionFieldViewModel"><fv:ActionFieldView /></DataTemplate>
+
+    <!-- Un onglet = un modèle de vue = une vue. -->
     <DataTemplate DataType="vm:LayoutTabViewModel"><views:LayoutTabView /></DataTemplate>
     <DataTemplate DataType="vm:AppearanceTabViewModel"><views:AppearanceTabView /></DataTemplate>
     <DataTemplate DataType="vm:ModulesTabViewModel"><views:ModulesTabView /></DataTemplate>

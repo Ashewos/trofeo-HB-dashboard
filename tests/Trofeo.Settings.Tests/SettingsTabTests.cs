@@ -690,7 +690,7 @@ public sealed class SettingsTabTests : IDisposable
         Directory.CreateDirectory(_dir);
         var document = new LayoutDocument(_store, _link);
         document.Load();
-        using var model = new MainViewModel(_link, document, new EditorPreferences());
+        using var model = new MainViewModel(_link, document, new EditorPreferences(FirstRunDone: true));
         var window = new MainWindow { DataContext = model, Width = 1440, Height = 900 };
         window.Show();
         model.SelectedTab = model.SettingsTab;

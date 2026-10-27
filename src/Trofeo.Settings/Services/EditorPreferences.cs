@@ -5,7 +5,7 @@ namespace Trofeo.Settings.Services;
 /// <summary>
 /// Préférences de la fenêtre elle-même (pas de la disposition) : <c>%AppData%\trofeo-HB-dashboard\settings-app.json</c>.
 /// </summary>
-/// <param name="FirstRunDone">L'assistant de première ouverture a été terminé ou fermé.</param>
+/// <param name="FirstRunDone">L'assistant de première ouverture a été terminé. Fermé en route, il se rouvre au lancement suivant ; « Relancer l'assistant » (Paramètres) le remet à faux.</param>
 /// <param name="RealTimePreview">Aperçu à 12 images par seconde au lieu de 4.</param>
 public sealed record EditorPreferences(bool FirstRunDone = false, bool RealTimePreview = false)
 {

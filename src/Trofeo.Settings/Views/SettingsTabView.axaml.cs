@@ -26,8 +26,7 @@ public partial class SettingsTabView : UserControl
     {
         base.OnAttachedToVisualTree(e);
         // Le sélecteur de fichier est celui de la fenêtre qui porte l'onglet.
-        if (DataContext is SettingsTabViewModel { Picker: null } model && TopLevel.GetTopLevel(this) is { } top)
-            model.Picker = new StorageFilePicker(top);
+        StorageFilePicker.EnsureFor(this, DataContext as SettingsTabViewModel);
     }
 
     private void OnFpsReleased(object? sender, RoutedEventArgs e) =>

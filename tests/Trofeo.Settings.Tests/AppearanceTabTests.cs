@@ -615,7 +615,7 @@ public sealed class AppearanceTabTests : IDisposable
     public async Task RefusedSave_FromPersonnalisation_ShowsTheWindowLevelMessage()
     {
         Open();
-        using var model = new MainViewModel(_link, _document, new EditorPreferences());
+        using var model = new MainViewModel(_link, _document, new EditorPreferences(FirstRunDone: true));
         _link.OnReload = () => Task.FromResult(new Reloaded(false, "Le service n'a pas pu appliquer le fond.", []));
 
         await model.AppearanceTab.SetThemeAsync("pixel");
@@ -633,7 +633,7 @@ public sealed class AppearanceTabTests : IDisposable
     public async Task OtherWarnings_AreShownInTheWindowLevelLine()
     {
         Open();
-        using var model = new MainViewModel(_link, _document, new EditorPreferences());
+        using var model = new MainViewModel(_link, _document, new EditorPreferences(FirstRunDone: true));
         ReloadWith("Les raccourcis n'ont pas pu être mis à jour : accès refusé.");
 
         await model.AppearanceTab.SetThemeAsync("pixel");
@@ -648,7 +648,7 @@ public sealed class AppearanceTabTests : IDisposable
         _store.Save(new DashboardLayout(180, [Clock()]));
         _document = new LayoutDocument(_store, _link);
         _document.Load();
-        using var model = new MainViewModel(_link, _document, new EditorPreferences());
+        using var model = new MainViewModel(_link, _document, new EditorPreferences(FirstRunDone: true));
         var window = new MainWindow { DataContext = model };
         window.Show();
         try

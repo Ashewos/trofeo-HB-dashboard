@@ -9,7 +9,9 @@ namespace Trofeo.Settings.ViewModels;
 
 /// <summary>
 /// La fenêtre : l'en-tête (onglets, pastille de l'écran), la bande en direct et le contenu de l'onglet choisi. Quand le
-/// service est arrêté, un panneau remplace le contenu des onglets ; l'onglet choisi, lui, n'est pas perdu.
+/// service est arrêté, un panneau remplace le contenu des onglets ; l'onglet choisi, lui, n'est pas perdu. Tant que
+/// l'assistant de première ouverture n'est pas terminé, il remplace lui aussi le contenu des onglets (l'en-tête et la bande
+/// restent).
 /// </summary>
 public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
@@ -29,6 +31,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         PreferencesStore = new PreferencesStore(preferences, preferencesPath);
         SettingsTab = new SettingsTabViewModel(
             link, Session, PreferencesStore, system ?? SystemServices.None, picker);
+        Pill = new ScreenPillViewModel(link);
+        FirstRun = new FirstRunViewModel(link, Session, PreferencesStore, SettingsTab, Pill, secrets ?? new NoSecretAccess(), time);
+        _isFirstRunVisible = !preferences.FirstRunDone;
         Document = document;
         Tabs = [LayoutTab, AppearanceTab, ModulesTab, ShortcutsTab, SettingsTab];
         _selectedTab = Tabs[0];
@@ -37,6 +42,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _link.Changed += Refresh;
         _link.FrameReceived += ShowFrame;
         Session.Changed += RefreshBanner;
+        PreferencesStore.Changed += OnPreferencesChanged;
         Refresh();
         RefreshBanner();
     }
@@ -54,6 +60,37 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public ShortcutsTabViewModel ShortcutsTab { get; }
     public SettingsTabViewModel SettingsTab { get; }
     public LayoutDocument Document { get; }
+
+    /// <summary>La pastille de l'écran de l'en-tête (la première étape de l'assistant montre la même).</summary>
+    public ScreenPillViewModel Pill { get; }
+
+    /// <summary>L'assistant de première ouverture.</summary>
+    public FirstRunViewModel FirstRun { get; }
+
+    /// <summary>L'assistant remplace les onglets : vrai tant que <see cref="EditorPreferences.FirstRunDone"/> est faux. « Terminer » le ferme, « Relancer l'assistant » (Paramètres) le rouvre.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsTabs), nameof(ShowsTabContent), nameof(ShowsFirstRun), nameof(IsGridVisible))]
+    private bool _isFirstRunVisible;
+
+    /// <summary>L'assistant est terminé : les onglets se choisissent.</summary>
+    public bool ShowsTabs => !IsFirstRunVisible;
+
+    /// <summary>Le contenu de l'onglet choisi s'affiche : le service tourne et l'assistant est terminé.</summary>
+    public bool ShowsTabContent => ShowsTabs && !IsStopped;
+
+    /// <summary>L'assistant s'affiche à la place des onglets : le service tourne et l'assistant n'est pas terminé.</summary>
+    public bool ShowsFirstRun => IsFirstRunVisible && !IsStopped;
+
+    // Le fichier des préférences a changé : l'assistant se rouvre (première étape) ou se ferme.
+    private void OnPreferencesChanged()
+    {
+        var show = !PreferencesStore.Current.FirstRunDone;
+        if (show == IsFirstRunVisible)
+            return;
+        if (show)
+            FirstRun.Restart();
+        IsFirstRunVisible = show;
+    }
 
     /// <summary>Les préférences de la fenêtre (aperçu en rendu réel, première ouverture), écrites dans <c>settings-app.json</c> quand elles changent.</summary>
     public PreferencesStore PreferencesStore { get; }
@@ -91,24 +128,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Le service ne tourne pas : le panneau « Démarrer le service » remplace les onglets.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsGridVisible))]
+    [NotifyPropertyChangedFor(nameof(IsGridVisible), nameof(ShowsTabContent), nameof(ShowsFirstRun))]
     private bool _isStopped;
 
-    /// <summary>Le damier se pose sur la bande dans l'onglet Disposition, tant que le service tourne.</summary>
-    public bool IsGridVisible => SelectedTab is LayoutTabViewModel && !IsStopped;
+    /// <summary>Le damier se pose sur la bande dans l'onglet Disposition, tant que le service tourne et que l'assistant n'est pas là.</summary>
+    public bool IsGridVisible => SelectedTab is LayoutTabViewModel && !IsStopped && !IsFirstRunVisible;
 
     /// <summary>Le démarrage a échoué : Trofeo.Display.exe est introuvable.</summary>
     [ObservableProperty]
     private bool _startFailed;
-
-    [ObservableProperty]
-    private string _pillText = "";
-
-    // Le point de la pastille : un seul des quatre est vrai.
-    [ObservableProperty] private bool _pillOnline;
-    [ObservableProperty] private bool _pillIdle;
-    [ObservableProperty] private bool _pillAmber;
-    [ObservableProperty] private bool _pillRefuse;
 
     /// <summary>La dernière image de l'écran, décodée ; <c>null</c> tant qu'aucune n'est arrivée.</summary>
     [ObservableProperty]
@@ -145,30 +173,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (!IsStopped)
             StartFailed = false;
 
-        var (text, dot) = Pill();
-        PillText = text;
-        PillOnline = dot == Dot.Online;
-        PillIdle = dot == Dot.Idle;
-        PillAmber = dot == Dot.Amber;
-        PillRefuse = dot == Dot.Refuse;
-    }
-
-    private enum Dot { Online, Idle, Amber, Refuse }
-
-    private (string Text, Dot Dot) Pill()
-    {
-        if (_link.State == LinkState.ServiceStopped)
-            return (Texts.LinkStopped, Dot.Refuse);
-        if (_link.State != LinkState.Connected || _link.Status is not { } status)
-            return (Texts.LinkConnecting, Dot.Idle);
-        if (status.Emulated)
-            return (Texts.EmulatedMode, Dot.Amber);
-        return status.Screen.State switch
-        {
-            LinkScreenState.Ready => (Texts.ScreenOnline, Dot.Online),
-            LinkScreenState.Recovering => (Texts.ScreenRecovering, Dot.Amber),
-            _ => (Texts.ScreenIdle, Dot.Idle),
-        };
+        Pill.Update();
     }
 
     private void ShowFrame(PreviewFrame frame)
@@ -195,6 +200,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _link.Changed -= Refresh;
         _link.FrameReceived -= ShowFrame;
         Session.Changed -= RefreshBanner;
+        PreferencesStore.Changed -= OnPreferencesChanged;
+        FirstRun.Dispose();
         LayoutTab.Dispose();
         AppearanceTab.Dispose();
         ModulesTab.Dispose();

@@ -47,7 +47,7 @@ public sealed class ModulesTabViewTests : IDisposable
         _store.Save(seed?.Invoke(layout) ?? layout);
         var document = new LayoutDocument(_store, _link);
         document.Load();
-        var model = new MainViewModel(_link, document, new EditorPreferences(), null, ["Arial"], _secrets, _time);
+        var model = new MainViewModel(_link, document, new EditorPreferences(FirstRunDone: true), null, ["Arial"], _secrets, _time);
         _window = new MainWindow { DataContext = model };
         _window.Show();
         model.SelectedTab = model.ModulesTab;

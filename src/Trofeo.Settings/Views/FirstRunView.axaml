@@ -1,0 +1,128 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:t="clr-namespace:Trofeo.Settings"
+             xmlns:vm="clr-namespace:Trofeo.Settings.ViewModels"
+             xmlns:views="clr-namespace:Trofeo.Settings.Views"
+             x:Class="Trofeo.Settings.Views.FirstRunView"
+             x:DataType="vm:FirstRunViewModel">
+
+  <!-- L'assistant de première ouverture, à la place des onglets : la progression, le titre de l'étape, son contenu, puis « Continuer » et « Passer ». -->
+  <Border Classes="panel" Padding="24,20">
+    <Grid RowDefinitions="Auto,*,Auto">
+
+      <!-- Le titre de l'étape et son numéro sur une ligne, la barre de progression dessous. -->
+      <StackPanel Grid.Row="0" Spacing="10" HorizontalAlignment="Left">
+        <StackPanel Orientation="Horizontal" Spacing="14">
+          <TextBlock Name="StepTitle" Classes="heading" VerticalAlignment="Bottom" Text="{Binding StepTitle}" />
+          <TextBlock Name="Progress" Classes="muted" VerticalAlignment="Bottom" Margin="0,0,0,3" Text="{Binding ProgressText}" />
+        </StackPanel>
+        <ProgressBar Name="ProgressBar" Classes="steps" Width="560" HorizontalAlignment="Left" Minimum="0" Maximum="{Binding StepCount}" Value="{Binding StepNumber}"
+                     AutomationProperties.Name="{x:Static t:Texts.FirstRunProgressName}" />
+      </StackPanel>
+
+      <ScrollViewer Grid.Row="1" Margin="0,14,0,14" VerticalScrollBarVisibility="Auto" AllowAutoHide="False">
+        <Panel MaxWidth="760" HorizontalAlignment="Left" Margin="0,0,16,0">
+
+          <!-- 1. L'écran : la pastille d'état, et ce qu'il y a à faire s'il est occupé ou débranché. -->
+          <StackPanel Name="ScreenStep" Spacing="14" IsVisible="{Binding IsScreenStep}">
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.FirstRunScreenIntro}" />
+            <views:ScreenPillView DataContext="{Binding Pill}" HorizontalAlignment="Left" />
+            <TextBlock Name="ScreenMessage" Classes="lead" TextWrapping="Wrap" Text="{Binding ScreenMessage}" IsVisible="{Binding HasScreenMessage}"
+                       Classes.warning="{Binding ScreenMessageIsProblem}" />
+          </StackPanel>
+
+          <!-- 2. Le sens : la bande en direct est au-dessus ; « Oui » continue, « Non, retourner » bascule la rotation tout de suite. -->
+          <StackPanel Name="OrientationStep" Spacing="14" IsVisible="{Binding IsOrientationStep}">
+            <TextBlock Classes="name" TextWrapping="Wrap" Text="{x:Static t:Texts.FirstRunOrientationQuestion}" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.FirstRunOrientationHelp}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Name="YesButton" Classes="primary" Content="{x:Static t:Texts.FirstRunYes}" Command="{Binding AnswerYesCommand}" />
+              <Button Name="NoButton" Content="{x:Static t:Texts.FirstRunNoFlip}" Command="{Binding AnswerNoCommand}" />
+            </StackPanel>
+          </StackPanel>
+
+          <!-- 3. Les modules : une case par type ; décocher retire le module de l'écran, cocher l'ajoute. -->
+          <StackPanel Name="ModulesStep" Spacing="14" IsVisible="{Binding IsModulesStep}">
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.FirstRunModulesIntro}" />
+            <ItemsControl Name="ModuleBoxes" ItemsSource="{Binding Modules}" AutomationProperties.Name="{x:Static t:Texts.FirstRunModulesTitle}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:FirstRunModuleItem">
+                  <StackPanel Width="360" Margin="0,0,0,6">
+                    <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" />
+                    <TextBlock Classes="warning" TextWrapping="Wrap" Margin="28,0,12,0" Text="{Binding Reason}" IsVisible="{Binding HasReason}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <!-- 4. Claude Code : les quotas, et l'action du module qui installe le mod. -->
+          <StackPanel Name="ClaudeStep" Spacing="16" IsVisible="{Binding IsClaudeStep}">
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.FirstRunClaudeIntro}" />
+            <ItemsControl Name="ClaudeFields" ItemsSource="{Binding ClaudeForm.VisibleFields}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="20" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </StackPanel>
+
+          <!-- 5. Réseau : le formulaire du module, réduit aux champs utiles. -->
+          <StackPanel Name="NetworkStep" Spacing="16" IsVisible="{Binding IsNetworkStep}">
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.FirstRunNetworkIntro}" />
+            <ItemsControl Name="NetworkFields" ItemsSource="{Binding NetworkForm.VisibleFields}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="20" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </StackPanel>
+
+          <!-- 6. Météo : l'unité et la ville. -->
+          <StackPanel Name="WeatherStep" Spacing="16" IsVisible="{Binding IsWeatherStep}">
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.FirstRunWeatherIntro}" />
+            <ItemsControl Name="WeatherFields" ItemsSource="{Binding WeatherForm.VisibleFields}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="20" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </StackPanel>
+
+          <!-- 7. Températures du processeur : le bloc de Paramètres. -->
+          <StackPanel Name="SensorsStep" Spacing="14" IsVisible="{Binding IsSensorsStep}">
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.FirstRunSensorsIntro}" />
+            <views:SensorsBlock DataContext="{Binding Settings}" Primary="False" />
+          </StackPanel>
+
+          <!-- 8. Démarrage avec Windows : l'interrupteur, sur « oui » ; rien n'est inscrit avant « Continuer ». -->
+          <StackPanel Name="StartupStep" Spacing="14" IsVisible="{Binding IsStartupStep}">
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.FirstRunStartupIntro}" />
+            <Grid ColumnDefinitions="*,Auto" Width="420" HorizontalAlignment="Left">
+              <TextBlock Grid.Column="0" Classes="name" Text="{x:Static t:Texts.SettingsStartup}" VerticalAlignment="Center" Margin="0,0,24,0" />
+              <ToggleSwitch Grid.Column="1" Name="StartupSwitch" OnContent="" OffContent="" VerticalAlignment="Center"
+                            AutomationProperties.Name="{x:Static t:Texts.SettingsStartup}"
+                            IsEnabled="{Binding Settings.CanToggleStartup}" IsChecked="{Binding StartupWanted}" />
+            </Grid>
+            <TextBlock Name="StartupMessage" Classes="warning" TextWrapping="Wrap" Text="{Binding Settings.StartupMessage}"
+                       IsVisible="{Binding Settings.HasStartupMessage}" />
+          </StackPanel>
+        </Panel>
+      </ScrollViewer>
+
+      <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
+        <Button Name="ContinueButton" Classes="primary" Content="{Binding ContinueText}" Command="{Binding ContinueCommand}"
+                IsVisible="{Binding ShowsContinue}" />
+        <Button Name="SkipButton" Content="{x:Static t:Texts.FirstRunSkip}" Command="{Binding SkipCommand}" />
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

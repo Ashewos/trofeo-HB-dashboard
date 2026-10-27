@@ -128,7 +128,7 @@ public sealed class ShortcutCaptureTests : IDisposable
         _link.Set(LinkState.Connected, SampleData.Welcome(), SampleData.Status());
         var document = new LayoutDocument(new LayoutStore(Path.Combine(_dir, "layout.json")), _link);
         document.Load();
-        var model = new MainViewModel(_link, document, new EditorPreferences());
+        var model = new MainViewModel(_link, document, new EditorPreferences(FirstRunDone: true));
         _window = new MainWindow { DataContext = model, Width = 1440, Height = 900 };
         _window.Show();
         model.SelectedTab = model.ShortcutsTab;

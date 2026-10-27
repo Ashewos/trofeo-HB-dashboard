@@ -353,4 +353,64 @@ public static class Texts
     public static string ShareTooSmall => Get();
     /// <summary>{0} : la version du service.</summary>
     public static string SettingsVersion => Get();
+    /// <summary>{0} : le numéro de l'étape, {1} : le nombre d'étapes qui existent.</summary>
+    public static string FirstRunProgress => Get();
+    /// <summary>Nom accessible de la barre de progression.</summary>
+    public static string FirstRunProgressName => Get();
+    /// <summary>Bouton : applique l'étape et passe à la suivante.</summary>
+    public static string FirstRunContinue => Get();
+    /// <summary>Bouton de la dernière étape : ferme l'assistant.</summary>
+    public static string FirstRunFinish => Get();
+    /// <summary>Bouton : passe à la suite sans rien changer.</summary>
+    public static string FirstRunSkip => Get();
+    /// <summary>Titre de l'étape 1.</summary>
+    public static string FirstRunScreenTitle => Get();
+    /// <summary>Titre de l'étape 2.</summary>
+    public static string FirstRunOrientationTitle => Get();
+    /// <summary>Titre de l'étape 3.</summary>
+    public static string FirstRunModulesTitle => Get();
+    /// <summary>Titre de l'étape 4.</summary>
+    public static string FirstRunClaudeTitle => Get();
+    /// <summary>Titre de l'étape 5.</summary>
+    public static string FirstRunNetworkTitle => Get();
+    /// <summary>Titre de l'étape 6.</summary>
+    public static string FirstRunWeatherTitle => Get();
+    /// <summary>Titre de l'étape 8.</summary>
+    public static string FirstRunStartupTitle => Get();
+    /// <summary>Étape 1, au-dessus de la pastille.</summary>
+    public static string FirstRunScreenIntro => Get();
+    /// <summary>Étape 1 : l'écran est branché.</summary>
+    public static string FirstRunScreenReady => Get();
+    /// <summary>Étape 1 : le motif de l'écran contient TRCC.</summary>
+    public static string FirstRunScreenBusy => Get();
+    /// <summary>Étape 1 : l'écran n'est pas branché.</summary>
+    public static string FirstRunScreenMissing => Get();
+    /// <summary>Étape 1 : mode émulé.</summary>
+    public static string FirstRunScreenEmulated => Get();
+    /// <summary>Étape 2.</summary>
+    public static string FirstRunOrientationQuestion => Get();
+    /// <summary>Étape 2, sous la question.</summary>
+    public static string FirstRunOrientationHelp => Get();
+    /// <summary>Étape 2 : le texte est à l'endroit, on continue.</summary>
+    public static string FirstRunYes => Get();
+    /// <summary>Étape 2 : bascule la rotation de l'écran.</summary>
+    public static string FirstRunNoFlip => Get();
+    /// <summary>Étape 3.</summary>
+    public static string FirstRunModulesIntro => Get();
+    /// <summary>Étape 4.</summary>
+    public static string FirstRunClaudeIntro => Get();
+    /// <summary>Étape 5.</summary>
+    public static string FirstRunNetworkIntro => Get();
+    /// <summary>Étape 6.</summary>
+    public static string FirstRunWeatherIntro => Get();
+    /// <summary>Étape 7.</summary>
+    public static string FirstRunSensorsIntro => Get();
+    /// <summary>Étape 8.</summary>
+    public static string FirstRunStartupIntro => Get();
+    /// <summary>Titre de section, dans Paramètres.</summary>
+    public static string SettingsFirstRun => Get();
+    /// <summary>Sous le titre de section.</summary>
+    public static string SettingsFirstRunHelp => Get();
+    /// <summary>Bouton.</summary>
+    public static string SettingsFirstRunRestart => Get();
 }

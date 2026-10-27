@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Trofeo.Settings.ViewModels"
+             x:Class="Trofeo.Settings.Views.ScreenPillView"
+             x:DataType="vm:ScreenPillViewModel">
+
+  <!-- La pastille de l'écran : un point de couleur et un texte. L'en-tête et la première étape de l'assistant la montrent. -->
+  <Border Classes="pill" Classes.amber="{Binding Amber}" AutomationProperties.Name="{Binding Text}">
+    <StackPanel Orientation="Horizontal" Spacing="8">
+      <Ellipse Classes="dot" VerticalAlignment="Center"
+               Classes.online="{Binding Online}" Classes.idle="{Binding Idle}"
+               Classes.amber="{Binding Amber}" Classes.refuse="{Binding Refuse}" />
+      <TextBlock Text="{Binding Text}" VerticalAlignment="Center" />
+    </StackPanel>
+  </Border>
+</UserControl>

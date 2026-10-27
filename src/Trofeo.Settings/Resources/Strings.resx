@@ -666,4 +666,124 @@
     <value>Version {0}</value>
     <comment>{0} : la version du service.</comment>
   </data>
+  <data name="FirstRunProgress" xml:space="preserve">
+    <value>Étape {0} sur {1}</value>
+    <comment>{0} : le numéro de l'étape, {1} : le nombre d'étapes qui existent.</comment>
+  </data>
+  <data name="FirstRunProgressName" xml:space="preserve">
+    <value>Progression de l'assistant</value>
+    <comment>Nom accessible de la barre de progression.</comment>
+  </data>
+  <data name="FirstRunContinue" xml:space="preserve">
+    <value>Continuer</value>
+    <comment>Bouton : applique l'étape et passe à la suivante.</comment>
+  </data>
+  <data name="FirstRunFinish" xml:space="preserve">
+    <value>Terminer</value>
+    <comment>Bouton de la dernière étape : ferme l'assistant.</comment>
+  </data>
+  <data name="FirstRunSkip" xml:space="preserve">
+    <value>Passer</value>
+    <comment>Bouton : passe à la suite sans rien changer.</comment>
+  </data>
+  <data name="FirstRunScreenTitle" xml:space="preserve">
+    <value>L'écran</value>
+    <comment>Titre de l'étape 1.</comment>
+  </data>
+  <data name="FirstRunOrientationTitle" xml:space="preserve">
+    <value>Le sens</value>
+    <comment>Titre de l'étape 2.</comment>
+  </data>
+  <data name="FirstRunModulesTitle" xml:space="preserve">
+    <value>Les modules</value>
+    <comment>Titre de l'étape 3.</comment>
+  </data>
+  <data name="FirstRunClaudeTitle" xml:space="preserve">
+    <value>Claude Code</value>
+    <comment>Titre de l'étape 4.</comment>
+  </data>
+  <data name="FirstRunNetworkTitle" xml:space="preserve">
+    <value>Réseau</value>
+    <comment>Titre de l'étape 5.</comment>
+  </data>
+  <data name="FirstRunWeatherTitle" xml:space="preserve">
+    <value>Météo</value>
+    <comment>Titre de l'étape 6.</comment>
+  </data>
+  <data name="FirstRunStartupTitle" xml:space="preserve">
+    <value>Démarrage avec Windows</value>
+    <comment>Titre de l'étape 8.</comment>
+  </data>
+  <data name="FirstRunScreenIntro" xml:space="preserve">
+    <value>Voyons d'abord si ton écran répond.</value>
+    <comment>Étape 1, au-dessus de la pastille.</comment>
+  </data>
+  <data name="FirstRunScreenReady" xml:space="preserve">
+    <value>L'écran répond. La bande ci-dessus le montre en direct.</value>
+    <comment>Étape 1 : l'écran est branché.</comment>
+  </data>
+  <data name="FirstRunScreenBusy" xml:space="preserve">
+    <value>Le logiciel Thermalright utilise l'écran : ferme-le, puis attends quelques secondes.</value>
+    <comment>Étape 1 : le motif de l'écran contient TRCC.</comment>
+  </data>
+  <data name="FirstRunScreenMissing" xml:space="preserve">
+    <value>Branche l'écran ou continue en mode émulé.</value>
+    <comment>Étape 1 : l'écran n'est pas branché.</comment>
+  </data>
+  <data name="FirstRunScreenEmulated" xml:space="preserve">
+    <value>Le service tourne sans écran, en mode émulé. Tu règles tout avec la bande ci-dessus.</value>
+    <comment>Étape 1 : mode émulé.</comment>
+  </data>
+  <data name="FirstRunOrientationQuestion" xml:space="preserve">
+    <value>Sur ton écran, le texte est-il à l'endroit ?</value>
+    <comment>Étape 2.</comment>
+  </data>
+  <data name="FirstRunOrientationHelp" xml:space="preserve">
+    <value>La bande ci-dessus montre ce que l'écran affiche. S'il est à l'envers, retourne-le : le changement est appliqué tout de suite.</value>
+    <comment>Étape 2, sous la question.</comment>
+  </data>
+  <data name="FirstRunYes" xml:space="preserve">
+    <value>Oui</value>
+    <comment>Étape 2 : le texte est à l'endroit, on continue.</comment>
+  </data>
+  <data name="FirstRunNoFlip" xml:space="preserve">
+    <value>Non, retourner</value>
+    <comment>Étape 2 : bascule la rotation de l'écran.</comment>
+  </data>
+  <data name="FirstRunModulesIntro" xml:space="preserve">
+    <value>Coche les modules que tu veux sur l'écran. Tu pourras les déplacer et les agrandir ensuite, dans l'onglet Disposition.</value>
+    <comment>Étape 3.</comment>
+  </data>
+  <data name="FirstRunClaudeIntro" xml:space="preserve">
+    <value>Claude Code peut afficher tes quotas (sur 5 heures et sur la semaine) sur l'écran. Pour cela, il faut un petit mod, que l'application de Claude Code ou le terminal charge. Tu peux aussi l'installer plus tard, dans l'onglet Modules.</value>
+    <comment>Étape 4.</comment>
+  </data>
+  <data name="FirstRunNetworkIntro" xml:space="preserve">
+    <value>Choisis d'où vient le débit du réseau. Tu pourras le changer plus tard, dans l'onglet Modules.</value>
+    <comment>Étape 5.</comment>
+  </data>
+  <data name="FirstRunWeatherIntro" xml:space="preserve">
+    <value>Cherche ta ville pour afficher la météo, ou choisis « Pas de météo ».</value>
+    <comment>Étape 6.</comment>
+  </data>
+  <data name="FirstRunSensorsIntro" xml:space="preserve">
+    <value>Les températures du processeur demandent un pilote (PawnIO), installé avec les droits d'administrateur. Tu peux aussi le faire plus tard, dans Paramètres.</value>
+    <comment>Étape 7.</comment>
+  </data>
+  <data name="FirstRunStartupIntro" xml:space="preserve">
+    <value>Pour que l'écran s'allume tout seul, le service d'affichage peut se lancer à l'ouverture de ta session. Le choix est appliqué quand tu continues.</value>
+    <comment>Étape 8.</comment>
+  </data>
+  <data name="SettingsFirstRun" xml:space="preserve">
+    <value>Assistant de première ouverture</value>
+    <comment>Titre de section, dans Paramètres.</comment>
+  </data>
+  <data name="SettingsFirstRunHelp" xml:space="preserve">
+    <value>Repasse par les étapes de départ : l'écran, le sens, les modules, les quotas, le réseau, la météo, les températures et le démarrage.</value>
+    <comment>Sous le titre de section.</comment>
+  </data>
+  <data name="SettingsFirstRunRestart" xml:space="preserve">
+    <value>Relancer l'assistant</value>
+    <comment>Bouton.</comment>
+  </data>
 </root>

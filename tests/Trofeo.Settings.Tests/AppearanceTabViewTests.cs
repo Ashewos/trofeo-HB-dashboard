@@ -44,7 +44,7 @@ public sealed class AppearanceTabViewTests : IDisposable
         _store.Save(new DashboardLayout(180, [clock]) { Appearance = appearance });
         var document = new LayoutDocument(_store, _link);
         document.Load();
-        var model = new MainViewModel(_link, document, new EditorPreferences(), picker, ["Arial", "Verdana"]);
+        var model = new MainViewModel(_link, document, new EditorPreferences(FirstRunDone: true), picker, ["Arial", "Verdana"]);
         _window = new MainWindow { DataContext = model };
         _window.Show();
         model.SelectedTab = model.AppearanceTab;

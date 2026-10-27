@@ -449,9 +449,7 @@ public sealed partial class LayoutTabViewModel : TabViewModel, IDisposable
             _types.Clear();
             foreach (var type in _welcome?.Types ?? [])
                 _types.TryAdd(type.TypeId, type);
-            _editor = new LayoutEditor(_types.ToDictionary(
-                pair => pair.Key,
-                pair => new ModuleDescriptor(pair.Value.TypeId, pair.Value.DisplayName, pair.Value.MinSize, pair.Value.Presets, pair.Value.AcceptsCommands)));
+            _editor = LayoutEditors.From(_types.Values);
             CanEdit = _welcome is not null;
             if (!CanEdit)
                 CancelDrag();

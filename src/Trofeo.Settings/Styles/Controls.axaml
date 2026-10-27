@@ -246,6 +246,15 @@
     <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
   </Style>
 
+  <!-- Barre de progression de l'assistant : un filet de 4 px, Accent sur Line. -->
+  <Style Selector="ProgressBar.steps">
+    <Setter Property="MinHeight" Value="4" />
+    <Setter Property="Height" Value="4" />
+    <Setter Property="Background" Value="{DynamicResource Line}" />
+    <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+    <Setter Property="CornerRadius" Value="2" />
+  </Style>
+
   <!-- Pastille de l'écran : un point de couleur et un texte. -->
   <Style Selector="Border.pill">
     <Setter Property="Background" Value="{DynamicResource Raised}" />
@@ -278,6 +287,10 @@
         <StackPanel Orientation="Horizontal" Spacing="4" />
       </ItemsPanelTemplate>
     </Setter>
+  </Style>
+  <!-- Pendant l'assistant de première ouverture, les onglets attendent. -->
+  <Style Selector="ListBox.tabs:disabled">
+    <Setter Property="Opacity" Value="0.45" />
   </Style>
   <Style Selector="ListBox.tabs > ListBoxItem">
     <Setter Property="Padding" Value="14,0" />

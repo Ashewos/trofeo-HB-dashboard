@@ -8,10 +8,14 @@ public sealed class PreferencesStore(EditorPreferences initial, string? path = n
 {
     public EditorPreferences Current { get; private set; } = initial;
 
+    /// <summary>Une préférence vient de changer (l'assistant de première ouverture se rouvre ou se ferme d'après elle).</summary>
+    public event Action? Changed;
+
     public void Update(Func<EditorPreferences, EditorPreferences> change)
     {
         Current = change(Current);
         if (path is not null)
             Current.Save(path);
+        Changed?.Invoke();
     }
 }

@@ -13,7 +13,7 @@ namespace Trofeo.Settings.ViewModels;
 /// <summary>
 /// L'onglet Paramètres : l'orientation de l'écran, le démarrage avec Windows, le plafond d'images par seconde, l'aperçu en
 /// rendu réel, l'installation du pilote des températures, la consommation, l'export et l'import d'une disposition, la
-/// version. Ce qui touche à la disposition (orientation, images par seconde, import) passe par <see cref="EditSession"/> : le
+/// version, et de quoi relancer l'assistant de première ouverture. Ce qui touche à la disposition (orientation, images par seconde, import) passe par <see cref="EditSession"/> : le
 /// même historique que les autres onglets. L'orientation et l'import s'enregistrent tout de suite ; le curseur, au lâcher.
 /// </summary>
 public sealed partial class SettingsTabViewModel : TabViewModel, IDisposable
@@ -473,6 +473,15 @@ public sealed partial class SettingsTabViewModel : TabViewModel, IDisposable
 
         return null;
     }
+
+    // ---- Assistant de première ouverture ----
+
+    /// <summary>
+    /// « Relancer l'assistant » : remet <see cref="EditorPreferences.FirstRunDone"/> à faux. La fenêtre rouvre l'assistant à la
+    /// première étape (et il se rouvrirait aussi au prochain lancement s'il n'est pas terminé).
+    /// </summary>
+    [RelayCommand]
+    private void RestartFirstRun() => _preferences.Update(p => p with { FirstRunDone = false });
 
     // ---- Version ----
 
