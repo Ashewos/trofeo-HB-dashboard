@@ -382,9 +382,17 @@
     <value>Annuler</value>
     <comment>Renonce à une saisie ou à une action en attente de confirmation.</comment>
   </data>
-  <data name="ModulesSecretFailed" xml:space="preserve">
-    <value>Le coffre n'a pas pu être écrit : {0}</value>
-    <comment>{0} : la cause. Le coffre à secrets est verrouillé ou illisible.</comment>
+  <data name="ModulesSecretSaveFailed" xml:space="preserve">
+    <value>Impossible d'enregistrer la clé : {0}</value>
+    <comment>{0} : la cause. Le coffre à secrets est verrouillé ou illisible (suite de « Enregistrer »).</comment>
+  </data>
+  <data name="ModulesSecretClearFailed" xml:space="preserve">
+    <value>Impossible d'effacer la clé : {0}</value>
+    <comment>{0} : la cause. Le coffre à secrets est verrouillé ou illisible (suite de « Effacer »).</comment>
+  </data>
+  <data name="ModulesSecretUnreadable" xml:space="preserve">
+    <value>Coffre à secrets indisponible : {0}</value>
+    <comment>{0} : la cause. Le coffre n'a pas pu dire si la clé est enregistrée ; elle est montrée absente.</comment>
   </data>
   <data name="ModulesSecretUnavailable" xml:space="preserve">
     <value>Le coffre à secrets n'est pas disponible.</value>

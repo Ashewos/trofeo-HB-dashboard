@@ -274,6 +274,7 @@ public sealed partial class LookupFieldViewModel : FieldViewModel
         if (IsSearchable)
         {
             _search?.Cancel();
+            IsLoading = false; // la recherche annulée ne le remettra pas à faux
             _quiet = true;
             try
             {

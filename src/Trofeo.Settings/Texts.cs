@@ -211,8 +211,12 @@ public static class Texts
     public static string ModulesSecretClear => Get();
     /// <summary>Renonce à une saisie ou à une action en attente de confirmation.</summary>
     public static string ModulesCancel => Get();
-    /// <summary>{0} : la cause. Le coffre à secrets est verrouillé ou illisible.</summary>
-    public static string ModulesSecretFailed => Get();
+    /// <summary>{0} : la cause. Le coffre à secrets est verrouillé ou illisible (suite de « Enregistrer »).</summary>
+    public static string ModulesSecretSaveFailed => Get();
+    /// <summary>{0} : la cause. Le coffre à secrets est verrouillé ou illisible (suite de « Effacer »).</summary>
+    public static string ModulesSecretClearFailed => Get();
+    /// <summary>{0} : la cause. Le coffre n'a pas pu dire si la clé est enregistrée ; elle est montrée absente.</summary>
+    public static string ModulesSecretUnreadable => Get();
     /// <summary>Fenêtre sans coffre (tests, aperçus).</summary>
     public static string ModulesSecretUnavailable => Get();
     /// <summary>{0} : la cause. Ligne Amber de la fenêtre après un secret changé.</summary>

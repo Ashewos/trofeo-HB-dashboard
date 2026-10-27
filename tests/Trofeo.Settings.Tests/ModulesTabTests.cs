@@ -308,9 +308,59 @@ public sealed class ModulesTabTests
         key.Input = "abc";
         await key.SaveAsync();
 
-        Assert.Contains("Le coffre est verrouillé.", key.Error);
+        Assert.Equal("Impossible d'enregistrer la clé : Le coffre est verrouillé.", key.Error);   // le message reprend le verbe du bouton
         Assert.True(key.IsEditing);                                       // on peut réessayer
         Assert.Empty(f.Link.Restarts);
+    }
+
+    [Fact]
+    public async Task Secret_ClearFails_ShowsTheClearMessage()
+    {
+        using var f = new ModulesFixture(WithSettings(NetworkId, UniFi));
+        f.Secrets.Set("network", "unifi.apiKey", "abc");
+        f.Tab.Select(NetworkId);
+        var key = f.Tab.Form!.Field<SecretFieldViewModel>("unifi.apiKey");
+        f.Secrets.Failure = new IOException("Le coffre est verrouillé.");
+
+        await key.ClearAsync();
+
+        Assert.Equal("Impossible d'effacer la clé : Le coffre est verrouillé.", key.Error);
+        Assert.True(key.IsPresent);
+        Assert.Empty(f.Link.Restarts);
+    }
+
+    [Fact]
+    public void Secret_VaultCannotBeRead_ShowsAbsentWithAnError_WithoutThrowing()
+    {
+        using var f = new ModulesFixture(WithSettings(NetworkId, UniFi));
+        f.Secrets.HasFailure = new TimeoutException("Le coffre à secrets est verrouillé par un autre processus.");
+
+        f.Tab.Select(NetworkId);                                          // construire le formulaire lit le coffre : rien ne doit remonter
+        var key = f.Tab.Form!.Field<SecretFieldViewModel>("unifi.apiKey");
+
+        Assert.False(key.IsPresent);
+        Assert.Equal("Absente", key.StatusText);
+        Assert.Equal("Coffre à secrets indisponible : Le coffre à secrets est verrouillé par un autre processus.", key.Error);
+        f.Session.Report(null);                                           // un changement de la session refait la lecture sans lever non plus
+        Assert.NotNull(f.Tab.Form);
+    }
+
+    [Fact]
+    public async Task Secret_ReadFailsAfterAWrite_StillRestartsTheModule()
+    {
+        using var f = new ModulesFixture(WithSettings(NetworkId, UniFi));
+        f.Secrets.HasFailsAfterSet = true;
+        f.Tab.Select(NetworkId);
+        var key = f.Tab.Form!.Field<SecretFieldViewModel>("unifi.apiKey");
+
+        key.Edit();
+        key.Input = "abc";
+        await key.SaveAsync();
+
+        Assert.Equal([("network", "unifi.apiKey", "abc")], f.Secrets.Sets);
+        Assert.Equal([NetworkId], f.Link.Restarts);                       // le secret est écrit : le module le relit quand même
+        Assert.True(key.IsPresent);
+        Assert.False(key.IsEditing);
     }
 
     // ---- Les recherches ----
@@ -442,6 +492,30 @@ public sealed class ModulesTabTests
 
         Assert.Contains("La liaison avec le service est coupée.", city.Error);
         Assert.False(city.IsLoading);
+    }
+
+    [Fact]
+    public async Task Lookup_PickDuringASearch_StopsTheLoadingIndicator()
+    {
+        using var f = new ModulesFixture();
+        var gate = new TaskCompletionSource<IReadOnlyList<LookupResult>>();
+        f.Link.OnLookup = (_, _, _) => gate.Task;
+        f.Tab.Select(ClockId);
+        var city = f.Tab.Form!.Field<LookupFieldViewModel>("location");
+        city.Open();
+
+        city.Query = "Lyon";
+        f.Time.Advance(TimeSpan.FromMilliseconds(400));                   // la recherche est partie, sans réponse
+        Assert.True(city.IsLoading);
+
+        await city.PickAsync(city.Rows.Single(r => r.IsEmptyChoice));
+        Assert.False(city.IsLoading);
+
+        gate.SetResult([City("Lyon, Rhône, France", "Lyon")]);            // la réponse tardive ne rouvre rien
+        await city.SearchTask;
+        Assert.False(city.IsLoading);
+        Assert.False(city.IsOpen);
+        Assert.Empty(city.Rows);
     }
 
     // ---- La liste ----

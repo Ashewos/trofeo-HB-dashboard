@@ -11,7 +11,24 @@ namespace Trofeo.Settings.ViewModels.Fields;
 /// </summary>
 public sealed partial class SecretFieldViewModel : FieldViewModel
 {
-    public SecretFieldViewModel(SecretField field, IFieldContext context) : base(field, context) => _isPresent = Context.Secrets.Has(Context.TypeId, Key);
+    public SecretFieldViewModel(SecretField field, IFieldContext context) : base(field, context) => _isPresent = ReadPresence();
+
+    /// <summary>
+    /// Demande au coffre si la clé y est. Le coffre prend un verrou entre processus (10 s au plus) et peut échouer : jamais
+    /// d'exception ici, la clé est alors montrée absente et l'erreur s'affiche sous le champ.
+    /// </summary>
+    private bool ReadPresence()
+    {
+        try
+        {
+            return Context.Secrets.Has(Context.TypeId, Key);
+        }
+        catch (Exception ex)
+        {
+            Error = string.Format(Texts.ModulesSecretUnreadable, ex.Message);
+            return false;
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(CanClear))]
@@ -55,7 +72,7 @@ public sealed partial class SecretFieldViewModel : FieldViewModel
     {
         if (!CanSave)
             return;
-        if (!Write(Input.Trim()))
+        if (!Write(Input.Trim(), Texts.ModulesSecretSaveFailed))
             return;
         Input = "";
         IsEditing = false;
@@ -65,7 +82,7 @@ public sealed partial class SecretFieldViewModel : FieldViewModel
     [RelayCommand]
     public async Task ClearAsync()
     {
-        if (!Write(null))
+        if (!Write(null, Texts.ModulesSecretClearFailed))
             return;
         Input = "";
         IsEditing = false;
@@ -73,7 +90,7 @@ public sealed partial class SecretFieldViewModel : FieldViewModel
     }
 
     /// <summary>Écrit dans le coffre ; faux (et l'erreur sous le champ) s'il est verrouillé ou illisible.</summary>
-    private bool Write(string? value)
+    private bool Write(string? value, string failure)
     {
         Error = null;
         try
@@ -82,11 +99,12 @@ public sealed partial class SecretFieldViewModel : FieldViewModel
         }
         catch (Exception ex)
         {
-            Error = string.Format(Texts.ModulesSecretFailed, ex.Message); // le message de l'exception ne porte pas la valeur
+            Error = string.Format(failure, ex.Message); // le message de l'exception ne porte pas la valeur
             return false;
         }
 
-        IsPresent = Context.Secrets.Has(Context.TypeId, Key);
+        // L'écriture a réussi : on sait ce que le coffre contient, même s'il ne répond plus. Le module doit être rechargé quand même.
+        IsPresent = value is not null;
         return true;
     }
 }

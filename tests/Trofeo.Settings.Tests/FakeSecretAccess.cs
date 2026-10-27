@@ -13,13 +13,27 @@ public sealed class FakeSecretAccess : ISecretAccess
     /// <summary>Quand elle est posée, toute écriture la lève.</summary>
     public Exception? Failure { get; set; }
 
-    public bool Has(string typeId, string key) => _values.ContainsKey((typeId, key));
+    /// <summary>Quand elle est posée, toute lecture la lève (coffre verrouillé : le verrou entre processus expire).</summary>
+    public Exception? HasFailure { get; set; }
+
+    /// <summary>Les lectures échouent à partir de la première écriture réussie.</summary>
+    public bool HasFailsAfterSet { get; set; }
+
+    private bool _written;
+
+    public bool Has(string typeId, string key)
+    {
+        if (HasFailure is not null || HasFailsAfterSet && _written)
+            throw HasFailure ?? new TimeoutException("Le coffre à secrets est verrouillé par un autre processus.");
+        return _values.ContainsKey((typeId, key));
+    }
 
     public void Set(string typeId, string key, string? value)
     {
         if (Failure is not null)
             throw Failure;
         Sets.Add((typeId, key, value));
+        _written = true;
         if (value is null)
             _values.Remove((typeId, key));
         else
