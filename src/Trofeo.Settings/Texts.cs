@@ -271,6 +271,8 @@ public static class Texts
     public static string ShortcutCapture => Get();
     /// <summary>{0} : les touches (Ctrl+Alt+Right). {1} : l'action qui les a déjà.</summary>
     public static string ShortcutDuplicate => Get();
+    /// <summary>Une lettre ou un chiffre avec Ctrl ou Maj seulement est refusé : il faut Alt ou Win.</summary>
+    public static string ShortcutNeedsAltOrWin => Get();
     /// <summary>Titre de section.</summary>
     public static string SettingsOrientation => Get();
     /// <summary>Choix d'orientation.</summary>

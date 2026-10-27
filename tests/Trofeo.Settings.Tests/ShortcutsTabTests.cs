@@ -212,6 +212,41 @@ public sealed class ShortcutsTabTests : IDisposable
         Assert.Equal("Ctrl+Alt+Right sert déjà à « Onglet suivant ».", tab.Rows[1].Refusal);
     }
 
+    [Theory]
+    [InlineData(Key.C, KeyModifiers.Control)]
+    [InlineData(Key.A, KeyModifiers.Shift)]
+    [InlineData(Key.D4, KeyModifiers.Control)]
+    public async Task Capture_LetterWithoutAltOrWin_IsRefusedWithItsReason_AndKeepsWaiting(Key key, KeyModifiers modifiers)
+    {
+        var tab = Open();
+        tab.BeginCapture(tab.Rows[2]);
+        var before = Saved.Select(b => b.Keys).ToList();
+
+        Assert.True(await tab.CaptureAsync(key, modifiers));
+
+        Assert.Equal("Ajoute Alt ou Win : une lettre ou un chiffre seul avec Ctrl ou Maj gênerait la saisie partout.", tab.Rows[2].Refusal);
+        Assert.True(tab.IsCapturing);                       // elle attend une autre combinaison
+        Assert.Equal(before, Saved.Select(b => b.Keys).ToList());
+        Assert.Equal(0, _link.ReloadCount);
+
+        await tab.CaptureAsync(key, modifiers | KeyModifiers.Alt);   // avec Alt, c'est accepté
+
+        Assert.False(tab.IsCapturing);
+        Assert.Contains(Saved, b => b.Keys.StartsWith("Ctrl+Alt+") || b.Keys.StartsWith("Alt+"));
+    }
+
+    [Fact]
+    public async Task Capture_ArrowAndFunctionKeys_KeepTheCurrentRule()
+    {
+        var tab = Open();
+        tab.BeginCapture(tab.Rows[2]);
+
+        await tab.CaptureAsync(Key.Up, KeyModifiers.Shift);
+
+        Assert.False(tab.IsCapturing);
+        Assert.Equal("Shift+Up", Saved[2].Keys);
+    }
+
     // ---- Ajouter, supprimer, remettre ----
 
     [Fact]

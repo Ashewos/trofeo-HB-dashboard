@@ -378,7 +378,7 @@ public sealed partial class SettingsTabViewModel : TabViewModel, IDisposable
     /// <summary>
     /// « Importer une disposition… » : valide le fichier (comme le service au rechargement, types et tailles minimum
     /// compris), garde la disposition en cours dans <c>layout.json.avant-import</c>, puis enregistre. Un fichier refusé
-    /// affiche son motif et ne change rien. L'import est une seule modification, que Ctrl+Z défait.
+    /// affiche son motif et ne change rien. L'import est une seule modification, que Ctrl+Z défait. L'orientation de ce PC est gardée.
     /// </summary>
     [RelayCommand]
     public async Task ImportAsync()
@@ -426,7 +426,7 @@ public sealed partial class SettingsTabViewModel : TabViewModel, IDisposable
         }
 
         string? backupError = null;
-        var outcome = await _session.ApplyAsync(_ =>
+        var outcome = await _session.ApplyAsync(current =>
         {
             // La copie se fait au moment d'écrire : c'est bien la disposition en cours, même si le fichier a été relu entre-temps.
             try
@@ -440,7 +440,8 @@ public sealed partial class SettingsTabViewModel : TabViewModel, IDisposable
                 return null;
             }
 
-            return imported;
+            // Le sens de l'écran tient au montage de CE PC, pas à celui de l'ami qui a exporté : l'orientation reste la mienne.
+            return imported with { Rotation = current.Rotation };
         }).ConfigureAwait(true);
 
         if (backupError is not null)

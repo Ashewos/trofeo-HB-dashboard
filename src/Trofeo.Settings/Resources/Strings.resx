@@ -502,6 +502,10 @@
     <value>{0} sert déjà à « {1} ».</value>
     <comment>{0} : les touches (Ctrl+Alt+Right). {1} : l'action qui les a déjà.</comment>
   </data>
+  <data name="ShortcutNeedsAltOrWin" xml:space="preserve">
+    <value>Ajoute Alt ou Win : une lettre ou un chiffre seul avec Ctrl ou Maj gênerait la saisie partout.</value>
+    <comment>Capture d'un raccourci : une lettre ou un chiffre avec Ctrl ou Maj seulement est refusé.</comment>
+  </data>
   <data name="SettingsOrientation" xml:space="preserve">
     <value>Orientation</value>
     <comment>Titre de section.</comment>

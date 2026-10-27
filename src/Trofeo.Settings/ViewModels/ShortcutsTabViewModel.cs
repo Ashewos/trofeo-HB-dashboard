@@ -222,7 +222,16 @@ public sealed partial class ShortcutsTabViewModel : TabViewModel, IDisposable
             return true;
         }
 
-        if (ShortcutCapture.IsModifier(key) || ShortcutCapture.Translate(key, modifiers) is not { } keys)
+        if (ShortcutCapture.IsModifier(key))
+            return true;
+        if (ShortcutCapture.NeedsAltOrWin(key, modifiers))
+        {
+            _refusal = (index, Texts.ShortcutNeedsAltOrWin);
+            Refresh();
+            return true;
+        }
+
+        if (ShortcutCapture.Translate(key, modifiers) is not { } keys)
             return true;
 
         var bindings = Current;

@@ -12,12 +12,13 @@ public static class ShortcutCapture
 {
     /// <summary>
     /// Les touches pressées en syntaxe de <see cref="ShortcutKeys"/> (modificateurs dans l'ordre Ctrl, Alt, Shift, Win, puis
-    /// la touche), ou <c>null</c> : aucun modificateur, ou une touche que le service ne sait pas enregistrer.
+    /// la touche), ou <c>null</c> : aucun modificateur, une lettre ou un chiffre sans Alt ni Win (<see cref="NeedsAltOrWin"/>), ou
+    /// une touche que le service ne sait pas enregistrer.
     /// </summary>
     public static string? Translate(Key key, KeyModifiers modifiers)
     {
         var name = KeyName(key);
-        if (name is null)
+        if (name is null || NeedsAltOrWin(key, modifiers))
             return null;
 
         var words = new List<string>(5);
@@ -32,6 +33,18 @@ public static class ShortcutCapture
         var keys = string.Join('+', words);
         return ShortcutKeys.TryParse(keys, out _, out _) ? keys : null;
     }
+
+    /// <summary>
+    /// Une lettre ou un chiffre pressé avec Ctrl ou Maj, sans Alt ni Win : Ctrl+C ou Maj+A en raccourci global casserait la
+    /// saisie dans toutes les applications. Les flèches et les touches F gardent la règle d'avant (un modificateur suffit) ;
+    /// sans aucun modificateur, il n'y a rien à expliquer : la capture attend.
+    /// </summary>
+    public static bool NeedsAltOrWin(Key key, KeyModifiers modifiers) =>
+        IsLetterOrDigit(key)
+        && (modifiers.HasFlag(KeyModifiers.Control) || modifiers.HasFlag(KeyModifiers.Shift))
+        && !modifiers.HasFlag(KeyModifiers.Alt) && !modifiers.HasFlag(KeyModifiers.Meta);
+
+    private static bool IsLetterOrDigit(Key key) => key is >= Key.D0 and <= Key.D9 or >= Key.A and <= Key.Z;
 
     /// <summary>La touche est un modificateur seul (Ctrl, Alt, Maj, Windows) : on attend la touche qui l'accompagne.</summary>
     public static bool IsModifier(Key key) =>

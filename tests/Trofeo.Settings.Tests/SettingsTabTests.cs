@@ -595,12 +595,30 @@ public sealed class SettingsTabTests : IDisposable
 
         Assert.Equal(before, File.ReadAllText(layoutPath + ".avant-import"));   // l'ancienne disposition est gardée
         var now = _store.Load();
-        Assert.Equal(0, now.Rotation);
+        Assert.Equal(180, now.Rotation);   // l'orientation est celle de CE PC (le fichier partagé disait 0), voir Import_KeepsThisPcsOrientation
         Assert.Equal("clock", Assert.Single(now.Placements).TypeId);
         Assert.Equal(6, now.MaxFps);
         Assert.Equal(1, _link.ReloadCount);
         Assert.Equal("Disposition importée. Ctrl+Z la défait.", tab.ShareMessage);
         Assert.False(tab.ShareMessageIsError);
+    }
+
+    [Theory]
+    [InlineData(0, 180)]
+    [InlineData(180, 0)]
+    public async Task Import_KeepsThisPcsOrientation(int mine, int shared)
+    {
+        // Le sens de l'écran dépend de la façon dont CE PC l'a monté, pas de celui de l'ami qui a exporté sa disposition.
+        var tab = Open(DashboardLayout.Default with { Rotation = mine });
+        var file = Path.Combine(_dir, "ami.trofeo.json");
+        File.WriteAllText(file, ExportedJson(Shared() with { Rotation = shared }));
+        _picker.Result = file;
+
+        await tab.ImportAsync();
+
+        Assert.Equal("clock", Assert.Single(_document.Current.Placements).TypeId);   // la disposition, elle, est bien importée
+        Assert.Equal(mine, _document.Current.Rotation);
+        Assert.Equal(mine, _store.Load().Rotation);
     }
 
     [Fact]

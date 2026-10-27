@@ -37,6 +37,9 @@ public sealed class ShortcutCaptureTests : IDisposable
     [InlineData(Key.A, KeyModifiers.Control | KeyModifiers.Meta, "Ctrl+Win+A")]
     [InlineData(Key.D0, KeyModifiers.Alt, "Alt+0")]
     [InlineData(Key.F24, KeyModifiers.Shift, "Shift+F24")]
+    [InlineData(Key.A, KeyModifiers.Alt | KeyModifiers.Shift, "Alt+Shift+A")]
+    [InlineData(Key.D5, KeyModifiers.Control | KeyModifiers.Alt, "Ctrl+Alt+5")]
+    [InlineData(Key.Z, KeyModifiers.Meta, "Win+Z")]
     public void Capture_TranslatesToShortcutSyntax(Key key, KeyModifiers modifiers, string expected)
     {
         var keys = ShortcutCapture.Translate(key, modifiers);
@@ -52,6 +55,31 @@ public sealed class ShortcutCaptureTests : IDisposable
         Assert.Null(ShortcutCapture.Translate(Key.F5, KeyModifiers.None));
         Assert.Null(ShortcutCapture.Translate(Key.A, KeyModifiers.None));
     }
+
+    // Une lettre ou un chiffre avec Ctrl ou Maj seuls (Ctrl+C, Maj+A) volerait la frappe de toutes les applications : Alt ou Win
+    // sont exigés. Les flèches et les touches F gardent la règle d'avant (un modificateur suffit).
+    [Theory]
+    [InlineData(Key.C, KeyModifiers.Control)]
+    [InlineData(Key.A, KeyModifiers.Shift)]
+    [InlineData(Key.Z, KeyModifiers.Control)]
+    [InlineData(Key.D1, KeyModifiers.Control | KeyModifiers.Shift)]
+    [InlineData(Key.D0, KeyModifiers.Control)]
+    public void Capture_LetterOrDigit_WithoutAltOrWin_IsRefused(Key key, KeyModifiers modifiers)
+    {
+        Assert.True(ShortcutCapture.NeedsAltOrWin(key, modifiers));
+        Assert.Null(ShortcutCapture.Translate(key, modifiers));
+    }
+
+    [Theory]
+    [InlineData(Key.Right, KeyModifiers.Control)]
+    [InlineData(Key.Up, KeyModifiers.Shift)]
+    [InlineData(Key.F5, KeyModifiers.Control)]
+    [InlineData(Key.F24, KeyModifiers.Shift)]
+    [InlineData(Key.A, KeyModifiers.Alt)]
+    [InlineData(Key.A, KeyModifiers.Meta | KeyModifiers.Control)]
+    [InlineData(Key.A, KeyModifiers.None)]   // sans modificateur du tout : on attend, rien à expliquer
+    public void Capture_OtherCombinations_DoNotNeedAltOrWin(Key key, KeyModifiers modifiers) =>
+        Assert.False(ShortcutCapture.NeedsAltOrWin(key, modifiers));
 
     [Theory]
     [InlineData(Key.Space)]
@@ -150,15 +178,19 @@ public sealed class ShortcutCaptureTests : IDisposable
         var (window, model) = Open();
         await model.ShortcutsTab.DeleteAsync(model.ShortcutsTab.Rows[0]);   // une modification à annuler
         Assert.Equal(10, model.ShortcutsTab.Rows.Count);
+        var first = model.Document.Current.Shortcuts![0].Keys;
 
         model.ShortcutsTab.BeginCapture(model.ShortcutsTab.Rows[0]);
         window.KeyPress(Key.Z, RawInputModifiers.Control, PhysicalKey.Z, null);
         Dispatcher.UIThread.RunJobs();
 
-        // Ctrl+Z est la combinaison voulue, pas une annulation : la suppression reste, et l'historique n'a pas reculé.
+        // Ctrl+Z est refusé comme raccourci (une lettre veut Alt ou Win), et ce n'est pas non plus une annulation :
+        // la suppression reste, l'historique n'a pas reculé, et la ligne dit pourquoi en attendant une autre combinaison.
         Assert.Equal(10, model.ShortcutsTab.Rows.Count);
-        Assert.Equal("Ctrl+Z", model.Document.Current.Shortcuts![0].Keys);
+        Assert.Equal(first, model.Document.Current.Shortcuts![0].Keys);
         Assert.False(model.Session.CanRedo);
+        Assert.True(model.ShortcutsTab.IsCapturing);
+        Assert.Equal(Texts.ShortcutNeedsAltOrWin, model.ShortcutsTab.Rows[0].Refusal);
     }
 
     [AvaloniaFact]
