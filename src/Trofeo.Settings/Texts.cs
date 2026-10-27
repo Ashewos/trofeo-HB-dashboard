@@ -195,4 +195,46 @@ public static class Texts
     public static string AppearanceLegibilityHelp => Get();
     /// <summary>{0} : la cause. Le sélecteur de fichier de Windows a échoué.</summary>
     public static string AppearancePickFailed => Get();
+    /// <summary>Colonne de droite de l'onglet Modules sans module choisi.</summary>
+    public static string ModulesNothingSelected => Get();
+    /// <summary>Le type de module n'a aucun schéma de réglages.</summary>
+    public static string ModulesNothingToSet => Get();
+    /// <summary>Un secret est dans le coffre (sa valeur ne s'affiche jamais).</summary>
+    public static string ModulesSecretPresent => Get();
+    /// <summary>Aucun secret dans le coffre.</summary>
+    public static string ModulesSecretAbsent => Get();
+    /// <summary>Ouvre la saisie masquée d'un secret.</summary>
+    public static string ModulesSecretEdit => Get();
+    /// <summary>Écrit le secret saisi dans le coffre.</summary>
+    public static string ModulesSecretSave => Get();
+    /// <summary>Retire le secret du coffre.</summary>
+    public static string ModulesSecretClear => Get();
+    /// <summary>Renonce à une saisie ou à une action en attente de confirmation.</summary>
+    public static string ModulesCancel => Get();
+    /// <summary>{0} : la cause. Le coffre à secrets est verrouillé ou illisible.</summary>
+    public static string ModulesSecretFailed => Get();
+    /// <summary>Fenêtre sans coffre (tests, aperçus).</summary>
+    public static string ModulesSecretUnavailable => Get();
+    /// <summary>{0} : la cause. Ligne Amber de la fenêtre après un secret changé.</summary>
+    public static string ModulesRestartFailed => Get();
+    /// <summary>Ligne Amber : le service ne connaît pas l'instance.</summary>
+    public static string ModulesRestartMissing => Get();
+    /// <summary>Texte du bouton d'une action pendant qu'elle tourne.</summary>
+    public static string ModulesActionRunning => Get();
+    /// <summary>Sous une action d'un module retiré : le service ne le fait pas tourner.</summary>
+    public static string ModulesActionShelved => Get();
+    /// <summary>Relance le chargement d'une liste vide.</summary>
+    public static string ModulesLookupRefresh => Get();
+    /// <summary>{0} : la cause. Une recherche ou le chargement d'une liste a échoué.</summary>
+    public static string ModulesLookupFailed => Get();
+    /// <summary>Une recherche n'a rien trouvé.</summary>
+    public static string ModulesLookupNoResult => Get();
+    /// <summary>Une liste à choisir est vide.</summary>
+    public static string ModulesLookupNothing => Get();
+    /// <summary>Une recherche est en cours.</summary>
+    public static string ModulesLookupLoading => Get();
+    /// <summary>Nom accessible de la flèche qui monte une ligne.</summary>
+    public static string ModulesMoveUp => Get();
+    /// <summary>Nom accessible de la flèche qui descend une ligne.</summary>
+    public static string ModulesMoveDown => Get();
 }

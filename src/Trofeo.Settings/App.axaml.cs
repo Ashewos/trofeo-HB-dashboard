@@ -28,7 +28,7 @@ public partial class App : Application
             document.Load();
             var preferences = EditorPreferences.Load(Path.Combine(AppPaths.SettingsDir, "settings-app.json"));
 
-            var model = new MainViewModel(link, document, preferences);
+            var model = new MainViewModel(link, document, preferences, secrets: VaultSecretAccess.Default());
             var window = new MainWindow { DataContext = model };
             desktop.MainWindow = window;
 

@@ -350,4 +350,88 @@
     <value>Le sélecteur de fichier n'a pas pu s'ouvrir : {0}</value>
     <comment>{0} : la cause. Le sélecteur de fichier de Windows a échoué.</comment>
   </data>
+  <data name="ModulesNothingSelected" xml:space="preserve">
+    <value>Choisis un module pour le régler.</value>
+    <comment>Colonne de droite de l'onglet Modules sans module choisi.</comment>
+  </data>
+  <data name="ModulesNothingToSet" xml:space="preserve">
+    <value>Ce module n'a rien à régler.</value>
+    <comment>Le type de module n'a aucun schéma de réglages.</comment>
+  </data>
+  <data name="ModulesSecretPresent" xml:space="preserve">
+    <value>Enregistrée</value>
+    <comment>Un secret est dans le coffre (sa valeur ne s'affiche jamais).</comment>
+  </data>
+  <data name="ModulesSecretAbsent" xml:space="preserve">
+    <value>Absente</value>
+    <comment>Aucun secret dans le coffre.</comment>
+  </data>
+  <data name="ModulesSecretEdit" xml:space="preserve">
+    <value>Modifier</value>
+    <comment>Ouvre la saisie masquée d'un secret.</comment>
+  </data>
+  <data name="ModulesSecretSave" xml:space="preserve">
+    <value>Enregistrer</value>
+    <comment>Écrit le secret saisi dans le coffre.</comment>
+  </data>
+  <data name="ModulesSecretClear" xml:space="preserve">
+    <value>Effacer</value>
+    <comment>Retire le secret du coffre.</comment>
+  </data>
+  <data name="ModulesCancel" xml:space="preserve">
+    <value>Annuler</value>
+    <comment>Renonce à une saisie ou à une action en attente de confirmation.</comment>
+  </data>
+  <data name="ModulesSecretFailed" xml:space="preserve">
+    <value>Le coffre n'a pas pu être écrit : {0}</value>
+    <comment>{0} : la cause. Le coffre à secrets est verrouillé ou illisible.</comment>
+  </data>
+  <data name="ModulesSecretUnavailable" xml:space="preserve">
+    <value>Le coffre à secrets n'est pas disponible.</value>
+    <comment>Fenêtre sans coffre (tests, aperçus).</comment>
+  </data>
+  <data name="ModulesRestartFailed" xml:space="preserve">
+    <value>Le module n'a pas pu relire le secret : {0}</value>
+    <comment>{0} : la cause. Ligne Amber de la fenêtre après un secret changé.</comment>
+  </data>
+  <data name="ModulesRestartMissing" xml:space="preserve">
+    <value>Le service n'a pas rechargé ce module : il lira le secret à son prochain démarrage.</value>
+    <comment>Ligne Amber : le service ne connaît pas l'instance.</comment>
+  </data>
+  <data name="ModulesActionRunning" xml:space="preserve">
+    <value>En cours…</value>
+    <comment>Texte du bouton d'une action pendant qu'elle tourne.</comment>
+  </data>
+  <data name="ModulesActionShelved" xml:space="preserve">
+    <value>Remets le module sur l'écran pour lancer cette action.</value>
+    <comment>Sous une action d'un module retiré : le service ne le fait pas tourner.</comment>
+  </data>
+  <data name="ModulesLookupRefresh" xml:space="preserve">
+    <value>Actualiser</value>
+    <comment>Relance le chargement d'une liste vide.</comment>
+  </data>
+  <data name="ModulesLookupFailed" xml:space="preserve">
+    <value>La recherche a échoué : {0}</value>
+    <comment>{0} : la cause. Une recherche ou le chargement d'une liste a échoué.</comment>
+  </data>
+  <data name="ModulesLookupNoResult" xml:space="preserve">
+    <value>Aucun résultat.</value>
+    <comment>Une recherche n'a rien trouvé.</comment>
+  </data>
+  <data name="ModulesLookupNothing" xml:space="preserve">
+    <value>Rien à proposer pour l'instant.</value>
+    <comment>Une liste à choisir est vide.</comment>
+  </data>
+  <data name="ModulesLookupLoading" xml:space="preserve">
+    <value>Recherche…</value>
+    <comment>Une recherche est en cours.</comment>
+  </data>
+  <data name="ModulesMoveUp" xml:space="preserve">
+    <value>Monter</value>
+    <comment>Nom accessible de la flèche qui monte une ligne.</comment>
+  </data>
+  <data name="ModulesMoveDown" xml:space="preserve">
+    <value>Descendre</value>
+    <comment>Nom accessible de la flèche qui descend une ligne.</comment>
+  </data>
 </root>

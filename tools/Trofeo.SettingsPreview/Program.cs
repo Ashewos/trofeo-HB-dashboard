@@ -79,6 +79,7 @@ internal static class Program
             link => link.Set(LinkState.Connected, connected.Welcome, connected.Status), (_, _) => { });
 
         RenderAppearance(folder, scratch, jpeg, connected.Welcome, connected.Status);
+        RenderModules(folder, scratch, jpeg, connected.Welcome, connected.Status);
 
         // L'onglet Disposition : un module choisi, des glissements (libre, refusé), l'ajout, l'oubli à confirmer.
         var layoutStatus = connected.Status with
@@ -248,11 +249,143 @@ internal static class Program
         }, refuseReload: "Le service n'a pas pu appliquer le thème : le fond choisi est introuvable.");
     }
 
+    /// <summary>L'onglet Modules : Réseau en UniFi (hôte, clé, action), Heure avec une ville et des résultats, Monitoring (lignes, cartes graphiques), En écoute sans réglage.</summary>
+    private static void RenderModules(string folder, string scratch, byte[] jpeg, Welcome welcome, ServiceStatus status)
+    {
+        static void Run(Task task) => task.GetAwaiter().GetResult();
+        static System.Text.Json.JsonElement Json(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement.Clone();
+        static DashboardLayout WithSettings(Guid id, string json) => Base with
+        {
+            Placements = [.. Base.Placements.Select(p => p.InstanceId == id ? p with { Settings = Json(json) } : p)],
+        };
+        static Trofeo.Control.ModuleState State(Guid id, string typeId, Trofeo.ModuleKit.ModuleHealth health, string? message = null, params string[] notices) =>
+            new(id, typeId, health, message, notices);
+
+        var modules = new[]
+        {
+            State(ClaudeId, "claudecode", Trofeo.ModuleKit.ModuleHealth.Online),
+            State(MonitoringId, "monitoring", Trofeo.ModuleKit.ModuleHealth.Online, null, "3 lignes sur 5 tiennent à cette taille."),
+            State(NowPlayingId, "nowplaying", Trofeo.ModuleKit.ModuleHealth.NotConfigured),
+            State(ClockId, "clock", Trofeo.ModuleKit.ModuleHealth.Online),
+            State(NetworkId, "network", Trofeo.ModuleKit.ModuleHealth.Offline, "Clé API refusée par la console : recopie-la depuis UniFi."),
+        };
+        void Connected(FakeServiceLink link) => link.Set(LinkState.Connected, welcome, status with { Modules = modules });
+        void Open(MainViewModel model, Guid id)
+        {
+            model.SelectedTab = model.ModulesTab;
+            model.ModulesTab.Select(id);
+        }
+
+        const string unifi = """{"source":"unifi","unifi":{"host":"192.168.1.1"}}""";
+
+        // Réseau en UniFi : l'hôte, la clé (absente), l'action ; le message du module en Amber.
+        Render(folder, scratch, "modules-reseau-unifi.png", 1440, 1240, jpeg, Connected, (_, model) => Open(model, NetworkId),
+            layout: WithSettings(NetworkId, unifi));
+
+        Render(folder, scratch, "modules-reseau-unifi-1440x900.png", 1440, 900, jpeg, Connected, (_, model) => Open(model, NetworkId),
+            layout: WithSettings(NetworkId, unifi));
+
+        // La clé en cours de saisie (masquée), enregistrée une première fois.
+        var vault = new FakeSecretAccess();
+        vault.Set("network", "unifi.apiKey", "valeur-deja-la");
+        Render(folder, scratch, "modules-reseau-cle.png", 1440, 1240, jpeg, Connected, (_, model) =>
+        {
+            Open(model, NetworkId);
+            var key = model.ModulesTab.Form!.Field<Trofeo.Settings.ViewModels.Fields.SecretFieldViewModel>("unifi.apiKey");
+            key.Edit();
+            key.Input = "a1b2c3d4e5f6";
+        }, layout: WithSettings(NetworkId, unifi), secrets: vault);
+
+        // La confirmation de l'action « Oublier le certificat ».
+        Render(folder, scratch, "modules-reseau-confirmation.png", 1440, 1240, jpeg, Connected, (_, model) =>
+        {
+            Open(model, NetworkId);
+            Run(model.ModulesTab.Form!.Field<Trofeo.Settings.ViewModels.Fields.ActionFieldViewModel>("forget-certificate").RequestAsync());
+        }, layout: WithSettings(NetworkId, unifi), secrets: vault);
+
+        // Réseau en « Ce PC » : seul le choix de la source.
+        Render(folder, scratch, "modules-reseau-pc.png", 1440, 1240, jpeg, Connected, (_, model) => Open(model, NetworkId));
+
+        // Heure : une ville choisie, des résultats de recherche ouverts (jusqu'à 5), le choix du vide en tête.
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        Render(folder, scratch, "modules-heure-ville.png", 1440, 1240, jpeg,
+            link =>
+            {
+                Connected(link);
+                link.OnLookup = (_, _, _) => Task.FromResult<IReadOnlyList<Trofeo.ModuleKit.LookupResult>>(
+                [
+                    new("Lyon, Auvergne-Rhône-Alpes, France", Json("""{"name":"Lyon"}""")),
+                    new("Lyon, Ontario, Canada", Json("""{"name":"Lyon"}""")),
+                    new("Lyons, Illinois, États-Unis", Json("""{"name":"Lyons"}""")),
+                ]);
+            },
+            (_, model) =>
+            {
+                Open(model, ClockId);
+                var city = model.ModulesTab.Form!.Field<Trofeo.Settings.ViewModels.Fields.LookupFieldViewModel>("location");
+                city.Query = "Lyon";
+                time.Advance(TimeSpan.FromMilliseconds(400));
+                Run(city.SearchTask);
+            },
+            layout: WithSettings(ClockId, """{"format":"12h","location":{"name":"Nantes","latitude":47.2,"longitude":-1.5}}"""), time: time);
+
+        // Monitoring : le titre, les lignes (cochées d'abord, avec leurs flèches), les cartes graphiques à choisir.
+        Render(folder, scratch, "modules-monitoring.png", 1440, 1240, jpeg,
+            link =>
+            {
+                Connected(link);
+                link.OnLookup = (_, _, _) => Task.FromResult<IReadOnlyList<Trofeo.ModuleKit.LookupResult>>(
+                [
+                    new("Intel(R) UHD Graphics 770", Json("\"Intel(R) UHD Graphics 770\"")),
+                    new("NVIDIA GeForce RTX 5070", Json("\"NVIDIA GeForce RTX 5070\"")),
+                ]);
+            },
+            (_, model) =>
+            {
+                Open(model, MonitoringId);
+                Run(model.ModulesTab.Form!.Field<Trofeo.Settings.ViewModels.Fields.LookupFieldViewModel>("gpu").EnsureLoadedAsync());
+            },
+            layout: WithSettings(MonitoringId, """{"title":"Mon PC","rows":["gpu","cpu","vram","ram"],"gpu":"NVIDIA GeForce RTX 5070"}"""));
+
+        Render(folder, scratch, "modules-monitoring-1200x760.png", 1200, 760, jpeg, Connected, (_, model) => Open(model, MonitoringId));
+
+        // En écoute : rien à régler.
+        Render(folder, scratch, "modules-en-ecoute.png", 1440, 1240, jpeg, Connected, (_, model) => Open(model, NowPlayingId));
+
+        // Claude Code : choix, interrupteurs, et l'action du mod des quotas avec sa question.
+        Render(folder, scratch, "modules-claude-code.png", 1440, 1240, jpeg, Connected, (_, model) =>
+        {
+            Open(model, ClaudeId);
+            Run(model.ModulesTab.Form!.Field<Trofeo.Settings.ViewModels.Fields.ActionFieldViewModel>("install-quotas").RequestAsync());
+        });
+
+        // Un module retiré : ses réglages se changent, l'action attend qu'on le remette.
+        Render(folder, scratch, "modules-retire.png", 1440, 1240, jpeg, Connected, (_, model) => Open(model, CodexId));
+
+        // Un secret qui n'a pas pu relire : la ligne Amber de la fenêtre.
+        Render(folder, scratch, "modules-message-de-la-fenetre.png", 1440, 1240, jpeg,
+            link =>
+            {
+                Connected(link);
+                link.OnRestart = _ => throw new ControlException("La liaison avec le service est coupée.");
+            },
+            (_, model) =>
+            {
+                Open(model, NetworkId);
+                var key = model.ModulesTab.Form!.Field<Trofeo.Settings.ViewModels.Fields.SecretFieldViewModel>("unifi.apiKey");
+                key.Edit();
+                key.Input = "a1b2c3d4e5f6";
+                Run(key.SaveAsync());
+            },
+            layout: WithSettings(NetworkId, unifi), secrets: new FakeSecretAccess());
+    }
+
     private static readonly Guid ClaudeId = new("3c1d9f5e-7a2b-4e8c-9b1f-6d2a0e4c8b17");
     private static readonly Guid MonitoringId = new("246ac06d-eec2-4d64-9930-24b64603a03b");
     private static readonly Guid NowPlayingId = new("8ebcc647-ab4b-401d-b2b3-f7a0ebd97b4b");
     private static readonly Guid ClockId = new("5b0c5e2e-6a53-4c0b-9d0e-3f1a7c1d2b01");
     private static readonly Guid NetworkId = new("a2002423-c807-4403-9c5a-2a983fb6a371");
+    private static readonly Guid CodexId = new("c0de0000-0000-4000-8000-000000000001");
 
     /// <summary>La disposition par défaut (celle de la bande), avec Codex rangé parmi les modules retirés.</summary>
     private static readonly DashboardLayout Base = DashboardLayout.Default with
@@ -276,7 +409,8 @@ internal static class Program
     private static void Render(
         string folder, string scratch, string name, int width, int height, byte[]? jpeg,
         Action<FakeServiceLink> state, Action<MainWindow, MainViewModel> arrange,
-        DashboardLayout? layout = null, string? refuseReload = null, IReadOnlyList<string>? systemFonts = null)
+        DashboardLayout? layout = null, string? refuseReload = null, IReadOnlyList<string>? systemFonts = null,
+        ISecretAccess? secrets = null, TimeProvider? time = null)
     {
         var link = new FakeServiceLink();
         state(link);
@@ -286,7 +420,7 @@ internal static class Program
         store.Save(layout ?? Base);
         var document = new LayoutDocument(store, link);
         document.Load();
-        using var model = new MainViewModel(link, document, new EditorPreferences(), null, systemFonts ?? ["Arial", "Consolas", "Segoe UI"]);
+        using var model = new MainViewModel(link, document, new EditorPreferences(), null, systemFonts ?? ["Arial", "Consolas", "Segoe UI"], secrets, time);
         var window = new MainWindow { DataContext = model, Width = width, Height = height };
         window.Show();
         if (jpeg is not null)

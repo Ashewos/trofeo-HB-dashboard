@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:t="clr-namespace:Trofeo.Settings"
+             xmlns:f="clr-namespace:Trofeo.Settings.ViewModels.Fields"
+             x:Class="Trofeo.Settings.Views.Fields.LookupFieldView"
+             x:DataType="f:LookupFieldViewModel">
+
+  <!--
+    Cherchable : la valeur en vigueur, une zone de recherche, puis jusqu'à 5 résultats (et le choix du vide).
+    Sinon : la liste se charge et reste ouverte, la ligne choisie est marquée.
+  -->
+  <StackPanel Name="Root" Spacing="8">
+    <TextBlock Classes="section" Text="{Binding Label}" />
+
+    <TextBlock Name="Current" Classes="name" Text="{Binding CurrentText}" Classes.muted="{Binding !HasValue}"
+               IsVisible="{Binding IsSearchable}" />
+
+    <TextBox Name="Box" HorizontalAlignment="Left" Width="420" IsVisible="{Binding IsSearchable}"
+             AutomationProperties.Name="{Binding Label}" PlaceholderText="{Binding Placeholder}" Text="{Binding Query}" />
+
+    <TextBlock Name="Loading" Classes="muted" Text="{x:Static t:Texts.ModulesLookupLoading}" IsVisible="{Binding IsLoading}" />
+
+    <Border Name="Choices" Classes="list" IsVisible="{Binding IsOpen}" HorizontalAlignment="Left" Width="420">
+      <ItemsControl ItemsSource="{Binding Rows}" AutomationProperties.Name="{Binding Label}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="f:LookupRow">
+            <Button Classes="row" Classes.selected="{Binding IsSelected}" Content="{Binding Label}" Command="{Binding PickCommand}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Border>
+
+    <TextBlock Name="NoResult" Classes="muted" Text="{x:Static t:Texts.ModulesLookupNoResult}" IsVisible="{Binding HasNoResult}" />
+    <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding HasNothingToOffer}">
+      <TextBlock Classes="muted" VerticalAlignment="Center" Text="{x:Static t:Texts.ModulesLookupNothing}" />
+      <Button Name="Refresh" Classes="small" Content="{x:Static t:Texts.ModulesLookupRefresh}" Command="{Binding ReloadCommand}" />
+    </StackPanel>
+
+    <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Help}" IsVisible="{Binding HasHelp}" />
+    <TextBlock Name="Failure" Classes="error" TextWrapping="Wrap" Text="{Binding Error}" IsVisible="{Binding HasError}" />
+  </StackPanel>
+</UserControl>

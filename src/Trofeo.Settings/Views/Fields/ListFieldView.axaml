@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:t="clr-namespace:Trofeo.Settings"
+             xmlns:f="clr-namespace:Trofeo.Settings.ViewModels.Fields"
+             x:Class="Trofeo.Settings.Views.Fields.ListFieldView"
+             x:DataType="f:ListFieldViewModel">
+
+  <!-- Des cases à cocher ; les lignes cochées, en tête, se montent et se descendent avec les flèches. -->
+  <StackPanel Spacing="8">
+    <TextBlock Classes="section" Text="{Binding Label}" />
+    <ItemsControl Name="Entries" ItemsSource="{Binding Entries}" Width="360" HorizontalAlignment="Left"
+                  AutomationProperties.Name="{Binding Label}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="f:ListEntry">
+          <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,2">
+            <CheckBox Grid.Column="0" Content="{Binding Label}" IsChecked="{Binding IsChecked}" IsEnabled="{Binding CanUncheck}" />
+            <Button Grid.Column="1" Classes="small icon" Margin="0,0,4,0" Command="{Binding MoveUpCommand}" IsEnabled="{Binding CanMoveUp}"
+                    IsVisible="{Binding IsChecked}" AutomationProperties.Name="{x:Static t:Texts.ModulesMoveUp}">
+              <Path Data="M1,6 L5,2 L9,6" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round" />
+            </Button>
+            <Button Grid.Column="2" Classes="small icon" Command="{Binding MoveDownCommand}" IsEnabled="{Binding CanMoveDown}"
+                    IsVisible="{Binding IsChecked}" AutomationProperties.Name="{x:Static t:Texts.ModulesMoveDown}">
+              <Path Data="M1,2 L5,6 L9,2" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round" />
+            </Button>
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Help}" IsVisible="{Binding HasHelp}" />
+    <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Error}" IsVisible="{Binding HasError}" />
+  </StackPanel>
+</UserControl>

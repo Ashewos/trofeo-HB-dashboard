@@ -36,6 +36,9 @@
   <Style Selector="TextBlock.error">
     <Setter Property="Foreground" Value="{DynamicResource Refuse}" />
   </Style>
+  <Style Selector="TextBlock.ok">
+    <Setter Property="Foreground" Value="{DynamicResource Online}" />
+  </Style>
   <Style Selector="TextBlock.warning">
     <Setter Property="Foreground" Value="{DynamicResource Amber}" />
   </Style>
@@ -100,6 +103,14 @@
     <Setter Property="Foreground" Value="{DynamicResource Ink}" />
   </Style>
 
+  <!-- Bouton inactif : toujours moins lisible que celui qui marche (Fluent l'éclaircit, ce qui le ferait passer pour survolé). -->
+  <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+    <Setter Property="Opacity" Value="0.55" />
+  </Style>
+
   <!-- Petits boutons des listes, boutons de choix (préréglages, taille du texte) et lignes de la liste d'ajout. -->
   <Style Selector="Button.small">
     <Setter Property="Padding" Value="10,5" />
@@ -119,6 +130,57 @@
     <Setter Property="HorizontalContentAlignment" Value="Left" />
     <Setter Property="Padding" Value="12,8" />
   </Style>
+  <!-- Flèches des listes de lignes : un petit bouton carré. -->
+  <Style Selector="Button.icon">
+    <Setter Property="Padding" Value="8,7" />
+    <Setter Property="MinWidth" Value="0" />
+  </Style>
+
+  <!-- Les choix d'une recherche : une liste dans un cadre fin ; la ligne en vigueur est sur Raised, avec un filet Accent. -->
+  <Style Selector="Border.list">
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+  <Style Selector="Button.row">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="2,0,0,0" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+  <Style Selector="Button.row:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.row.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+  </Style>
+  <Style Selector="Button.row.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+  </Style>
+
+  <!-- La question de confirmation d'une action : un encadré sur Raised, au rayon des contrôles. -->
+  <Style Selector="Border.note">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="14" />
+  </Style>
+
+  <!-- Liste déroulante : les jetons des champs de saisie. -->
+  <Style Selector="ComboBox">
+    <Setter Property="FontFamily" Value="{DynamicResource BodyFont}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="10,8" />
+  </Style>
+
   <Style Selector="FlyoutPresenter">
     <Setter Property="Background" Value="{DynamicResource Panel}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Line}" />

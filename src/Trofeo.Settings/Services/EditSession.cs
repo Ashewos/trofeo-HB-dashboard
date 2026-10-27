@@ -54,6 +54,16 @@ public sealed class EditSession : IDisposable
     /// </summary>
     public AppearanceWarnings AppearanceWarnings { get; private set; } = AppearanceWarnings.Empty;
 
+    /// <summary>
+    /// Montre un message sous la bande sans modifier la disposition (un module qui n'a pas pu relire son secret, par
+    /// exemple) ; il reste jusqu'à la modification suivante. <c>null</c> l'efface.
+    /// </summary>
+    public void Report(string? message)
+    {
+        Message = message;
+        Changed?.Invoke();
+    }
+
     /// <summary>Efface le message (un nouveau glissement commence, par exemple).</summary>
     public void ClearMessage()
     {

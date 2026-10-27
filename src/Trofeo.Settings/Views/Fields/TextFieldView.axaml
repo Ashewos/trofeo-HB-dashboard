@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:f="clr-namespace:Trofeo.Settings.ViewModels.Fields"
+             x:Class="Trofeo.Settings.Views.Fields.TextFieldView"
+             x:DataType="f:TextFieldViewModel">
+
+  <StackPanel Spacing="8">
+    <TextBlock Classes="section" Text="{Binding Label}" />
+    <TextBox Name="Box" HorizontalAlignment="Left" Width="420"
+             AutomationProperties.Name="{Binding Label}"
+             MaxLength="{Binding MaxLength}" PlaceholderText="{Binding Placeholder}" Text="{Binding Text}" />
+    <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Help}" IsVisible="{Binding HasHelp}" />
+    <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Error}" IsVisible="{Binding HasError}" />
+  </StackPanel>
+</UserControl>

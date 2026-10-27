@@ -1,0 +1,17 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:f="clr-namespace:Trofeo.Settings.ViewModels.Fields"
+             x:Class="Trofeo.Settings.Views.Fields.ToggleFieldView"
+             x:DataType="f:ToggleFieldViewModel">
+
+  <!-- Le nom à gauche, l'interrupteur à droite. -->
+  <StackPanel Spacing="4" Width="420" HorizontalAlignment="Left">
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Grid.Column="0" Text="{Binding Label}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,24,0" />
+      <ToggleSwitch Grid.Column="1" Name="Switch" OnContent="" OffContent="" VerticalAlignment="Center"
+                    AutomationProperties.Name="{Binding Label}" IsChecked="{Binding IsOn}" />
+    </Grid>
+    <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Help}" IsVisible="{Binding HasHelp}" />
+    <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Error}" IsVisible="{Binding HasError}" />
+  </StackPanel>
+</UserControl>

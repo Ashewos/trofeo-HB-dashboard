@@ -17,17 +17,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public MainViewModel(
         IServiceLink link, LayoutDocument document, EditorPreferences preferences,
-        IFilePicker? picker = null, IReadOnlyList<string>? systemFonts = null)
+        IFilePicker? picker = null, IReadOnlyList<string>? systemFonts = null, ISecretAccess? secrets = null, TimeProvider? time = null)
     {
         _link = link;
         Session = new EditSession(document);
         LayoutTab = new LayoutTabViewModel(link, Session);
         AppearanceTab = new AppearanceTabViewModel(Session, picker, systemFonts ?? new SkiaSystemFonts().Families);
+        ModulesTab = new ModulesTabViewModel(link, Session, secrets ?? new NoSecretAccess(), time);
         Document = document;
         Preferences = preferences;
         Tabs =
         [
-            LayoutTab, AppearanceTab, new ModulesTabViewModel(),
+            LayoutTab, AppearanceTab, ModulesTab,
             new ShortcutsTabViewModel(), new SettingsTabViewModel(),
         ];
         _selectedTab = Tabs[0];
@@ -49,6 +50,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public LayoutTabViewModel LayoutTab { get; }
 
     public AppearanceTabViewModel AppearanceTab { get; }
+    public ModulesTabViewModel ModulesTab { get; }
     public LayoutDocument Document { get; }
     public EditorPreferences Preferences { get; }
     public IReadOnlyList<TabViewModel> Tabs { get; }
@@ -56,6 +58,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGridVisible))]
     private TabViewModel _selectedTab;
+
+    // Un texte tapé dans l'onglet Modules et pas encore validé s'écrit quand on le quitte.
+    partial void OnSelectedTabChanging(TabViewModel? oldValue, TabViewModel newValue)
+    {
+        if (oldValue is ModulesTabViewModel modules && !ReferenceEquals(oldValue, newValue))
+            _ = modules.CommitPendingAsync();
+    }
 
     /// <summary>
     /// La ligne <c>Amber</c> sous la bande, dans tous les onglets : le message de la dernière modification (refus du
@@ -174,6 +183,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Session.Changed -= RefreshBanner;
         LayoutTab.Dispose();
         AppearanceTab.Dispose();
+        ModulesTab.Dispose();
         Session.Dispose();
         PreviewImage?.Dispose();
         PreviewImage = null;

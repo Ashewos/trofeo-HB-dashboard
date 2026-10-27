@@ -62,6 +62,22 @@
   <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="{StaticResource MutedColor}" />
   <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="{StaticResource MutedColor}" />
 
+  <!-- La liste déroulante suit les champs de saisie. -->
+  <SolidColorBrush x:Key="ComboBoxBackground" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="ComboBoxBackgroundFocused" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="{StaticResource LineColor}" />
+  <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="{StaticResource MutedColor}" />
+  <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="{StaticResource AccentColor}" />
+  <SolidColorBrush x:Key="ComboBoxBorderBrushFocused" Color="{StaticResource AccentColor}" />
+  <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="{StaticResource PanelColor}" />
+  <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="{StaticResource LineColor}" />
+  <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="{StaticResource RaisedColor}" />
+  <SolidColorBrush x:Key="ComboBoxItemBackgroundPressed" Color="{StaticResource LineColor}" />
+
   <!-- Le thème Fluent prend l'accent du produit, pas celui de Windows. -->
   <Color x:Key="SystemAccentColor">#7FD1C7</Color>
   <Color x:Key="SystemAccentColorDark1">#6AB9B0</Color>
