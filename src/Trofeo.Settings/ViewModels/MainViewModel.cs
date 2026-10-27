@@ -17,20 +17,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public MainViewModel(
         IServiceLink link, LayoutDocument document, EditorPreferences preferences,
-        IFilePicker? picker = null, IReadOnlyList<string>? systemFonts = null, ISecretAccess? secrets = null, TimeProvider? time = null)
+        IFilePicker? picker = null, IReadOnlyList<string>? systemFonts = null, ISecretAccess? secrets = null, TimeProvider? time = null,
+        string? preferencesPath = null, SystemServices? system = null)
     {
         _link = link;
         Session = new EditSession(document);
         LayoutTab = new LayoutTabViewModel(link, Session);
         AppearanceTab = new AppearanceTabViewModel(Session, picker, systemFonts ?? new SkiaSystemFonts().Families);
         ModulesTab = new ModulesTabViewModel(link, Session, secrets ?? new NoSecretAccess(), time);
+        ShortcutsTab = new ShortcutsTabViewModel(link, Session);
+        PreferencesStore = new PreferencesStore(preferences, preferencesPath);
+        SettingsTab = new SettingsTabViewModel(
+            link, Session, PreferencesStore, system ?? SystemServices.None, picker);
         Document = document;
-        Preferences = preferences;
-        Tabs =
-        [
-            LayoutTab, AppearanceTab, ModulesTab,
-            new ShortcutsTabViewModel(), new SettingsTabViewModel(),
-        ];
+        Tabs = [LayoutTab, AppearanceTab, ModulesTab, ShortcutsTab, SettingsTab];
         _selectedTab = Tabs[0];
 
         _link.SetRealTimePreview(preferences.RealTimePreview);
@@ -51,20 +51,32 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public AppearanceTabViewModel AppearanceTab { get; }
     public ModulesTabViewModel ModulesTab { get; }
+    public ShortcutsTabViewModel ShortcutsTab { get; }
+    public SettingsTabViewModel SettingsTab { get; }
     public LayoutDocument Document { get; }
-    public EditorPreferences Preferences { get; }
+
+    /// <summary>Les préférences de la fenêtre (aperçu en rendu réel, première ouverture), écrites dans <c>settings-app.json</c> quand elles changent.</summary>
+    public PreferencesStore PreferencesStore { get; }
+
+    public EditorPreferences Preferences => PreferencesStore.Current;
     public IReadOnlyList<TabViewModel> Tabs { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGridVisible))]
     private TabViewModel _selectedTab;
 
-    // Un texte tapé dans l'onglet Modules et pas encore validé s'écrit quand on le quitte.
+    // Un texte tapé dans l'onglet Modules et pas encore validé s'écrit quand on le quitte ; une capture de raccourci s'abandonne.
     partial void OnSelectedTabChanging(TabViewModel? oldValue, TabViewModel newValue)
     {
-        if (oldValue is ModulesTabViewModel modules && !ReferenceEquals(oldValue, newValue))
+        if (ReferenceEquals(oldValue, newValue))
+            return;
+        if (oldValue is ModulesTabViewModel modules)
             _ = modules.CommitPendingAsync();
+        else if (oldValue is ShortcutsTabViewModel shortcuts)
+            shortcuts.CancelCapture();
     }
+
+    partial void OnSelectedTabChanged(TabViewModel value) => RefreshBanner();
 
     /// <summary>
     /// La ligne <c>Amber</c> sous la bande, dans tous les onglets : le message de la dernière modification (refus du
@@ -121,7 +133,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var lines = new List<string>();
         if (!string.IsNullOrEmpty(Session.Message))
             lines.Add(Session.Message);
-        lines.AddRange(Session.OtherWarnings);
+        // Dans l'onglet Raccourcis, ceux que Windows a refusés sont déjà sur leur ligne.
+        var onShortcuts = SelectedTab is ShortcutsTabViewModel;
+        lines.AddRange(Session.OtherWarnings.Where(w => !(onShortcuts && ShortcutsTabViewModel.IsHotkeyFailure(w))));
         SaveMessage = lines.Count == 0 ? null : string.Join('\n', lines);
     }
 
@@ -184,6 +198,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         LayoutTab.Dispose();
         AppearanceTab.Dispose();
         ModulesTab.Dispose();
+        ShortcutsTab.Dispose();
+        SettingsTab.Dispose();
         Session.Dispose();
         PreviewImage?.Dispose();
         PreviewImage = null;

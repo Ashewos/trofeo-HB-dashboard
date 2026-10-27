@@ -26,9 +26,12 @@ public partial class App : Application
             var store = new LayoutStore(Path.Combine(AppPaths.SettingsDir, "layout.json"));
             var document = new LayoutDocument(store, link);
             document.Load();
-            var preferences = EditorPreferences.Load(Path.Combine(AppPaths.SettingsDir, "settings-app.json"));
+            var preferencesPath = Path.Combine(AppPaths.SettingsDir, "settings-app.json");
+            var preferences = EditorPreferences.Load(preferencesPath);
 
-            var model = new MainViewModel(link, document, preferences, secrets: VaultSecretAccess.Default());
+            var model = new MainViewModel(
+                link, document, preferences, secrets: VaultSecretAccess.Default(),
+                preferencesPath: preferencesPath, system: SystemServices.Windows());
             var window = new MainWindow { DataContext = model };
             desktop.MainWindow = window;
 

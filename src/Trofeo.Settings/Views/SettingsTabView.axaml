@@ -1,7 +1,111 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:t="clr-namespace:Trofeo.Settings"
              xmlns:vm="clr-namespace:Trofeo.Settings.ViewModels"
              x:Class="Trofeo.Settings.Views.SettingsTabView"
              x:DataType="vm:SettingsTabViewModel">
-  <!-- Le contenu de l'onglet arrive avec les tâches 10 à 13. -->
+
+  <!-- Deux colonnes calmes, alignées à gauche : l'écran et l'aperçu ; puis les capteurs, la consommation et le partage. -->
+  <ScrollViewer VerticalScrollBarVisibility="Auto" AllowAutoHide="False">
+    <Grid ColumnDefinitions="*,16,*" Margin="0,0,8,0">
+
+      <StackPanel Grid.Column="0" Spacing="16">
+
+        <!-- Orientation et images par seconde. -->
+        <Border Classes="panel" Padding="20">
+          <StackPanel Spacing="20">
+            <StackPanel Spacing="10">
+              <TextBlock Classes="section" Text="{x:Static t:Texts.SettingsOrientation}" />
+              <StackPanel Orientation="Horizontal" Spacing="8" AutomationProperties.Name="{x:Static t:Texts.SettingsOrientation}">
+                <Button Name="UprightButton" Classes="choice" Classes.primary="{Binding IsUpright}"
+                        Content="{x:Static t:Texts.SettingsUpright}" Command="{Binding SetUprightCommand}" />
+                <Button Name="FlippedButton" Classes="choice" Classes.primary="{Binding IsFlipped}"
+                        Content="{x:Static t:Texts.SettingsFlipped}" Command="{Binding SetFlippedCommand}" />
+              </StackPanel>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+              <TextBlock Classes="section" Text="{x:Static t:Texts.SettingsFps}" />
+              <Grid ColumnDefinitions="*,Auto">
+                <Slider Grid.Column="0" Name="FpsSlider" Minimum="1" Maximum="12" SmallChange="1" LargeChange="2"
+                        TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                        AutomationProperties.Name="{x:Static t:Texts.SettingsFps}"
+                        Value="{Binding MaxFpsValue}" />
+                <TextBlock Grid.Column="1" Name="FpsText" Classes="number lead" MinWidth="200" VerticalAlignment="Center"
+                           Margin="16,0,0,0" Text="{Binding MaxFpsText}" />
+              </Grid>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Démarrage avec Windows et aperçu. -->
+        <Border Classes="panel" Padding="20">
+          <StackPanel Spacing="20">
+            <StackPanel Spacing="6">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Classes="name" Text="{x:Static t:Texts.SettingsStartup}" VerticalAlignment="Center" Margin="0,0,24,0" />
+                <ToggleSwitch Grid.Column="1" Name="StartupSwitch" OnContent="" OffContent="" VerticalAlignment="Center"
+                              AutomationProperties.Name="{x:Static t:Texts.SettingsStartup}"
+                              IsEnabled="{Binding CanToggleStartup}" IsChecked="{Binding StartupEnabled}" />
+              </Grid>
+              <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.SettingsStartupHelp}" />
+              <TextBlock Name="StartupMessage" Classes="warning" TextWrapping="Wrap" Text="{Binding StartupMessage}" IsVisible="{Binding HasStartupMessage}" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+              <TextBlock Classes="section" Text="{x:Static t:Texts.SettingsPreview}" />
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Classes="name" Text="{x:Static t:Texts.SettingsRealTime}" VerticalAlignment="Center" Margin="0,0,24,0" />
+                <ToggleSwitch Grid.Column="1" Name="RealTimeSwitch" OnContent="" OffContent="" VerticalAlignment="Center"
+                              AutomationProperties.Name="{x:Static t:Texts.SettingsRealTime}"
+                              IsChecked="{Binding RealTimePreview}" />
+              </Grid>
+              <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.SettingsRealTimeHelp}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <StackPanel Grid.Column="2" Spacing="16">
+
+        <!-- Les températures du processeur : l'état en une phrase, l'installation. -->
+        <Border Classes="panel" Padding="20">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="section" Text="{x:Static t:Texts.SettingsSensors}" />
+            <TextBlock Name="SensorsText" Classes="lead" TextWrapping="Wrap" Text="{Binding SensorsText}" />
+            <Button Name="InstallSensors" HorizontalAlignment="Left" Classes="primary"
+                    Content="{x:Static t:Texts.SensorsInstall}" Command="{Binding InstallSensorsCommand}"
+                    IsVisible="{Binding CanInstallSensors}" />
+            <TextBlock Name="SensorsMessage" TextWrapping="Wrap" Text="{Binding SensorsMessage}" IsVisible="{Binding HasSensorsMessage}"
+                       Classes.error="{Binding SensorsMessageIsError}" Classes.muted="{Binding !SensorsMessageIsError}" />
+          </StackPanel>
+        </Border>
+
+        <!-- La consommation : le service, cette fenêtre, l'objectif. -->
+        <Border Classes="panel" Padding="20">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="section" Text="{x:Static t:Texts.SettingsUsage}" />
+            <TextBlock Name="ServiceUsage" Classes="lead" TextWrapping="Wrap" Text="{Binding ServiceUsageText}" />
+            <TextBlock Name="OwnUsage" Classes="lead" TextWrapping="Wrap" Text="{Binding OwnUsageText}" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.UsageGoal}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Partager une disposition. -->
+        <Border Classes="panel" Padding="20">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="section" Text="{x:Static t:Texts.SettingsShare}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Name="ExportButton" Content="{x:Static t:Texts.ShareExport}" Command="{Binding ExportCommand}" />
+              <Button Name="ImportButton" Content="{x:Static t:Texts.ShareImport}" Command="{Binding ImportCommand}" />
+            </StackPanel>
+            <TextBlock Name="ShareMessage" TextWrapping="Wrap" Text="{Binding ShareMessage}" IsVisible="{Binding HasShareMessage}"
+                       Classes.error="{Binding ShareMessageIsError}" Classes.muted="{Binding !ShareMessageIsError}" />
+          </StackPanel>
+        </Border>
+
+        <TextBlock Name="VersionText" Classes="muted" Margin="4,0,0,0" Text="{Binding VersionText}" />
+      </StackPanel>
+    </Grid>
+  </ScrollViewer>
 </UserControl>

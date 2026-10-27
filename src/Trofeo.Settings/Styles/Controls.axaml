@@ -235,6 +235,17 @@
     <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
   </Style>
 
+  <!-- Une ligne de l'onglet Raccourcis : un cadre invisible, qui passe à l'Accent pendant que la ligne attend sa combinaison. -->
+  <Style Selector="Border.shortcut">
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+  </Style>
+  <Style Selector="Border.shortcut.capturing">
+    <Setter Property="Background" Value="{DynamicResource Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+  </Style>
+
   <!-- Pastille de l'écran : un point de couleur et un texte. -->
   <Style Selector="Border.pill">
     <Setter Property="Background" Value="{DynamicResource Raised}" />

@@ -10,13 +10,13 @@ public static class SampleData
     public static Welcome Welcome() => new("0.5.0", ControlPipe.ProtocolVersion, Types());
 
     private static ModuleTypeInfo Type(string id, string name, GridSize min, GridSize compact, GridSize ideal, GridSize large,
-        SettingsSchema? schema = null) =>
+        SettingsSchema? schema = null, bool acceptsCommands = false) =>
         new(id, name, min, new Dictionary<SizePreset, GridSize>
         {
             [SizePreset.Compact] = compact,
             [SizePreset.Ideal] = ideal,
             [SizePreset.Large] = large,
-        }, false, schema ?? SettingsSchema.Empty);
+        }, acceptsCommands, schema ?? SettingsSchema.Empty);
 
     /// <summary>Les six types du service, avec leurs noms, leurs tailles et leurs schémas de réglages réels.</summary>
     public static IReadOnlyList<ModuleTypeInfo> Types() =>
@@ -29,8 +29,8 @@ public static class SampleData
                 Confirm = "Le mod trofeo-quotas sera ajouté à Claude Code pour ton compte (claude plugin install). "
                     + "Tu pourras le retirer avec claude plugin uninstall trofeo-quotas@trofeo-hb-dashboard.",
             },
-        ])),
-        Type("codex", "Codex", new(6, 3), new(6, 3), new(8, 4), new(10, 4), new SettingsSchema(AgentFields())),
+        ]), acceptsCommands: true),
+        Type("codex", "Codex", new(6, 3), new(6, 3), new(8, 4), new(10, 4), new SettingsSchema(AgentFields()), acceptsCommands: true),
         Type("monitoring", "Monitoring PC", new(3, 2), new(4, 2), new(6, 2), new(6, 4), MonitoringSchema),
         Type("nowplaying", "En écoute", new(3, 1), new(3, 1), new(4, 2), new(6, 2)),
         Type("clock", "Heure, date et météo", new(3, 1), new(3, 1), new(4, 2), new(6, 2), ClockSchema),

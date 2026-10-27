@@ -1,13 +1,29 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Trofeo.Settings.ViewModels;
 
 namespace Trofeo.Settings.Views;
 
 public partial class MainWindow : Window
 {
-    public MainWindow() => InitializeComponent();
+    public MainWindow()
+    {
+        InitializeComponent();
+
+        // Une ligne de l'onglet Raccourcis attend sa combinaison : toutes les touches vont à la capture, avant n'importe quel
+        // contrôle (Ctrl+Z, Tab, Entrée) et avant les raccourcis de la fenêtre. Écouté en descendant, donc quel que soit le focus.
+        AddHandler(KeyDownEvent, OnCaptureKeyDown, RoutingStrategies.Tunnel);
+    }
+
+    private void OnCaptureKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not MainViewModel { ShortcutsTab.IsCapturing: true } model)
+            return;
+        e.Handled = true;
+        _ = model.ShortcutsTab.CaptureAsync(e.Key, e.KeyModifiers);
+    }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {

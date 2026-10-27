@@ -1,0 +1,502 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Trofeo.Control;
+using Trofeo.Core;
+using Trofeo.Core.Layout;
+using Trofeo.Settings.Services;
+
+namespace Trofeo.Settings.ViewModels;
+
+/// <summary>
+/// L'onglet Paramètres : l'orientation de l'écran, le démarrage avec Windows, le plafond d'images par seconde, l'aperçu en
+/// rendu réel, l'installation du pilote des températures, la consommation, l'export et l'import d'une disposition, la
+/// version. Ce qui touche à la disposition (orientation, images par seconde, import) passe par <see cref="EditSession"/> : le
+/// même historique que les autres onglets. L'orientation et l'import s'enregistrent tout de suite ; le curseur, au lâcher.
+/// </summary>
+public sealed partial class SettingsTabViewModel : TabViewModel, IDisposable
+{
+    private const int MaxFpsOfScreen = 12;
+    private const double Megabyte = 1024 * 1024;
+
+    private readonly IServiceLink _link;
+    private readonly EditSession _session;
+    private readonly PreferencesStore _preferences;
+    private readonly IStartupRegistration _startup;
+    private readonly IElevatedLauncher _launcher;
+    private readonly Func<string?> _locateHelper;
+    private readonly Func<long> _ownMemory;
+    private readonly string? _displayExe;
+
+    private bool _startupEnabled;
+    private string? _startupMessage;
+    private double _maxFps = MaxFpsOfScreen;
+    private bool _maxFpsDirty;
+    private bool _installing;
+    private string? _sensorsMessage;
+    private bool _sensorsMessageIsError;
+    private string? _shareMessage;
+    private bool _shareMessageIsError;
+
+    public SettingsTabViewModel(
+        IServiceLink link, EditSession session, PreferencesStore preferences, SystemServices system, IFilePicker? picker = null)
+        : base(Texts.TabSettings)
+    {
+        _link = link;
+        _session = session;
+        _preferences = preferences;
+        _startup = system.Startup;
+        _launcher = system.Launcher;
+        Picker = picker;
+        _locateHelper = system.LocateHelper ?? (() => AppLocator.Find("Trofeo.SensorHelper.exe"));
+        _ownMemory = system.OwnMemory ?? OwnPrivateBytes;
+
+        _displayExe = (system.LocateDisplay ?? (() => AppLocator.Find("Trofeo.Display.exe")))();
+        _startupEnabled = _startup.IsEnabled;
+        _startupMessage = CanToggleStartup ? null : Texts.SettingsStartupMissing;
+
+        Sync();
+        _link.Changed += Refresh;
+        _session.Changed += Refresh;
+    }
+
+    public void Dispose()
+    {
+        _link.Changed -= Refresh;
+        _session.Changed -= Refresh;
+    }
+
+    /// <summary>Le sélecteur de fichier de la fenêtre (export, import, installeur de PawnIO) ; la vue le pose à l'ouverture.</summary>
+    public IFilePicker? Picker { get; set; }
+
+    private static long OwnPrivateBytes()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.PrivateMemorySize64;
+    }
+
+    private void Refresh()
+    {
+        Sync();
+        OnPropertyChanged(nameof(SensorsText));
+        OnPropertyChanged(nameof(CanInstallSensors));
+        OnPropertyChanged(nameof(ServiceUsageText));
+        OnPropertyChanged(nameof(OwnUsageText));
+        OnPropertyChanged(nameof(VersionText));
+        if (SensorsAreActive && _sensorsMessage is not null)
+            ReportSensors(null, isError: false); // l'installation a abouti : le message n'a plus lieu d'être
+    }
+
+    // ---- Orientation ----
+
+    public bool IsUpright => _session.Document.Current.Rotation == 0;
+    public bool IsFlipped => _session.Document.Current.Rotation == 180;
+
+    public Task SetRotationAsync(int degrees) =>
+        _session.ApplyAsync(layout => layout.Rotation == degrees ? null : layout with { Rotation = degrees });
+
+    [RelayCommand]
+    private Task SetUprightAsync() => SetRotationAsync(0);
+
+    [RelayCommand]
+    private Task SetFlippedAsync() => SetRotationAsync(180);
+
+    // ---- Démarrer avec Windows ----
+
+    /// <summary>Trofeo.Display.exe est trouvé (ou déjà inscrit, et on peut le retirer) : l'interrupteur marche.</summary>
+    public bool CanToggleStartup => _displayExe is not null || _startupEnabled;
+
+    public bool StartupEnabled
+    {
+        get => _startupEnabled;
+        set
+        {
+            if (value == _startupEnabled)
+                return;
+
+            if (value && _displayExe is null)
+            {
+                SetStartupMessage(Texts.SettingsStartupMissing);
+                OnPropertyChanged(); // l'interrupteur revient à sa place
+                return;
+            }
+
+            try
+            {
+                if (value)
+                    _startup.Enable(_displayExe!);
+                else
+                    _startup.Disable();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                SetStartupMessage(string.Format(Texts.SettingsStartupFailed, ex.Message));
+                OnPropertyChanged();
+                return;
+            }
+
+            _startupEnabled = value;
+            SetStartupMessage(CanToggleStartup ? null : Texts.SettingsStartupMissing);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanToggleStartup));
+        }
+    }
+
+    public string? StartupMessage => _startupMessage;
+    public bool HasStartupMessage => !string.IsNullOrEmpty(_startupMessage);
+
+    private void SetStartupMessage(string? message)
+    {
+        _startupMessage = message;
+        OnPropertyChanged(nameof(StartupMessage));
+        OnPropertyChanged(nameof(HasStartupMessage));
+    }
+
+    // ---- Images par seconde ----
+
+    /// <summary>
+    /// Le plafond montré par le curseur, de 1 à 12. Le tirer n'enregistre rien : <see cref="CommitMaxFpsAsync"/> le fait, au
+    /// lâcher, en un seul pas d'annulation.
+    /// </summary>
+    public double MaxFpsValue
+    {
+        get => _maxFps;
+        set
+        {
+            var rounded = Math.Clamp(Math.Round(value), 1, MaxFpsOfScreen);
+            if (rounded == _maxFps)
+                return;
+            _maxFps = rounded;
+            _maxFpsDirty = rounded != SavedMaxFps;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(MaxFpsText));
+        }
+    }
+
+    public string MaxFpsText => _maxFps >= MaxFpsOfScreen
+        ? Texts.SettingsFpsMax
+        : ((int)_maxFps).ToString(CultureInfo.CurrentCulture);
+
+    private int SavedMaxFps => _session.Document.Current.MaxFps ?? MaxFpsOfScreen;
+
+    /// <summary>Le curseur est lâché : la valeur est enregistrée. Le maximum de l'écran (12) est le plafond du service : il n'écrit rien dans le fichier.</summary>
+    public async Task CommitMaxFpsAsync()
+    {
+        if (!_maxFpsDirty)
+            return;
+        int? wanted = _maxFps >= MaxFpsOfScreen ? null : (int)_maxFps;
+        try
+        {
+            // Le curseur reste « tiré » jusqu'à la fin : la session prévient les onglets avant d'avoir écrit, et ils ne doivent pas le ramener en arrière.
+            await _session.ApplyAsync(layout => layout.MaxFps == wanted ? null : layout with { MaxFps = wanted }).ConfigureAwait(true);
+        }
+        finally
+        {
+            _maxFpsDirty = false;
+            Sync();
+        }
+    }
+
+    // ---- Aperçu ----
+
+    public bool RealTimePreview
+    {
+        get => _preferences.Current.RealTimePreview;
+        set
+        {
+            if (value == _preferences.Current.RealTimePreview)
+                return;
+            _preferences.Update(p => p with { RealTimePreview = value });
+            _link.SetRealTimePreview(value);
+            OnPropertyChanged();
+        }
+    }
+
+    // ---- Températures du processeur ----
+
+    private SensorInfo? Sensors => _link.Status?.Sensors;
+
+    private bool SensorsAreActive => Sensors is { PawnIoInstalled: true, HelperInstalled: true, HelperConnected: true };
+
+    /// <summary>L'état des capteurs en une phrase.</summary>
+    public string SensorsText => Sensors switch
+    {
+        null => "",
+        { PawnIoInstalled: false } => Texts.SensorsNoDriver,
+        { HelperInstalled: true, HelperConnected: true } => Texts.SensorsActive,
+        _ => Texts.SensorsNoHelper,
+    };
+
+    public bool CanInstallSensors => Sensors is not null && !SensorsAreActive && !_installing;
+
+    public string? SensorsMessage => _sensorsMessage;
+    public bool HasSensorsMessage => !string.IsNullOrEmpty(_sensorsMessage);
+    public bool SensorsMessageIsError => _sensorsMessageIsError;
+
+    /// <summary>
+    /// « Installer le pilote des températures » : si PawnIO manque, demande d'abord son installeur, puis lance
+    /// <c>Trofeo.SensorHelper.exe install</c> en administrateur (Windows demande l'autorisation).
+    /// </summary>
+    [RelayCommand]
+    public async Task InstallSensorsAsync()
+    {
+        if (_installing || Sensors is not { } sensors)
+            return;
+
+        ReportSensors(null, isError: false);
+        if (_locateHelper() is not { } helper)
+        {
+            ReportSensors(Texts.SensorsHelperMissing, isError: true);
+            return;
+        }
+
+        _installing = true;
+        OnPropertyChanged(nameof(CanInstallSensors));
+        try
+        {
+            var arguments = "install";
+            if (!sensors.PawnIoInstalled)
+            {
+                if (Picker is not { } picker)
+                    return;
+                string? setup;
+                try
+                {
+                    setup = await picker.PickAsync(Texts.SensorsPickTitle, Texts.SensorsPickType, ["exe"]).ConfigureAwait(true);
+                }
+                catch (FilePickerException ex)
+                {
+                    ReportSensors(ex.Message, isError: true);
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(setup))
+                    return; // l'utilisateur a annulé
+                arguments = $"install --pawnio \"{setup}\"";
+            }
+
+            bool accepted;
+            try
+            {
+                accepted = _launcher.Launch(helper, arguments);
+            }
+            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
+            {
+                ReportSensors(string.Format(Texts.SensorsLaunchFailed, ex.Message), isError: true);
+                return;
+            }
+
+            ReportSensors(accepted ? Texts.SensorsStarted : Texts.SensorsDenied, isError: !accepted);
+        }
+        finally
+        {
+            _installing = false;
+            OnPropertyChanged(nameof(CanInstallSensors));
+        }
+    }
+
+    private void ReportSensors(string? message, bool isError)
+    {
+        _sensorsMessage = message;
+        _sensorsMessageIsError = isError;
+        OnPropertyChanged(nameof(SensorsMessage));
+        OnPropertyChanged(nameof(HasSensorsMessage));
+        OnPropertyChanged(nameof(SensorsMessageIsError));
+    }
+
+    // ---- Consommation ----
+
+    /// <summary>« Service d'affichage : 44 Mo, 0,8 % du processeur ».</summary>
+    public string ServiceUsageText => _link.Status?.Process is { } process
+        ? string.Format(Texts.UsageService, Megabytes(process.PrivateBytes), Percent(process.CpuPercent))
+        : "";
+
+    /// <summary>« Réglages : 96 Mo, libérés à la fermeture » : la mémoire de cette fenêtre.</summary>
+    public string OwnUsageText => string.Format(Texts.UsageOwn, Megabytes(_ownMemory()));
+
+    private static string Megabytes(long bytes) =>
+        ((long)Math.Round(bytes / Megabyte, MidpointRounding.AwayFromZero)).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Une décimale et la virgule française, quelle que soit la langue de Windows.</summary>
+    private static string Percent(double percent) =>
+        percent.ToString("0.0", CultureInfo.InvariantCulture).Replace('.', ',');
+
+    // ---- Partager ----
+
+    public string? ShareMessage => _shareMessage;
+    public bool HasShareMessage => !string.IsNullOrEmpty(_shareMessage);
+    public bool ShareMessageIsError => _shareMessageIsError;
+
+    private void ReportShare(string? message, bool isError = false)
+    {
+        _shareMessage = message;
+        _shareMessageIsError = isError;
+        OnPropertyChanged(nameof(ShareMessage));
+        OnPropertyChanged(nameof(HasShareMessage));
+        OnPropertyChanged(nameof(ShareMessageIsError));
+    }
+
+    /// <summary>« Exporter la disposition… » : écrit <see cref="LayoutTransfer.Export"/> dans un fichier <c>.trofeo.json</c>.</summary>
+    [RelayCommand]
+    public async Task ExportAsync()
+    {
+        if (Picker is not { } picker)
+            return;
+        ReportShare(null);
+
+        string? path;
+        try
+        {
+            path = await picker.SaveAsync(Texts.ShareExportTitle, Texts.ShareFileType, "trofeo.json", "disposition.trofeo.json").ConfigureAwait(true);
+        }
+        catch (FilePickerException ex)
+        {
+            ReportShare(ex.Message, isError: true);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(path))
+            return;
+        if (!Path.HasExtension(path))
+            path += ".trofeo.json";
+
+        try
+        {
+            File.WriteAllText(path, LayoutTransfer.Export(_session.Document.Current));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            ReportShare(string.Format(Texts.ShareWriteFailed, ex.Message), isError: true);
+            return;
+        }
+
+        ReportShare(string.Format(Texts.ShareExported, Path.GetFileName(path)));
+    }
+
+    /// <summary>
+    /// « Importer une disposition… » : valide le fichier (comme le service au rechargement, types et tailles minimum
+    /// compris), garde la disposition en cours dans <c>layout.json.avant-import</c>, puis enregistre. Un fichier refusé
+    /// affiche son motif et ne change rien. L'import est une seule modification, que Ctrl+Z défait.
+    /// </summary>
+    [RelayCommand]
+    public async Task ImportAsync()
+    {
+        if (Picker is not { } picker)
+            return;
+        ReportShare(null);
+
+        string? path;
+        try
+        {
+            path = await picker.PickAsync(Texts.ShareImportTitle, Texts.ShareFileType, ["json"]).ConfigureAwait(true);
+        }
+        catch (FilePickerException ex)
+        {
+            ReportShare(ex.Message, isError: true);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        string json;
+        try
+        {
+            json = File.ReadAllText(path); // un petit fichier : lu tout de suite, sans quitter le fil de l'interface
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            ReportShare(string.Format(Texts.ShareReadFailed, ex.Message), isError: true);
+            return;
+        }
+
+        var result = LayoutTransfer.Import(json);
+        if (result.Layout is not { } imported)
+        {
+            ReportShare(result.Error, isError: true);
+            return;
+        }
+
+        if (Unsupported(imported) is { } reason)
+        {
+            ReportShare(reason, isError: true);
+            return;
+        }
+
+        string? backupError = null;
+        var outcome = await _session.ApplyAsync(_ =>
+        {
+            // La copie se fait au moment d'écrire : c'est bien la disposition en cours, même si le fichier a été relu entre-temps.
+            try
+            {
+                if (File.Exists(_session.Document.FilePath))
+                    File.Copy(_session.Document.FilePath, _session.Document.FilePath + ".avant-import", overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                backupError = ex.Message;
+                return null;
+            }
+
+            return imported;
+        }).ConfigureAwait(true);
+
+        if (backupError is not null)
+            ReportShare(string.Format(Texts.ShareWriteFailed, backupError), isError: true);
+        else if (outcome is null || outcome is { Saved: true, Message: null })
+            ReportShare(Texts.ShareImported);
+        // Sinon (fichier changé ailleurs, refus du service) : la ligne Amber de la fenêtre en dit le motif.
+    }
+
+    /// <summary>Ce que le service ne saurait pas appliquer : un type de module inconnu, ou un module plus petit que son minimum.</summary>
+    private string? Unsupported(DashboardLayout layout)
+    {
+        if (_link.Welcome is not { } welcome)
+            return null; // sans le catalogue du service, il le dira au rechargement
+        var types = welcome.Types.GroupBy(t => t.TypeId).ToDictionary(g => g.Key, g => g.First());
+
+        foreach (var placement in layout.Placements.Concat(layout.Shelf ?? []))
+        {
+            if (!types.ContainsKey(placement.TypeId))
+                return string.Format(Texts.ShareUnknownType, placement.TypeId);
+        }
+
+        foreach (var placement in layout.Placements)
+        {
+            var type = types[placement.TypeId];
+            if (placement.Columns < type.MinSize.Columns || placement.Rows < type.MinSize.Rows)
+                return string.Format(Texts.ShareTooSmall, type.DisplayName, type.MinSize.Columns, type.MinSize.Rows);
+        }
+
+        return null;
+    }
+
+    // ---- Version ----
+
+    /// <summary>« Version 0.5.0 » : celle du service (la fenêtre et lui sont livrés ensemble).</summary>
+    public string VersionText => string.Format(Texts.SettingsVersion, _link.Welcome?.ServiceVersion ?? AssemblyVersion());
+
+    private static string AssemblyVersion()
+    {
+        var version = typeof(SettingsTabViewModel).Assembly.GetName().Version;
+        return version is null ? "" : $"{version.Major}.{version.Minor}.{version.Build}";
+    }
+
+    // ---- État ----
+
+    /// <summary>Remet les réglages affichés d'accord avec le fichier. Un curseur en cours de tirage n'est pas touché.</summary>
+    private void Sync()
+    {
+        if (!_maxFpsDirty)
+        {
+            _maxFps = SavedMaxFps;
+            OnPropertyChanged(nameof(MaxFpsValue));
+            OnPropertyChanged(nameof(MaxFpsText));
+        }
+
+        OnPropertyChanged(nameof(IsUpright));
+        OnPropertyChanged(nameof(IsFlipped));
+    }
+}

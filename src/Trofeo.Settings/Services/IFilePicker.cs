@@ -14,6 +14,13 @@ public interface IFilePicker
     /// complet du fichier choisi, ou <c>null</c> si l'utilisateur annule.
     /// </summary>
     Task<string?> PickAsync(string title, string typeName, IReadOnlyList<string> extensions);
+
+    /// <summary>
+    /// Ouvre « Enregistrer sous ». <paramref name="extension"/> : sans point ni joker (<c>trofeo.json</c>) ;
+    /// <paramref name="suggestedName"/> : le nom proposé, extension comprise. Rend le chemin complet choisi, ou <c>null</c>
+    /// si l'utilisateur annule.
+    /// </summary>
+    Task<string?> SaveAsync(string title, string typeName, string extension, string suggestedName);
 }
 
 /// <summary>Le sélecteur n'a pas pu s'ouvrir ; le message est en français, prêt à être montré.</summary>
@@ -42,6 +49,32 @@ public sealed class StorageFilePicker(TopLevel owner) : IFilePicker
         catch (OperationCanceledException)
         {
             return null; // fenêtre fermée pendant le choix : comme une annulation
+        }
+        catch (Exception ex)
+        {
+            throw new FilePickerException(string.Format(Texts.AppearancePickFailed, ex.Message), ex);
+        }
+    }
+
+    public async Task<string?> SaveAsync(string title, string typeName, string extension, string suggestedName)
+    {
+        var options = new FilePickerSaveOptions
+        {
+            Title = title,
+            SuggestedFileName = suggestedName,
+            DefaultExtension = extension,
+            ShowOverwritePrompt = true,
+            FileTypeChoices = [new FilePickerFileType(typeName) { Patterns = ["*." + extension] }],
+        };
+
+        try
+        {
+            using var file = await owner.StorageProvider.SaveFilePickerAsync(options).ConfigureAwait(true);
+            return file?.TryGetLocalPath();
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
         }
         catch (Exception ex)
         {

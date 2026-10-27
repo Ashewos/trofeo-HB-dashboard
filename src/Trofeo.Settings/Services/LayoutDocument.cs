@@ -15,6 +15,9 @@ public sealed class LayoutDocument(LayoutStore store, IServiceLink link)
 {
     private LayoutStamp? _stamp;
 
+    /// <summary>Le chemin de <c>layout.json</c>.</summary>
+    public string FilePath => store.FilePath;
+
     /// <summary>La disposition lue ou écrite en dernier.</summary>
     public DashboardLayout Current { get; private set; } = DashboardLayout.Default;
 

@@ -29,6 +29,7 @@
     <Compile Include="..\..\tests\Trofeo.Settings.Tests\FakeServiceLink.cs" Link="Shared\FakeServiceLink.cs" />
     <Compile Include="..\..\tests\Trofeo.Settings.Tests\FakeFilePicker.cs" Link="Shared\FakeFilePicker.cs" />
     <Compile Include="..\..\tests\Trofeo.Settings.Tests\FakeSecretAccess.cs" Link="Shared\FakeSecretAccess.cs" />
+    <Compile Include="..\..\tests\Trofeo.Settings.Tests\FakeSystem.cs" Link="Shared\FakeSystem.cs" />
     <Compile Include="..\..\tests\Trofeo.Settings.Tests\SampleData.cs" Link="Shared\SampleServiceData.cs" />
   </ItemGroup>
 

@@ -66,7 +66,7 @@ internal static class Program
         var connected = (Welcome: SampleData.Welcome(), Status: SampleData.Status());
 
         // Un onglet par image, sur le service branché.
-        var tabs = new[] { "disposition", "personnalisation", "modules", "raccourcis", "parametres" };
+        var tabs = new[] { "disposition", "personnalisation", "modules" };
         for (var i = 0; i < tabs.Length; i++)
         {
             var index = i;
@@ -80,6 +80,8 @@ internal static class Program
 
         RenderAppearance(folder, scratch, jpeg, connected.Welcome, connected.Status);
         RenderModules(folder, scratch, jpeg, connected.Welcome, connected.Status);
+        RenderShortcuts(folder, scratch, jpeg, connected.Welcome, connected.Status);
+        RenderSettings(folder, scratch, jpeg, connected.Welcome, connected.Status);
 
         // L'onglet Disposition : un module choisi, des glissements (libre, refusé), l'ajout, l'oubli à confirmer.
         var layoutStatus = connected.Status with
@@ -380,6 +382,153 @@ internal static class Program
             layout: WithSettings(NetworkId, unifi), secrets: new FakeSecretAccess());
     }
 
+
+    /// <summary>L'onglet Raccourcis : la liste, une capture en cours, un doublon refusé, un raccourci qu'on ajoute, un refus de Windows.</summary>
+    private static void RenderShortcuts(string folder, string scratch, byte[] jpeg, Welcome welcome, ServiceStatus status)
+    {
+        void Connected(FakeServiceLink link) => link.Set(LinkState.Connected, welcome, status);
+        void Open(MainViewModel model) => model.SelectedTab = model.ShortcutsTab;
+        static void Run(Task task) => task.GetAwaiter().GetResult();
+
+        // Claude Code et Codex côte à côte : tous deux acceptent les raccourcis.
+        var twoAgents = Base with
+        {
+            Placements =
+            [
+                Base.Placements[0] with { Column = 0, Columns = 8 },
+                new Trofeo.Core.Layout.ModulePlacement(CodexId, "codex", 8, 0, 8, 4, Trofeo.ModuleKit.TextSize.Normal,
+                    System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone()),
+            ],
+            Shelf = [],
+            Shortcuts =
+            [
+                .. Trofeo.Core.Shortcuts.ShortcutDefaults.All.Take(2),
+                new Trofeo.Core.Shortcuts.ShortcutBinding("Ctrl+Alt+Shift+1", Trofeo.ModuleKit.ModuleCommandKind.SelectTab, 0, CodexId),
+                new Trofeo.Core.Shortcuts.ShortcutBinding("Ctrl+Alt+Shift+2", Trofeo.ModuleKit.ModuleCommandKind.SelectTab, 1, CodexId),
+                new Trofeo.Core.Shortcuts.ShortcutBinding("Ctrl+F5", Trofeo.ModuleKit.ModuleCommandKind.NextTab, 0, Guid.NewGuid()),
+            ],
+        };
+
+        Render(folder, scratch, "raccourcis.png", 1440, 900, jpeg, Connected, (_, model) => Open(model));
+        Render(folder, scratch, "raccourcis-1200x760.png", 1200, 760, jpeg, Connected, (_, model) => Open(model));
+        Render(folder, scratch, "raccourcis-liste-complete.png", 1440, 1240, jpeg, Connected, (_, model) => Open(model));
+        Render(folder, scratch, "raccourcis-cibles.png", 1440, 900, jpeg, Connected, (_, model) => Open(model), layout: twoAgents);
+
+        // « Modifier » : la ligne attend la combinaison.
+        Render(folder, scratch, "raccourcis-capture.png", 1440, 900, jpeg, Connected, (_, model) =>
+        {
+            Open(model);
+            model.ShortcutsTab.BeginCapture(model.ShortcutsTab.Rows[1]);
+        });
+
+        // Une combinaison déjà prise : refusée avec son motif, la capture continue.
+        Render(folder, scratch, "raccourcis-doublon.png", 1440, 900, jpeg, Connected, (_, model) =>
+        {
+            Open(model);
+            model.ShortcutsTab.BeginCapture(model.ShortcutsTab.Rows[0]);
+            Run(model.ShortcutsTab.CaptureAsync(Avalonia.Input.Key.Right, Avalonia.Input.KeyModifiers.Control | Avalonia.Input.KeyModifiers.Alt));
+        });
+
+        // « Ajouter un raccourci » : l'action se choisit, la combinaison s'attend.
+        Render(folder, scratch, "raccourcis-ajout.png", 1440, 1240, jpeg, Connected, (_, model) =>
+        {
+            Open(model);
+            model.ShortcutsTab.AddShortcut();
+        });
+
+        // Windows a refusé des raccourcis au rechargement : le texte du service, sur la ligne.
+        Render(folder, scratch, "raccourcis-refus-de-windows.png", 1440, 900, jpeg,
+            link =>
+            {
+                Connected(link);
+                link.OnReload = () => Task.FromResult(new Reloaded(true, null,
+                [
+                    "Raccourci « Ctrl+Alt+Right » indisponible : déjà pris par une autre application.",
+                    "Raccourci « Ctrl+F5 » indisponible : touches illisibles.",
+                ]));
+            },
+            (_, model) =>
+            {
+                Open(model);
+                Run(model.ShortcutsTab.SetTargetAsync(model.ShortcutsTab.Rows[0], model.ShortcutsTab.Rows[0].Targets[1]));
+            }, layout: twoAgents);
+
+        Render(folder, scratch, "raccourcis-vide.png", 1440, 900, jpeg, Connected, (_, model) => Open(model),
+            layout: Base with { Shortcuts = [] });
+    }
+
+    /// <summary>L'onglet Paramètres : capteurs à installer, capteurs actifs, installation refusée, démarrage introuvable, import refusé.</summary>
+    private static void RenderSettings(string folder, string scratch, byte[] jpeg, Welcome welcome, ServiceStatus status)
+    {
+        static void Run(Task task) => task.GetAwaiter().GetResult();
+        void Open(MainViewModel model) => model.SelectedTab = model.SettingsTab;
+
+        ServiceStatus Sensors(SensorInfo sensors, ProcessInfo? process = null) =>
+            status with { Sensors = sensors, Process = process ?? new ProcessInfo(46_137_344, 60_000_000, 0.83) };
+        void Link(FakeServiceLink link, SensorInfo sensors) => link.Set(LinkState.Connected, welcome, Sensors(sensors));
+
+        // Windows de démonstration : le service est trouvé, le démarrage n'est pas encore inscrit.
+        SystemServices System(bool displayFound = true, bool accept = true, bool startupOn = false) => new(
+            new FakeStartupRegistration { IsEnabled = startupOn }, new FakeElevatedLauncher { Accept = accept },
+            () => displayFound ? @"C:\Trofeo\Trofeo.Display.exe" : null, () => @"C:\Trofeo\Trofeo.SensorHelper.exe", () => 96L * 1024 * 1024);
+
+        var notInstalled = new SensorInfo(false, false, false);
+
+        Render(folder, scratch, "parametres.png", 1440, 900, jpeg, link => Link(link, notInstalled), (_, model) => Open(model), system: System());
+        Render(folder, scratch, "parametres-1200x760.png", 1200, 760, jpeg, link => Link(link, notInstalled), (_, model) => Open(model), system: System());
+        Render(folder, scratch, "parametres-complet.png", 1440, 1240, jpeg, link => Link(link, notInstalled), (_, model) => Open(model), system: System());
+
+        // Retourné, 8 images par seconde, démarrage avec Windows allumé, capteurs actifs, rendu réel.
+        Render(folder, scratch, "parametres-actifs.png", 1440, 1240, jpeg, link => Link(link, new SensorInfo(true, true, true)),
+            (_, model) =>
+            {
+                Open(model);
+                model.SettingsTab.RealTimePreview = true;
+            },
+            layout: Base with { Rotation = 0, MaxFps = 8 }, system: System(startupOn: true));
+
+        // Le pilote est là, mais l'assistant ne tourne pas ; l'autorisation de Windows est refusée.
+        Render(folder, scratch, "parametres-installation-refusee.png", 1440, 900, jpeg, link => Link(link, new SensorInfo(true, false, false)),
+            (_, model) =>
+            {
+                Open(model);
+                Run(model.SettingsTab.InstallSensorsAsync());
+            }, system: System(accept: false));
+
+        // Il manque le pilote : l'installeur est demandé d'abord, puis l'installation part.
+        Render(folder, scratch, "parametres-installation-lancee.png", 1440, 900, jpeg, link => Link(link, notInstalled),
+            (_, model) =>
+            {
+                Open(model);
+                model.SettingsTab.Picker = new FakeFilePicker { Result = @"C:\Users\Alex\Downloads\PawnIO_setup.exe" };
+                Run(model.SettingsTab.InstallSensorsAsync());
+            }, system: System());
+
+        // Trofeo.Display.exe introuvable : l'interrupteur est éteint et grisé, avec sa phrase.
+        Render(folder, scratch, "parametres-service-introuvable.png", 1440, 900, jpeg, link => Link(link, notInstalled),
+            (_, model) => Open(model), system: System(displayFound: false));
+
+        // Un fichier qui n'est pas une disposition : son motif, sous les boutons.
+        var invalid = Path.Combine(scratch, "pas-une-disposition.json");
+        Render(folder, scratch, "parametres-import-refuse.png", 1440, 900, jpeg, link => Link(link, new SensorInfo(true, true, true)),
+            (_, model) =>
+            {
+                Open(model);
+                File.WriteAllText(invalid, "{}");
+                model.SettingsTab.Picker = new FakeFilePicker { Result = invalid };
+                Run(model.SettingsTab.ImportAsync());
+            }, system: System());
+
+        // Une disposition exportée.
+        Render(folder, scratch, "parametres-export-reussi.png", 1440, 900, jpeg, link => Link(link, new SensorInfo(true, true, true)),
+            (_, model) =>
+            {
+                Open(model);
+                model.SettingsTab.Picker = new FakeFilePicker { SaveResult = Path.Combine(scratch, "ma-disposition.trofeo.json") };
+                Run(model.SettingsTab.ExportAsync());
+            }, system: System());
+    }
+
     private static readonly Guid ClaudeId = new("3c1d9f5e-7a2b-4e8c-9b1f-6d2a0e4c8b17");
     private static readonly Guid MonitoringId = new("246ac06d-eec2-4d64-9930-24b64603a03b");
     private static readonly Guid NowPlayingId = new("8ebcc647-ab4b-401d-b2b3-f7a0ebd97b4b");
@@ -410,7 +559,7 @@ internal static class Program
         string folder, string scratch, string name, int width, int height, byte[]? jpeg,
         Action<FakeServiceLink> state, Action<MainWindow, MainViewModel> arrange,
         DashboardLayout? layout = null, string? refuseReload = null, IReadOnlyList<string>? systemFonts = null,
-        ISecretAccess? secrets = null, TimeProvider? time = null)
+        ISecretAccess? secrets = null, TimeProvider? time = null, SystemServices? system = null)
     {
         var link = new FakeServiceLink();
         state(link);
@@ -420,7 +569,8 @@ internal static class Program
         store.Save(layout ?? Base);
         var document = new LayoutDocument(store, link);
         document.Load();
-        using var model = new MainViewModel(link, document, new EditorPreferences(), null, systemFonts ?? ["Arial", "Consolas", "Segoe UI"], secrets, time);
+        using var model = new MainViewModel(
+            link, document, new EditorPreferences(), null, systemFonts ?? ["Arial", "Consolas", "Segoe UI"], secrets, time, null, system);
         var window = new MainWindow { DataContext = model, Width = width, Height = height };
         window.Show();
         if (jpeg is not null)

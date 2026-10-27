@@ -442,4 +442,224 @@
     <value>Descendre</value>
     <comment>Nom accessible de la flèche qui descend une ligne.</comment>
   </data>
+  <data name="ShortcutsIntro" xml:space="preserve">
+    <value>Ces raccourcis marchent partout dans Windows, tant que le service d'affichage tourne.</value>
+    <comment>Phrase sous la liste des raccourcis.</comment>
+  </data>
+  <data name="ShortcutsEmpty" xml:space="preserve">
+    <value>Aucun raccourci pour l'instant.</value>
+    <comment>La liste des raccourcis est vide.</comment>
+  </data>
+  <data name="ShortcutPrevious" xml:space="preserve">
+    <value>Onglet précédent</value>
+    <comment>Action d'un raccourci.</comment>
+  </data>
+  <data name="ShortcutNext" xml:space="preserve">
+    <value>Onglet suivant</value>
+    <comment>Action d'un raccourci.</comment>
+  </data>
+  <data name="ShortcutSelect" xml:space="preserve">
+    <value>Aller à l'onglet {0}</value>
+    <comment>{0} : le rang de l'onglet, à partir de 1.</comment>
+  </data>
+  <data name="ShortcutAction" xml:space="preserve">
+    <value>Action du raccourci</value>
+    <comment>Nom accessible de la liste des actions d'un nouveau raccourci.</comment>
+  </data>
+  <data name="ShortcutTarget" xml:space="preserve">
+    <value>Module visé</value>
+    <comment>Nom accessible de la liste des modules visés par un raccourci.</comment>
+  </data>
+  <data name="ShortcutTargetFirst" xml:space="preserve">
+    <value>Le premier qui accepte</value>
+    <comment>Module visé : le premier qui accepte les commandes.</comment>
+  </data>
+  <data name="ShortcutTargetGone" xml:space="preserve">
+    <value>Un module qui n'est plus là</value>
+    <comment>Module visé : l'instance n'est plus sur l'écran.</comment>
+  </data>
+  <data name="ShortcutEdit" xml:space="preserve">
+    <value>Modifier</value>
+    <comment>Bouton : change les touches d'un raccourci.</comment>
+  </data>
+  <data name="ShortcutDelete" xml:space="preserve">
+    <value>Supprimer</value>
+    <comment>Bouton : retire un raccourci.</comment>
+  </data>
+  <data name="ShortcutAdd" xml:space="preserve">
+    <value>Ajouter un raccourci</value>
+    <comment>Bouton.</comment>
+  </data>
+  <data name="ShortcutReset" xml:space="preserve">
+    <value>Remettre les raccourcis par défaut</value>
+    <comment>Bouton.</comment>
+  </data>
+  <data name="ShortcutCapture" xml:space="preserve">
+    <value>Appuie sur la combinaison voulue (Échap pour annuler).</value>
+    <comment>Pendant la capture d'une combinaison.</comment>
+  </data>
+  <data name="ShortcutDuplicate" xml:space="preserve">
+    <value>{0} sert déjà à « {1} ».</value>
+    <comment>{0} : les touches (Ctrl+Alt+Right). {1} : l'action qui les a déjà.</comment>
+  </data>
+  <data name="SettingsOrientation" xml:space="preserve">
+    <value>Orientation</value>
+    <comment>Titre de section.</comment>
+  </data>
+  <data name="SettingsUpright" xml:space="preserve">
+    <value>À l'endroit (0°)</value>
+    <comment>Choix d'orientation.</comment>
+  </data>
+  <data name="SettingsFlipped" xml:space="preserve">
+    <value>Retourné (180°)</value>
+    <comment>Choix d'orientation.</comment>
+  </data>
+  <data name="SettingsStartup" xml:space="preserve">
+    <value>Démarrer avec Windows</value>
+    <comment>Interrupteur.</comment>
+  </data>
+  <data name="SettingsStartupHelp" xml:space="preserve">
+    <value>Le service d'affichage se lance quand tu ouvres ta session.</value>
+    <comment>Sous l'interrupteur de démarrage.</comment>
+  </data>
+  <data name="SettingsStartupMissing" xml:space="preserve">
+    <value>Le service d'affichage est introuvable : démarrage avec Windows impossible.</value>
+    <comment>Trofeo.Display.exe n'est nulle part.</comment>
+  </data>
+  <data name="SettingsStartupFailed" xml:space="preserve">
+    <value>Windows n'a pas permis de changer le démarrage : {0}</value>
+    <comment>{0} : la cause.</comment>
+  </data>
+  <data name="SettingsFps" xml:space="preserve">
+    <value>Images par seconde</value>
+    <comment>Titre de section.</comment>
+  </data>
+  <data name="SettingsFpsMax" xml:space="preserve">
+    <value>12 (le maximum de l'écran)</value>
+    <comment>Valeur du curseur au maximum.</comment>
+  </data>
+  <data name="SettingsPreview" xml:space="preserve">
+    <value>Aperçu</value>
+    <comment>Titre de section.</comment>
+  </data>
+  <data name="SettingsRealTime" xml:space="preserve">
+    <value>Rendu réel 12 images/s</value>
+    <comment>Interrupteur.</comment>
+  </data>
+  <data name="SettingsRealTimeHelp" xml:space="preserve">
+    <value>L'aperçu suit l'écran image par image. Il coûte un peu plus de processeur pendant que les réglages sont ouverts.</value>
+    <comment>Sous l'interrupteur du rendu réel.</comment>
+  </data>
+  <data name="SettingsSensors" xml:space="preserve">
+    <value>Températures du processeur</value>
+    <comment>Titre de section.</comment>
+  </data>
+  <data name="SensorsActive" xml:space="preserve">
+    <value>Actives.</value>
+    <comment>État des capteurs.</comment>
+  </data>
+  <data name="SensorsNoDriver" xml:space="preserve">
+    <value>Le pilote PawnIO n'est pas installé.</value>
+    <comment>État des capteurs.</comment>
+  </data>
+  <data name="SensorsNoHelper" xml:space="preserve">
+    <value>Le pilote est installé, mais l'assistant des capteurs ne tourne pas.</value>
+    <comment>État des capteurs.</comment>
+  </data>
+  <data name="SensorsInstall" xml:space="preserve">
+    <value>Installer le pilote des températures</value>
+    <comment>Bouton.</comment>
+  </data>
+  <data name="SensorsPickTitle" xml:space="preserve">
+    <value>Choisis PawnIO_setup.exe</value>
+    <comment>Titre du sélecteur de l'installeur de PawnIO.</comment>
+  </data>
+  <data name="SensorsPickType" xml:space="preserve">
+    <value>Installeur de PawnIO</value>
+    <comment>Type de fichier du sélecteur.</comment>
+  </data>
+  <data name="SensorsDenied" xml:space="preserve">
+    <value>Installation annulée : Windows n'a pas reçu l'autorisation.</value>
+    <comment>Le lancement en administrateur a été refusé.</comment>
+  </data>
+  <data name="SensorsStarted" xml:space="preserve">
+    <value>Installation lancée : l'état se met à jour dans un instant.</value>
+    <comment>L'assistant d'installation est lancé.</comment>
+  </data>
+  <data name="SensorsHelperMissing" xml:space="preserve">
+    <value>L'assistant des capteurs (Trofeo.SensorHelper.exe) est introuvable.</value>
+    <comment>Trofeo.SensorHelper.exe n'est nulle part.</comment>
+  </data>
+  <data name="SensorsLaunchFailed" xml:space="preserve">
+    <value>L'installation n'a pas pu démarrer : {0}</value>
+    <comment>{0} : la cause.</comment>
+  </data>
+  <data name="SettingsUsage" xml:space="preserve">
+    <value>Consommation</value>
+    <comment>Titre de section.</comment>
+  </data>
+  <data name="UsageService" xml:space="preserve">
+    <value>Service d'affichage : {0} Mo, {1} % du processeur</value>
+    <comment>{0} : mémoire en Mo. {1} : processeur, avec une virgule.</comment>
+  </data>
+  <data name="UsageOwn" xml:space="preserve">
+    <value>Réglages : {0} Mo, libérés à la fermeture</value>
+    <comment>{0} : mémoire de la fenêtre en Mo.</comment>
+  </data>
+  <data name="UsageGoal" xml:space="preserve">
+    <value>Objectif : moins de 100 Mo et environ 1 % en fond.</value>
+    <comment>Sous la consommation.</comment>
+  </data>
+  <data name="SettingsShare" xml:space="preserve">
+    <value>Partager</value>
+    <comment>Titre de section.</comment>
+  </data>
+  <data name="ShareExport" xml:space="preserve">
+    <value>Exporter la disposition…</value>
+    <comment>Bouton.</comment>
+  </data>
+  <data name="ShareImport" xml:space="preserve">
+    <value>Importer une disposition…</value>
+    <comment>Bouton.</comment>
+  </data>
+  <data name="ShareExportTitle" xml:space="preserve">
+    <value>Exporter la disposition</value>
+    <comment>Titre de la boîte « Enregistrer sous ».</comment>
+  </data>
+  <data name="ShareImportTitle" xml:space="preserve">
+    <value>Importer une disposition</value>
+    <comment>Titre du sélecteur de fichier.</comment>
+  </data>
+  <data name="ShareFileType" xml:space="preserve">
+    <value>Disposition Trofeo</value>
+    <comment>Type de fichier des boîtes d'export et d'import.</comment>
+  </data>
+  <data name="ShareExported" xml:space="preserve">
+    <value>Disposition exportée : {0}</value>
+    <comment>{0} : le nom du fichier.</comment>
+  </data>
+  <data name="ShareImported" xml:space="preserve">
+    <value>Disposition importée. Ctrl+Z la défait.</value>
+    <comment>Après un import réussi.</comment>
+  </data>
+  <data name="ShareReadFailed" xml:space="preserve">
+    <value>Le fichier n'a pas pu être lu : {0}</value>
+    <comment>{0} : la cause.</comment>
+  </data>
+  <data name="ShareWriteFailed" xml:space="preserve">
+    <value>Le fichier n'a pas pu être écrit : {0}</value>
+    <comment>{0} : la cause.</comment>
+  </data>
+  <data name="ShareUnknownType" xml:space="preserve">
+    <value>Ce service ne connaît pas le module « {0} ».</value>
+    <comment>{0} : le type de module.</comment>
+  </data>
+  <data name="ShareTooSmall" xml:space="preserve">
+    <value>« {0} » est plus petit que son minimum ({1} × {2}).</value>
+    <comment>{0} : le nom du module. {1} × {2} : son minimum en cases.</comment>
+  </data>
+  <data name="SettingsVersion" xml:space="preserve">
+    <value>Version {0}</value>
+    <comment>{0} : la version du service.</comment>
+  </data>
 </root>

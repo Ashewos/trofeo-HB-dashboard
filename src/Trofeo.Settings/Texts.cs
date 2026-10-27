@@ -241,4 +241,114 @@ public static class Texts
     public static string ModulesMoveUp => Get();
     /// <summary>Nom accessible de la flèche qui descend une ligne.</summary>
     public static string ModulesMoveDown => Get();
+    /// <summary>Phrase sous la liste des raccourcis.</summary>
+    public static string ShortcutsIntro => Get();
+    /// <summary>La liste des raccourcis est vide.</summary>
+    public static string ShortcutsEmpty => Get();
+    /// <summary>Action d'un raccourci.</summary>
+    public static string ShortcutPrevious => Get();
+    /// <summary>Action d'un raccourci.</summary>
+    public static string ShortcutNext => Get();
+    /// <summary>{0} : le rang de l'onglet, à partir de 1.</summary>
+    public static string ShortcutSelect => Get();
+    /// <summary>Nom accessible de la liste des actions d'un nouveau raccourci.</summary>
+    public static string ShortcutAction => Get();
+    /// <summary>Nom accessible de la liste des modules visés par un raccourci.</summary>
+    public static string ShortcutTarget => Get();
+    /// <summary>Module visé : le premier qui accepte les commandes.</summary>
+    public static string ShortcutTargetFirst => Get();
+    /// <summary>Module visé : l'instance n'est plus sur l'écran.</summary>
+    public static string ShortcutTargetGone => Get();
+    /// <summary>Bouton : change les touches d'un raccourci.</summary>
+    public static string ShortcutEdit => Get();
+    /// <summary>Bouton : retire un raccourci.</summary>
+    public static string ShortcutDelete => Get();
+    /// <summary>Bouton.</summary>
+    public static string ShortcutAdd => Get();
+    /// <summary>Bouton.</summary>
+    public static string ShortcutReset => Get();
+    /// <summary>Pendant la capture d'une combinaison.</summary>
+    public static string ShortcutCapture => Get();
+    /// <summary>{0} : les touches (Ctrl+Alt+Right). {1} : l'action qui les a déjà.</summary>
+    public static string ShortcutDuplicate => Get();
+    /// <summary>Titre de section.</summary>
+    public static string SettingsOrientation => Get();
+    /// <summary>Choix d'orientation.</summary>
+    public static string SettingsUpright => Get();
+    /// <summary>Choix d'orientation.</summary>
+    public static string SettingsFlipped => Get();
+    /// <summary>Interrupteur.</summary>
+    public static string SettingsStartup => Get();
+    /// <summary>Sous l'interrupteur de démarrage.</summary>
+    public static string SettingsStartupHelp => Get();
+    /// <summary>Trofeo.Display.exe n'est nulle part.</summary>
+    public static string SettingsStartupMissing => Get();
+    /// <summary>{0} : la cause.</summary>
+    public static string SettingsStartupFailed => Get();
+    /// <summary>Titre de section.</summary>
+    public static string SettingsFps => Get();
+    /// <summary>Valeur du curseur au maximum.</summary>
+    public static string SettingsFpsMax => Get();
+    /// <summary>Titre de section.</summary>
+    public static string SettingsPreview => Get();
+    /// <summary>Interrupteur.</summary>
+    public static string SettingsRealTime => Get();
+    /// <summary>Sous l'interrupteur du rendu réel.</summary>
+    public static string SettingsRealTimeHelp => Get();
+    /// <summary>Titre de section.</summary>
+    public static string SettingsSensors => Get();
+    /// <summary>État des capteurs.</summary>
+    public static string SensorsActive => Get();
+    /// <summary>État des capteurs.</summary>
+    public static string SensorsNoDriver => Get();
+    /// <summary>État des capteurs.</summary>
+    public static string SensorsNoHelper => Get();
+    /// <summary>Bouton.</summary>
+    public static string SensorsInstall => Get();
+    /// <summary>Titre du sélecteur de l'installeur de PawnIO.</summary>
+    public static string SensorsPickTitle => Get();
+    /// <summary>Type de fichier du sélecteur.</summary>
+    public static string SensorsPickType => Get();
+    /// <summary>Le lancement en administrateur a été refusé.</summary>
+    public static string SensorsDenied => Get();
+    /// <summary>L'assistant d'installation est lancé.</summary>
+    public static string SensorsStarted => Get();
+    /// <summary>Trofeo.SensorHelper.exe n'est nulle part.</summary>
+    public static string SensorsHelperMissing => Get();
+    /// <summary>{0} : la cause.</summary>
+    public static string SensorsLaunchFailed => Get();
+    /// <summary>Titre de section.</summary>
+    public static string SettingsUsage => Get();
+    /// <summary>{0} : mémoire en Mo. {1} : processeur, avec une virgule.</summary>
+    public static string UsageService => Get();
+    /// <summary>{0} : mémoire de la fenêtre en Mo.</summary>
+    public static string UsageOwn => Get();
+    /// <summary>Sous la consommation.</summary>
+    public static string UsageGoal => Get();
+    /// <summary>Titre de section.</summary>
+    public static string SettingsShare => Get();
+    /// <summary>Bouton.</summary>
+    public static string ShareExport => Get();
+    /// <summary>Bouton.</summary>
+    public static string ShareImport => Get();
+    /// <summary>Titre de la boîte « Enregistrer sous ».</summary>
+    public static string ShareExportTitle => Get();
+    /// <summary>Titre du sélecteur de fichier.</summary>
+    public static string ShareImportTitle => Get();
+    /// <summary>Type de fichier des boîtes d'export et d'import.</summary>
+    public static string ShareFileType => Get();
+    /// <summary>{0} : le nom du fichier.</summary>
+    public static string ShareExported => Get();
+    /// <summary>Après un import réussi.</summary>
+    public static string ShareImported => Get();
+    /// <summary>{0} : la cause.</summary>
+    public static string ShareReadFailed => Get();
+    /// <summary>{0} : la cause.</summary>
+    public static string ShareWriteFailed => Get();
+    /// <summary>{0} : le type de module.</summary>
+    public static string ShareUnknownType => Get();
+    /// <summary>{0} : le nom du module. {1} × {2} : son minimum en cases.</summary>
+    public static string ShareTooSmall => Get();
+    /// <summary>{0} : la version du service.</summary>
+    public static string SettingsVersion => Get();
 }

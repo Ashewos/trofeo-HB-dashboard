@@ -1,7 +1,84 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:t="clr-namespace:Trofeo.Settings"
              xmlns:vm="clr-namespace:Trofeo.Settings.ViewModels"
              x:Class="Trofeo.Settings.Views.ShortcutsTabView"
              x:DataType="vm:ShortcutsTabViewModel">
-  <!-- Le contenu de l'onglet arrive avec les tâches 10 à 13. -->
+
+  <!-- Une liste calme, alignée à gauche : une ligne par raccourci. La ligne qui attend sa combinaison a un cadre Accent. -->
+  <ScrollViewer VerticalScrollBarVisibility="Auto" AllowAutoHide="False">
+    <Border Classes="panel" Padding="20" HorizontalAlignment="Left" VerticalAlignment="Top" MinWidth="880" MaxWidth="1100">
+      <StackPanel Spacing="14" Margin="0,0,8,0">
+        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{x:Static t:Texts.ShortcutsIntro}" />
+
+        <TextBlock Name="EmptyText" Classes="muted" Text="{x:Static t:Texts.ShortcutsEmpty}" IsVisible="{Binding IsEmpty}" />
+
+        <ItemsControl Name="ShortcutRows" ItemsSource="{Binding Rows}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="6" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ShortcutRowViewModel">
+              <Border Classes="shortcut" Classes.capturing="{Binding IsCapturing}" Padding="12,8">
+                <StackPanel Spacing="6">
+                  <Grid ColumnDefinitions="230,16,210,16,250,*">
+
+                    <!-- L'action en mots ; pour un raccourci qu'on ajoute, à choisir. -->
+                    <TextBlock Grid.Column="0" Classes="name" Text="{Binding ActionText}" IsVisible="{Binding !IsDraft}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <ComboBox Grid.Column="0" Name="ActionBox" IsVisible="{Binding IsDraft}" HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="{x:Static t:Texts.ShortcutAction}"
+                              ItemsSource="{Binding ActionChoices}" SelectedItem="{Binding SelectedAction}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ShortcutActionChoice">
+                          <TextBlock Text="{Binding Text}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <!-- Les touches en pastille. -->
+                    <Border Grid.Column="2" Classes="pill" HorizontalAlignment="Left" VerticalAlignment="Center"
+                            IsVisible="{Binding ShowsKeys}" AutomationProperties.Name="{Binding KeysText}">
+                      <!-- Manrope : les flèches ← → ↑ ↓ n'existent pas en Barlow. -->
+                      <TextBlock Classes="lead" Text="{Binding KeysText}" />
+                    </Border>
+
+                    <!-- Le module visé. -->
+                    <ComboBox Grid.Column="4" Name="TargetBox" HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="{x:Static t:Texts.ShortcutTarget}"
+                              ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ShortcutTarget">
+                          <TextBlock Text="{Binding Name}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                      <Button Name="EditButton" Classes="small" Content="{x:Static t:Texts.ShortcutEdit}" Command="{Binding EditCommand}"
+                              IsVisible="{Binding !IsDraft}" />
+                      <Button Name="DeleteButton" Classes="small" Content="{x:Static t:Texts.ShortcutDelete}" Command="{Binding DeleteCommand}" />
+                    </StackPanel>
+                  </Grid>
+
+                  <!-- Ce qui se passe sur la ligne : l'attente de la combinaison, un doublon refusé, un refus de Windows. -->
+                  <TextBlock Name="Hint" Classes="lead" Foreground="{DynamicResource Accent}" TextWrapping="Wrap"
+                             Text="{Binding Hint}" IsVisible="{Binding HasHint}" />
+                  <TextBlock Name="Refusal" Classes="error" TextWrapping="Wrap" Text="{Binding Refusal}" IsVisible="{Binding HasRefusal}" />
+                  <TextBlock Name="Failure" Classes="warning" TextWrapping="Wrap" Text="{Binding Failure}" IsVisible="{Binding HasFailure}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,6,0,0">
+          <Button Name="AddButton" Content="{x:Static t:Texts.ShortcutAdd}" Command="{Binding AddShortcutCommand}" />
+          <Button Name="ResetButton" Content="{x:Static t:Texts.ShortcutReset}" Command="{Binding ResetCommand}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </ScrollViewer>
 </UserControl>

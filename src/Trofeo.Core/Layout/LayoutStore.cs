@@ -83,6 +83,9 @@ public sealed class LayoutStore
         return LayoutJson.Parse(json, _warn);
     }
 
+    /// <summary>Le chemin du fichier <c>layout.json</c> (pour en garder une copie avant de le remplacer).</summary>
+    public string FilePath => _filePath;
+
     /// <summary>Empreinte du fichier (taille, date d'écriture) ; <c>null</c> s'il est absent ou inaccessible.</summary>
     public LayoutStamp? Stamp()
     {
