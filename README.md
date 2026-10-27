@@ -96,8 +96,11 @@ En attendant le logiciel de réglage, les modules se règlent à la main dans `l
   Les messages Desktop utilisateur et assistant apparaissent dans le fil, sous forme d'extraits d'une ligne, en plus des
   appels d'outils. Les instructions injectées et le raisonnement interne n'y sont pas affichés. La durée mesure le
   traitement de la demande et reste figée à sa fin ou à son interruption (ce n'est pas la durée d'une commande shell).
-  Le module reste une vue des sessions locales récentes : au plus 12 conversations modifiées depuis moins de 2 h,
-  recherchées dans les dossiers des 3 derniers jours ; ce n'est pas l'historique complet de l'application.
+  Le module reste une vue des sessions locales récentes : au plus 12 conversations actives depuis moins de 2 h.
+  Elles sont recherchées dans tous les dossiers de dates, pour retrouver aussi une ancienne conversation reprise.
+  La fraîcheur combine la date de modification Windows et les horodatages JSONL ; la taille réelle du fichier est
+  contrôlée pour détecter les ajouts quand Windows conserve une ancienne date. La lecture de fraîcheur est bornée
+  aux 64 Kio de fin et mise en cache ; les liens de répertoire ne sont pas suivis. Ce n'est pas l'historique complet.
   Les commandes littérales encapsulées dans l'outil Desktop `exec` sont également lues (PowerShell, Bash, CMD et
   modifications de fichiers avec compteurs de lignes). Cette lecture ne réexécute jamais le JavaScript ni les commandes.
   Au démarrage, si le modèle est absent de la portion relue, le module recherche le dernier `turn_context` du même
