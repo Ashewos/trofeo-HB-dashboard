@@ -323,4 +323,22 @@ public class ServiceLinkTests
         var ex = await Assert.ThrowsAsync<ControlException>(() => link.ReloadAsync());
         Assert.False(string.IsNullOrWhiteSpace(ex.Message));
     }
+
+    [Fact]
+    public async Task Request_TimeoutFromTheService_BecomesALostLinkControlException()
+    {
+        var pipe = NewPipeName();
+        using var server = new ControlServer(pipe, new Handler());
+        server.Start();
+        var link = NewLink(pipe);
+        await WaitUntilAsync(() => link.State == LinkState.Connected, "connexion");
+
+        // Le service n'a pas répondu dans le délai de la requête (20 s pour un redémarrage) : l'appelant reçoit une erreur française.
+        var ex = await Assert.ThrowsAsync<ControlException>(() =>
+            link.RequestAsync<bool>((_, _) => throw new TimeoutException("Le service n'a pas répondu à « restart » dans le délai.")));
+
+        Assert.Equal(Texts.LinkLost, ex.Message);
+        Assert.Equal("Le service d'affichage ne répond pas.", ex.Message);
+        await link.DisposeAsync();
+    }
 }

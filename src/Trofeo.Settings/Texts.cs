@@ -59,6 +59,12 @@ public static class Texts
     public static string LinkCut => Get();
     /// <summary>La disposition a changé en dehors des réglages : elle a été relue.</summary>
     public static string LayoutChangedOutside => Get();
+    /// <summary>{0} : le motif, sans point final.</summary>
+    public static string LayoutUnreadable => Get();
+    /// <summary>Bouton de la ligne ambre quand layout.json est illisible.</summary>
+    public static string ResetLayout => Get();
+    /// <summary>{0} : le message de l'exception.</summary>
+    public static string UnexpectedError => Get();
     /// <summary>Le service refuse sans donner de motif.</summary>
     public static string ReloadRefused => Get();
     /// <summary>{0} : la cause.</summary>
@@ -343,6 +349,8 @@ public static class Texts
     public static string ShareExported => Get();
     /// <summary>Après un import réussi.</summary>
     public static string ShareImported => Get();
+    /// <summary>{0} : les noms des modules, séparés par une virgule.</summary>
+    public static string ShareKeptSettings => Get();
     /// <summary>{0} : la cause.</summary>
     public static string ShareReadFailed => Get();
     /// <summary>{0} : la cause.</summary>

@@ -621,6 +621,120 @@ public sealed class SettingsTabTests : IDisposable
         Assert.Equal(mine, _store.Load().Rotation);
     }
 
+    // ---- Import : les modules qui touchent une clé de ce PC gardent les réglages de ce PC ----
+
+    private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    private static string Compact(JsonElement element) => JsonSerializer.Serialize(element);
+
+    private static ModulePlacement Network(Guid id, string settings, int column = 12, int row = 2) =>
+        new(id, "network", column, row, 4, 2, TextSize.Normal, Json(settings));
+
+    private static readonly Guid LocalNetwork = new("a2002423-c807-4403-9c5a-2a983fb6a371");
+
+    private const string Hostile = """{"source":"unifi","unifi":{"host":"attaquant.example"}}""";
+
+    private async Task ImportAsync(SettingsTabViewModel tab, DashboardLayout shared)
+    {
+        var file = Path.Combine(_dir, "ami.trofeo.json");
+        File.WriteAllText(file, ExportedJson(shared));
+        _picker.Result = file;
+        await tab.ImportAsync();
+    }
+
+    [Fact]
+    public async Task Import_ModuleWithASecretField_KeepsThisPcsSettings()
+    {
+        var tab = Open();
+        var mine = Compact(_document.Current.Placements.Single(p => p.TypeId == "network").Settings);
+
+        await ImportAsync(tab, new DashboardLayout(180, [Network(Guid.NewGuid(), Hostile)]));
+
+        var network = Assert.Single(_document.Current.Placements);
+        Assert.Equal(mine, Compact(network.Settings));
+        // L'hôte du fichier reçu n'atteint jamais layout.json : la clé UniFi de ce PC ne peut pas partir vers lui.
+        Assert.DoesNotContain("attaquant.example", File.ReadAllText(_store.FilePath));
+        Assert.Equal("Disposition importée. Ctrl+Z la défait. Réglages gardés pour Réseau : ils touchent une clé de ce PC.", tab.ShareMessage);
+        Assert.False(tab.ShareMessageIsError);
+    }
+
+    [Fact]
+    public async Task Import_ModuleWithASecretField_TakesTheLocalInstanceOfTheSameTypeEvenWithAnotherId()
+    {
+        var tab = Open();
+
+        await ImportAsync(tab, new DashboardLayout(180, [Network(new Guid("11111111-0000-0000-0000-000000000001"), Hostile)]));
+
+        var network = Assert.Single(_document.Current.Placements);
+        Assert.Equal(new Guid("11111111-0000-0000-0000-000000000001"), network.InstanceId); // l'emplacement importé est gardé
+        Assert.Equal("""{"source":"pc"}""", Compact(network.Settings));
+    }
+
+    [Fact]
+    public async Task Import_ModuleWithASecretFieldAndNoLocalCounterpart_ClearsItsSettings()
+    {
+        var clock = new ModulePlacement(Guid.NewGuid(), "clock", 0, 0, 4, 2, TextSize.Normal, Json("{}"));
+        var tab = Open(new DashboardLayout(180, [clock])); // aucun module Réseau sur ce PC
+
+        await ImportAsync(tab, new DashboardLayout(180, [Network(Guid.NewGuid(), Hostile)]));
+
+        var network = Assert.Single(_document.Current.Placements);
+        Assert.Equal("{}", Compact(network.Settings));
+        Assert.DoesNotContain("attaquant.example", File.ReadAllText(_store.FilePath));
+        Assert.Contains("Réglages gardés pour Réseau", tab.ShareMessage);
+    }
+
+    [Fact]
+    public async Task Import_ShelvedModuleWithASecretField_IsProtectedToo()
+    {
+        var tab = Open();
+        var shared = new DashboardLayout(180, [])
+        {
+            Shelf = [Network(Guid.NewGuid(), Hostile)],
+        };
+
+        await ImportAsync(tab, shared);
+
+        var shelved = Assert.Single(_document.Current.Shelf!);
+        Assert.Equal("""{"source":"pc"}""", Compact(shelved.Settings));
+        Assert.DoesNotContain("attaquant.example", File.ReadAllText(_store.FilePath));
+    }
+
+    [Fact]
+    public async Task Import_TwoInstancesOfASecretType_TakeLocalOnesInOrder_ThenClear()
+    {
+        var second = new Guid("a2002423-c807-4403-9c5a-2a983fb6a372");
+        var tab = Open(new DashboardLayout(180,
+        [
+            Network(LocalNetwork, """{"source":"freebox"}""", column: 0, row: 0),
+            Network(second, """{"source":"pc"}""", column: 4, row: 0),
+        ]));
+        var shared = new DashboardLayout(180,
+        [
+            Network(Guid.NewGuid(), Hostile, column: 0, row: 0),
+            Network(Guid.NewGuid(), Hostile, column: 4, row: 0),
+            Network(Guid.NewGuid(), Hostile, column: 8, row: 0),
+        ]);
+
+        await ImportAsync(tab, shared);
+
+        Assert.Equal(
+            ["""{"source":"freebox"}""", """{"source":"pc"}""", "{}"],
+            _document.Current.Placements.Select(p => Compact(p.Settings)));
+        Assert.DoesNotContain("attaquant.example", File.ReadAllText(_store.FilePath));
+    }
+
+    [Fact]
+    public async Task Import_ModulesWithoutSecretField_KeepTheImportedSettings_AndSayNothingMore()
+    {
+        var tab = Open();
+
+        await ImportAsync(tab, Shared());
+
+        Assert.Equal("""{"format":"12h"}""", Compact(Assert.Single(_document.Current.Placements).Settings));
+        Assert.Equal("Disposition importée. Ctrl+Z la défait.", tab.ShareMessage);
+    }
+
     [Fact]
     public async Task Import_Valid_IsOneUndoableEdit()
     {

@@ -105,8 +105,10 @@ public sealed class ServiceLink : IServiceLink
     /// <summary>
     /// Une demande au service. Une liaison fermée ou coupée en route (annulation, objet libéré) devient une
     /// <see cref="ControlException"/> en français : l'appelant (fermeture de la fenêtre comprise) ne voit jamais l'exception technique.
+    /// Un service qui ne répond pas dans le délai (<see cref="TimeoutException"/>) devient lui aussi une <see cref="ControlException"/>
+    /// (« Le service d'affichage ne répond pas. ») : aucun appelant n'a à connaître l'exception du délai.
     /// </summary>
-    private async Task<T> RequestAsync<T>(Func<ControlClient, CancellationToken, Task<T>> request)
+    internal async Task<T> RequestAsync<T>(Func<ControlClient, CancellationToken, Task<T>> request)
     {
         var client = Current();
         try
@@ -116,6 +118,10 @@ public sealed class ServiceLink : IServiceLink
         catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
         {
             throw new ControlException(Texts.LinkCut);
+        }
+        catch (TimeoutException)
+        {
+            throw new ControlException(Texts.LinkLost);
         }
     }
 

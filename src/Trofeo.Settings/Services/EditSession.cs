@@ -86,6 +86,9 @@ public sealed class EditSession : IDisposable
         await _gate.WaitAsync().ConfigureAwait(true);
         try
         {
+            if (await RefuseWhileUnreadableAsync().ConfigureAwait(true) is { } refused)
+                return refused;
+
             var current = _document.Current;
             if (edit(current) is not { } edited || Same(current, edited))
             {
@@ -109,6 +112,53 @@ public sealed class EditSession : IDisposable
         }
     }
 
+    /// <summary>
+    /// Tant que <c>layout.json</c> ne se lit pas, aucune modification n'est écrite (elle écraserait le fichier de l'utilisateur
+    /// par « défaut + modification »). Le fichier est relu une fois : s'il se lit maintenant, la modification, calculée sur
+    /// la disposition par défaut, est refusée aussi et la disposition relue s'affiche. Rend le refus, ou <c>null</c> si tout va bien.
+    /// À appeler sous <see cref="_gate"/>.
+    /// </summary>
+    private async Task<SaveOutcome?> RefuseWhileUnreadableAsync()
+    {
+        if (_document.LoadError is null)
+            return null;
+
+        var refused = await _document.SaveAsync(_document.Current).ConfigureAwait(true);
+        Message = refused.Message;
+        Changed?.Invoke();
+        return refused;
+    }
+
+    /// <summary>
+    /// « Repartir de la disposition par défaut » (<see cref="LayoutDocument.ResetToDefaultAsync"/>) : possible seulement quand le
+    /// fichier est illisible. L'historique repart de zéro.
+    /// </summary>
+    public async Task<SaveOutcome?> ResetToDefaultAsync()
+    {
+        Begin();
+        await _gate.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            var before = _document.Current;
+            var save = _document.ResetToDefaultAsync();
+            Changed?.Invoke(); // le fichier est écrit : la ligne ambre disparaît sans attendre le service
+            var outcome = await save.ConfigureAwait(true);
+            if (outcome.Saved)
+            {
+                _history = new LayoutHistory();
+                _epoch++;
+            }
+
+            Record(before, _document.Current, outcome);
+            return outcome;
+        }
+        finally
+        {
+            _gate.Release();
+            End();
+        }
+    }
+
     public Task<SaveOutcome?> UndoAsync() => StepAsync(undo: true);
 
     public Task<SaveOutcome?> RedoAsync() => StepAsync(undo: false);
@@ -119,6 +169,9 @@ public sealed class EditSession : IDisposable
         await _gate.WaitAsync().ConfigureAwait(true);
         try
         {
+            if (await RefuseWhileUnreadableAsync().ConfigureAwait(true) is { } refused)
+                return refused;
+
             var epoch = _epoch;
             var before = _document.Current;
             var target = undo ? _history.Undo(before) : _history.Redo(before);

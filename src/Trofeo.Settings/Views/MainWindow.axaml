@@ -43,8 +43,12 @@
     </Grid>
 
     <!-- Une ligne Amber sous la bande, dans tous les onglets : le message de la dernière modification, les avertissements hors apparence. -->
-    <TextBlock Grid.Row="2" Name="SaveMessage" Classes="warning" TextWrapping="Wrap" Margin="24,12,24,0"
-               Text="{Binding SaveMessage}" IsVisible="{Binding HasSaveMessage}" />
+    <StackPanel Grid.Row="2" Margin="24,12,24,0" Spacing="8" IsVisible="{Binding HasSaveMessage}">
+      <TextBlock Name="SaveMessage" Classes="warning" TextWrapping="Wrap" Text="{Binding SaveMessage}" />
+      <!-- layout.json ne se lit pas : repartir de la disposition par défaut (le fichier est d'abord copié en .avant-reglages). -->
+      <Button Name="ResetLayout" HorizontalAlignment="Left" Content="{x:Static t:Texts.ResetLayout}"
+              Command="{Binding ResetLayoutCommand}" IsVisible="{Binding CanResetLayout}" />
+    </StackPanel>
 
     <!-- Le contenu de l'onglet choisi, l'assistant de première ouverture (tant qu'il n'est pas terminé), ou le panneau « service arrêté ». -->
     <Grid Grid.Row="3" Margin="24,16,24,24">

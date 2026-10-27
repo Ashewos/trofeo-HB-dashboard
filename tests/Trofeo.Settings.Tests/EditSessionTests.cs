@@ -259,4 +259,87 @@ public sealed class EditSessionTests : IDisposable
         await _session.ApplyAsync(layout => layout with { Appearance = new Trofeo.Core.Rendering.AppearanceSettings("classique") });
         Assert.Empty(_session.AppearanceWarnings.Background);
     }
+
+    // ---- layout.json illisible à l'ouverture ----
+
+    private const string Garbage = "{ ceci n'est pas du JSON";
+
+    private (EditSession Session, LayoutDocument Document, string File) OpenUnreadable()
+    {
+        var file = Path.Combine(_dir, "illisible.json");
+        File.WriteAllText(file, Garbage);
+        var document = new LayoutDocument(new LayoutStore(file), _link);
+        document.Load();
+        return (new EditSession(document), document, file);
+    }
+
+    [Fact]
+    public async Task Apply_WhileTheFileIsUnreadable_RefusesWithoutEditingOrWriting()
+    {
+        var (session, document, file) = OpenUnreadable();
+        var called = false;
+
+        var outcome = await session.ApplyAsync(layout => { called = true; return WithRotation(layout, 0); });
+
+        Assert.False(called);
+        Assert.False(outcome!.Saved);
+        Assert.StartsWith("layout.json est illisible : ", outcome.Message);
+        Assert.Equal(outcome.Message, session.Message);
+        Assert.Equal(Garbage, File.ReadAllText(file));
+        Assert.NotNull(document.LoadError);
+        Assert.False(session.CanUndo);
+        session.Dispose();
+    }
+
+    [Fact]
+    public async Task Undo_WhileTheFileIsUnreadable_RefusesToo()
+    {
+        var (session, _, file) = OpenUnreadable();
+
+        var outcome = await session.UndoAsync();
+
+        Assert.False(outcome!.Saved);
+        Assert.Equal(Garbage, File.ReadAllText(file));
+        session.Dispose();
+    }
+
+    [Fact]
+    public async Task Apply_TheFileBecameReadable_ShowsItAndRefusesTheStaleEdit()
+    {
+        var (session, document, file) = OpenUnreadable();
+        new LayoutStore(file).Save(Base with { Rotation = 0 });
+        var changes = 0;
+        session.Changed += () => changes++;
+
+        var outcome = await session.ApplyAsync(layout => WithRotation(layout, 180));
+
+        Assert.False(outcome!.Saved);
+        Assert.Equal(Texts.LayoutChangedOutside, outcome.Message);
+        Assert.Null(document.LoadError);
+        Assert.Equal(0, document.Current.Rotation);
+        Assert.True(changes > 0);
+        Assert.Equal(0, new LayoutStore(file).Load().Rotation); // la modification périmée n'est pas écrite
+        session.Dispose();
+    }
+
+    [Fact]
+    public async Task ResetToDefault_KeepsTheOldFile_WritesTheDefault_AndClearsTheMessage()
+    {
+        var (session, document, file) = OpenUnreadable();
+        await session.ApplyAsync(layout => layout); // le refus laisse un message
+        Assert.NotNull(session.Message);
+
+        var outcome = await session.ResetToDefaultAsync();
+
+        Assert.True(outcome!.Saved);
+        Assert.Null(session.Message);
+        Assert.Null(document.LoadError);
+        Assert.Equal(Garbage, File.ReadAllText(file + ".avant-reglages"));
+        Assert.Equal(DashboardLayout.Default.Placements.Count, new LayoutStore(file).Load().Placements.Count);
+        Assert.Equal(1, _link.ReloadCount);
+
+        // Les modifications suivantes passent.
+        Assert.True((await session.ApplyAsync(layout => WithRotation(layout, 0)))!.Saved);
+        session.Dispose();
+    }
 }

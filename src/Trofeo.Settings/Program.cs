@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia;
 using Trofeo.Settings.Services;
 
@@ -13,8 +14,25 @@ internal static class Program
         if (!instance.IsFirst)
             return 0;
 
-        App.Instance = instance;
-        return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        // Le journal et le filet d'abord : un plantage de la fenêtre laisse une trace dans logs\settings.log.
+        var log = SettingsLog.TryOpen(SettingsLog.DefaultPath);
+        using var guard = new CrashGuard();
+        App.Guard = guard;
+        guard.InstallProcessHandlers();
+        Trace.TraceInformation("Démarrage de la fenêtre de réglage.");
+
+        try
+        {
+            App.Instance = instance;
+            return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        finally
+        {
+            Trace.TraceInformation("Arrêt de la fenêtre de réglage.");
+            Trace.Flush();
+            if (log is not null)
+                Trace.Listeners.Remove(log);
+        }
     }
 
     public static AppBuilder BuildAvaloniaApp() =>

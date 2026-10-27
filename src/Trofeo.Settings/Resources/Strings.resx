@@ -84,6 +84,18 @@
   <data name="LayoutChangedOutside" xml:space="preserve">
     <value>La disposition a changé en dehors des réglages : elle a été relue.</value>
   </data>
+  <data name="LayoutUnreadable" xml:space="preserve">
+    <value>layout.json est illisible : {0}. Corrige-le, ou repars de la disposition par défaut.</value>
+    <comment>{0} : le motif, sans point final. Ligne ambre sous la bande tant que le fichier ne se lit pas.</comment>
+  </data>
+  <data name="ResetLayout" xml:space="preserve">
+    <value>Repartir de la disposition par défaut</value>
+    <comment>Bouton de la ligne ambre quand layout.json est illisible : le fichier est d'abord copié en layout.json.avant-reglages.</comment>
+  </data>
+  <data name="UnexpectedError" xml:space="preserve">
+    <value>Erreur inattendue : {0}. Le détail est dans logs\settings.log.</value>
+    <comment>{0} : le message de l'exception. Ligne ambre sous la bande.</comment>
+  </data>
   <data name="ReloadRefused" xml:space="preserve">
     <value>Le service n'a pas appliqué la disposition.</value>
     <comment>Le service refuse sans donner de motif.</comment>
@@ -645,6 +657,10 @@
   <data name="ShareImported" xml:space="preserve">
     <value>Disposition importée. Ctrl+Z la défait.</value>
     <comment>Après un import réussi.</comment>
+  </data>
+  <data name="ShareKeptSettings" xml:space="preserve">
+    <value>Réglages gardés pour {0} : ils touchent une clé de ce PC.</value>
+    <comment>{0} : les noms des modules, séparés par une virgule. Suite de « Disposition importée » : un fichier reçu ne choisit pas où part une clé de ce PC.</comment>
   </data>
   <data name="ShareReadFailed" xml:space="preserve">
     <value>Le fichier n'a pas pu être lu : {0}</value>

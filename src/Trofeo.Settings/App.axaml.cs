@@ -15,6 +15,9 @@ public partial class App : Application
     /// <summary>Le verrou « une seule fenêtre » ; posé par <see cref="Program"/> avant le démarrage de l'interface.</summary>
     internal static SingleInstance? Instance { get; set; }
 
+    /// <summary>Le filet des exceptions non gérées ; posé par <see cref="Program"/>. Sans lui (aperçus, tests), rien n'est branché.</summary>
+    internal static CrashGuard? Guard { get; set; }
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
@@ -34,6 +37,13 @@ public partial class App : Application
                 preferencesPath: preferencesPath, system: SystemServices.Windows());
             var window = new MainWindow { DataContext = model };
             desktop.MainWindow = window;
+
+            // Une exception de l'interface ne ferme plus la fenêtre : elle va au journal et sur la ligne ambre.
+            if (Guard is { } guard)
+            {
+                guard.Show = message => model.Session.Report(message);
+                guard.InstallUiHandler();
+            }
 
             if (Instance is { } instance)
                 instance.ShowRequested += () => Dispatcher.UIThread.Post(window.BringToFront);

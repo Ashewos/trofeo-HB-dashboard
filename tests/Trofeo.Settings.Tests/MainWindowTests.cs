@@ -231,4 +231,64 @@ public sealed class MainWindowTests : IDisposable
         foreach (var name in new[] { "Manrope-Medium.ttf", "BarlowSemiCondensed-Regular.ttf", "BarlowSemiCondensed-SemiBold.ttf" })
             Assert.True(Avalonia.Platform.AssetLoader.Exists(new Uri("avares://Trofeo.Settings/Assets/Fonts/" + name)), name);
     }
+
+    // ---- layout.json illisible ----
+
+    private (MainWindow Window, MainViewModel Model, string File) OpenUnreadable()
+    {
+        Directory.CreateDirectory(_dir);
+        var file = Path.Combine(_dir, "layout.json");
+        File.WriteAllText(file, "{ ceci n'est pas du JSON");
+        var document = new LayoutDocument(new LayoutStore(file), _link);
+        document.Load();
+        var model = new MainViewModel(_link, document, new EditorPreferences(FirstRunDone: true));
+        _window = new MainWindow { DataContext = model };
+        _window.Show();
+        return (_window, model, file);
+    }
+
+    [AvaloniaFact]
+    public async Task UnreadableLayout_ShowsTheReasonAndTheResetButton_ThenResets()
+    {
+        _link.Set(LinkState.Connected, SampleData.Welcome(), SampleData.Status());
+        var (window, model, file) = OpenUnreadable();
+
+        var line = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "SaveMessage");
+        var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "ResetLayout");
+        Assert.True(line.IsEffectivelyVisible);
+        Assert.StartsWith("layout.json est illisible : ", line.Text);
+        Assert.Contains("warning", line.Classes);
+        Assert.True(button.IsEffectivelyVisible);
+        Assert.Equal("Repartir de la disposition par défaut", button.Content);
+
+        await model.ResetLayoutCommand.ExecuteAsync(null);
+
+        Assert.False(line.IsEffectivelyVisible);
+        Assert.False(button.IsEffectivelyVisible);
+        Assert.True(File.Exists(file + ".avant-reglages"));
+        Assert.True(new LayoutStore(file).Load().Placements.Count > 0);
+    }
+
+    [AvaloniaFact]
+    public void ReadableLayout_HasNoResetButton()
+    {
+        _link.Set(LinkState.Connected, SampleData.Welcome(), SampleData.Status());
+        var (window, model) = Open();
+
+        Assert.False(model.CanResetLayout);
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(), b => b.Name == "ResetLayout" && b.IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public async Task UnreadableLayout_AnEditIsRefused_AndTheReasonIsShownOnce()
+    {
+        _link.Set(LinkState.Connected, SampleData.Welcome(), SampleData.Status());
+        var (_, model, file) = OpenUnreadable();
+
+        await model.SettingsTab.SetRotationAsync(0);
+
+        Assert.Equal("{ ceci n'est pas du JSON", File.ReadAllText(file));
+        Assert.Single(model.SaveMessage!.Split('\n')); // la ligne du motif, sans doublon avec le refus
+        Assert.True(model.CanResetLayout);
+    }
 }

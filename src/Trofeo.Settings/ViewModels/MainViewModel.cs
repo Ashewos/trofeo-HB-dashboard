@@ -126,6 +126,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public bool HasSaveMessage => !string.IsNullOrEmpty(SaveMessage);
 
+    /// <summary>
+    /// <c>layout.json</c> ne se lit pas : la ligne ambre en donne le motif et le bouton « Repartir de la disposition par
+    /// défaut » est là. Aucune modification n'est écrite dans cet état.
+    /// </summary>
+    [ObservableProperty]
+    private bool _canResetLayout;
+
+    /// <summary>« Repartir de la disposition par défaut » : le fichier illisible est d'abord copié en <c>layout.json.avant-reglages</c>.</summary>
+    [RelayCommand]
+    private Task ResetLayoutAsync() => Session.ResetToDefaultAsync();
+
     /// <summary>Le service ne tourne pas : le panneau « Démarrer le service » remplace les onglets.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGridVisible), nameof(ShowsTabContent), nameof(ShowsFirstRun))]
@@ -159,7 +170,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void RefreshBanner()
     {
         var lines = new List<string>();
-        if (!string.IsNullOrEmpty(Session.Message))
+        // Le fichier illisible d'abord : c'est lui qui explique pourquoi rien ne s'enregistre.
+        var unreadable = Document.LoadErrorMessage;
+        CanResetLayout = unreadable is not null;
+        if (unreadable is not null)
+            lines.Add(unreadable);
+        if (!string.IsNullOrEmpty(Session.Message) && Session.Message != unreadable)
             lines.Add(Session.Message);
         // Dans l'onglet Raccourcis, ceux que Windows a refusés sont déjà sur leur ligne.
         var onShortcuts = SelectedTab is ShortcutsTabViewModel;

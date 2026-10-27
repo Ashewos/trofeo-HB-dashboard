@@ -1,11 +1,13 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Trofeo.Control;
 using Trofeo.Core;
 using Trofeo.Core.Layout;
+using Trofeo.ModuleKit;
 using Trofeo.Settings.Services;
 
 namespace Trofeo.Settings.ViewModels;
@@ -378,7 +380,8 @@ public sealed partial class SettingsTabViewModel : TabViewModel, IDisposable
     /// <summary>
     /// « Importer une disposition… » : valide le fichier (comme le service au rechargement, types et tailles minimum
     /// compris), garde la disposition en cours dans <c>layout.json.avant-import</c>, puis enregistre. Un fichier refusé
-    /// affiche son motif et ne change rien. L'import est une seule modification, que Ctrl+Z défait. L'orientation de ce PC est gardée.
+    /// affiche son motif et ne change rien. L'import est une seule modification, que Ctrl+Z défait. L'orientation de ce PC est gardée,
+    /// de même que les réglages des modules dont le schéma a un champ secret (voir <see cref="KeepLocalSecretSettings"/>).
     /// </summary>
     [RelayCommand]
     public async Task ImportAsync()
@@ -426,6 +429,7 @@ public sealed partial class SettingsTabViewModel : TabViewModel, IDisposable
         }
 
         string? backupError = null;
+        IReadOnlyList<string> kept = [];
         var outcome = await _session.ApplyAsync(current =>
         {
             // La copie se fait au moment d'écrire : c'est bien la disposition en cours, même si le fichier a été relu entre-temps.
@@ -441,14 +445,59 @@ public sealed partial class SettingsTabViewModel : TabViewModel, IDisposable
             }
 
             // Le sens de l'écran tient au montage de CE PC, pas à celui de l'ami qui a exporté : l'orientation reste la mienne.
-            return imported with { Rotation = current.Rotation };
+            // Un fichier reçu ne choisit pas où part une clé de ce PC : les réglages des modules à secret restent ceux de ce PC.
+            var (protectedLayout, keptNames) = KeepLocalSecretSettings(imported, current);
+            kept = keptNames;
+            return protectedLayout with { Rotation = current.Rotation };
         }).ConfigureAwait(true);
 
         if (backupError is not null)
             ReportShare(string.Format(Texts.ShareWriteFailed, backupError), isError: true);
         else if (outcome is null || outcome is { Saved: true, Message: null })
-            ReportShare(Texts.ShareImported);
+            ReportShare(kept.Count == 0
+                ? Texts.ShareImported
+                : $"{Texts.ShareImported} {string.Format(Texts.ShareKeptSettings, string.Join(", ", kept))}");
         // Sinon (fichier changé ailleurs, refus du service) : la ligne Amber de la fenêtre en dit le motif.
+    }
+
+    /// <summary>
+    /// Pour chaque type de module dont le schéma déclare un <see cref="SecretField"/> (une clé du coffre de CE PC), garde les
+    /// réglages de ce PC : une instance importée reprend ceux de l'instance locale du même type (dans l'ordre, emplacements puis
+    /// modules retirés), ou <c>{}</c> si ce PC n'en a pas assez. Sans quoi le fichier d'un tiers fixerait où la clé est envoyée
+    /// (l'hôte de la console UniFi, par exemple). Sans le catalogue du service, aucun type n'est connu pour sûr : tous gardent
+    /// ceux de ce PC. Rend la disposition protégée et les noms des modules concernés (ceux qui sont dans le fichier).
+    /// </summary>
+    private (DashboardLayout Layout, IReadOnlyList<string> Kept) KeepLocalSecretSettings(DashboardLayout imported, DashboardLayout current)
+    {
+        var catalog = _link.Welcome?.Types.GroupBy(t => t.TypeId).ToDictionary(g => g.Key, g => g.First());
+        bool TouchesASecret(string typeId) =>
+            catalog is null || (catalog.TryGetValue(typeId, out var type) && type.Schema.Fields.OfType<SecretField>().Any());
+
+        var local = current.Placements.Concat(current.Shelf ?? []).ToList();
+        var taken = new Dictionary<string, int>(); // combien d'instances de chaque type ont déjà repris les réglages locaux
+        var keptTypes = new List<string>();
+        var empty = JsonDocument.Parse("{}").RootElement.Clone();
+
+        ModulePlacement Protect(ModulePlacement placement)
+        {
+            if (!TouchesASecret(placement.TypeId))
+                return placement;
+
+            if (!keptTypes.Contains(placement.TypeId))
+                keptTypes.Add(placement.TypeId);
+            taken.TryGetValue(placement.TypeId, out var index);
+            taken[placement.TypeId] = index + 1;
+            var own = local.Where(p => p.TypeId == placement.TypeId).Skip(index).FirstOrDefault();
+            return placement with { Settings = own?.Settings ?? empty };
+        }
+
+        var protectedLayout = imported with
+        {
+            Placements = [.. imported.Placements.Select(Protect)],
+            Shelf = imported.Shelf is null ? null : [.. imported.Shelf.Select(Protect)],
+        };
+        var names = keptTypes.Select(id => catalog?.GetValueOrDefault(id)?.DisplayName ?? id).ToList();
+        return (protectedLayout, names);
     }
 
     /// <summary>Ce que le service ne saurait pas appliquer : un type de module inconnu, ou un module plus petit que son minimum.</summary>
