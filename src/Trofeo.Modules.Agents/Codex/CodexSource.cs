@@ -1,28 +1,35 @@
-using System.Globalization;
 using System.Text;
 
 namespace Trofeo.Modules.Agents;
 
 /// <summary>
-/// Source Codex : les transcriptions <c>sessions/AAAA/MM/JJ/rollout-*.jsonl</c> des trois derniers jours, modifiées il y
-/// a moins de 2 h (les 12 plus récentes), lues par la fin puis seulement les octets ajoutés. Ne contacte rien en ligne
+/// Source Codex : les transcriptions <c>sessions/AAAA/MM/JJ/rollout-*.jsonl</c> actives depuis moins de 2 h,
+/// quelle que soit leur date de création (les 12 plus récentes), lues par la fin puis seulement les octets ajoutés. Ne contacte rien en ligne
 /// et l'index local facultatif des titres. Exclut les sous-agents internes. Appelée depuis un seul thread à la fois.
 /// </summary>
-/// <param name="codexHome">Le dossier de configuration de Codex (voir <see cref="CodexHome.Resolve"/>).</param>
-/// <param name="time">Donne le fuseau local, qui nomme les dossiers de jour.</param>
-public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSource
+public sealed class CodexSource : IAgentSource
 {
     private const int MaxFiles = 12;
     private const int MaxCandidates = 128;
-    private const int DaysScanned = 3;
     private const int HeadBytes = 64 * 1024;
     private static readonly TimeSpan MaxAge = TimeSpan.FromHours(2);
 
-    private readonly string _sessionsDir = Path.Combine(codexHome, "sessions");
-    private readonly CodexTitles _titles = new(codexHome);
+    private readonly string _codexHome;
+    private readonly string _sessionsDir;
+    private readonly CodexTitles _titles;
+    private readonly CodexSessionRecency _recency = new();
     // ProjectNames remonte l'arborescence sur le disque : un seul calcul par dossier de travail.
     private readonly Dictionary<string, string> _projectNames = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FileState> _files = new(StringComparer.Ordinal);
+
+    /// <param name="codexHome">Le dossier de configuration de Codex.</param>
+    /// <param name="time">Conservé pour la compatibilité ; les dossiers ne sont plus filtrés par leur date.</param>
+    public CodexSource(string codexHome, TimeProvider time)
+    {
+        _codexHome = codexHome;
+        _sessionsDir = Path.Combine(codexHome, "sessions");
+        _titles = new CodexTitles(codexHome);
+    }
 
     private sealed class FileState(string path)
     {
@@ -42,7 +49,7 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
     /// <inheritdoc />
     public AgentSnapshot Poll(string? selectedSessionId, DateTimeOffset now)
     {
-        if (!Directory.Exists(codexHome))
+        if (!Directory.Exists(_codexHome))
         {
             return new AgentSnapshot(false, [], null, null);
         }
@@ -112,38 +119,42 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
     {
         _projectNames.Clear();
         _files.Clear();
+        _recency.Clear();
     }
 
     /// <summary>
-    /// Les transcriptions à suivre : celles des dossiers des 3 derniers jours (date locale) modifiées il y a moins de
-    /// 2 h, par date décroissante (128 candidats au plus, pour retenir 12 conversations après exclusion des sous-agents).
-    /// Ne parcourt que ces 3 dossiers, jamais tout <c>sessions</c>.
+    /// Cherche les conversations reprises dans tous les dossiers de dates, sans suivre les liens de répertoire.
+    /// La fraîcheur combine date Windows et horodatages JSONL ; le contenu relu est borné et mis en cache.
+    /// Retient 128 candidats au plus pour garder 12 conversations après exclusion des sous-agents.
     /// </summary>
     private List<Candidate> Candidates(DateTimeOffset now)
     {
-        var today = TimeZoneInfo.ConvertTime(now, time.LocalTimeZone).Date;
         var found = new List<Candidate>();
-        for (var back = 0; back < DaysScanned; back++)
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var options = new EnumerationOptions
         {
-            var day = today.AddDays(-back);
-            var dir = Path.Combine(_sessionsDir, day.Year.ToString("0000", CultureInfo.InvariantCulture),
-                day.Month.ToString("00", CultureInfo.InvariantCulture), day.Day.ToString("00", CultureInfo.InvariantCulture));
-            try
+            RecurseSubdirectories = true,
+            MaxRecursionDepth = 3,
+            IgnoreInaccessible = true,
+            AttributesToSkip = FileAttributes.ReparsePoint,
+        };
+        try
+        {
+            foreach (var file in new DirectoryInfo(_sessionsDir).EnumerateFiles("rollout-*.jsonl", options))
             {
-                foreach (var file in new DirectoryInfo(dir).EnumerateFiles("rollout-*.jsonl"))
+                seen.Add(file.FullName);
+                if (file.Name.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)
+                    && _recency.Read(file) is { } writtenAt && now - writtenAt < MaxAge)
                 {
-                    var writtenAt = new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero);
-                    if (now - writtenAt < MaxAge && file.Name.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
-                    {
-                        found.Add(new Candidate(file, writtenAt));
-                    }
+                    found.Add(new Candidate(file, writtenAt));
                 }
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-                // Dossier du jour absent ou illisible : on passe au précédent.
-            }
         }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Dossier absent ou devenu illisible : garder les candidats déjà découverts.
+        }
+        _recency.ForgetExcept(seen);
 
         // Le quota porte sur les conversations, pas sur les sous-agents plus récents qui les masqueraient.
         return found.OrderByDescending(c => c.WrittenAt).ThenBy(c => c.File.FullName, StringComparer.Ordinal).Take(MaxCandidates).ToList();
