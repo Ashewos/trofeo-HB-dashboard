@@ -99,7 +99,7 @@ public sealed class ServiceControlHandler(
             if (_applied is { } applied && Equals(layout.Appearance, _appliedAppearance))
             {
                 // Même apparence : mêmes instances de thème et de fond, la boucle n'en change aucun.
-                config = new LoopConfig(layout, applied.Theme, applied.Background);
+                config = new LoopConfig(layout, applied.Theme, applied.Background) { BackgroundWarnings = applied.BackgroundWarnings };
             }
             else
             {
