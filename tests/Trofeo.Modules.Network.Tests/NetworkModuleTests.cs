@@ -758,6 +758,115 @@ public class NetworkModuleTests
         return -1;
     }
 
+    // --- Connexion en cours (avant la première mesure) ---
+
+    [Fact]
+    public async Task StateLabel_BeforeTheFirstReading_IsConnecting()
+    {
+        var pending = new TaskCompletionSource<SourceReading>();
+        var rig = Create(new FakeSource { OnRead = () => pending.Task });
+        Assert.Equal("connexion…", rig.Module.StateLabel); // créé, pas encore démarré
+
+        var start = rig.Module.StartAsync(CancellationToken.None); // la première lecture est en attente
+        Assert.Equal("connexion…", rig.Module.StateLabel);
+
+        pending.SetResult(Reading(1, 1));
+        await start;
+        Assert.Equal("en direct", rig.Module.StateLabel);
+    }
+
+    [Fact]
+    public async Task StateLabel_AfterAnOnlineFirstReading_IsLive()
+    {
+        var rig = Create();
+        await rig.Module.StartAsync(CancellationToken.None);
+
+        Assert.Equal("en direct", rig.Module.StateLabel);
+    }
+
+    [Fact]
+    public async Task StateLabel_AfterAnOfflineFirstReading_IsOffline()
+    {
+        var rig = Create(new FakeSource { OnRead = () => throw new InvalidOperationException("console introuvable") });
+        await rig.Module.StartAsync(CancellationToken.None);
+        Assert.Equal("hors ligne", rig.Module.StateLabel);
+
+        var reported = Create(new FakeSource
+        {
+            OnRead = () => Task.FromResult(new SourceReading(null, new ModuleStatus(ModuleHealth.Offline))),
+        });
+        await reported.Module.StartAsync(CancellationToken.None);
+        Assert.Equal("hors ligne", reported.Module.StateLabel);
+    }
+
+    [Fact]
+    public async Task StateLabel_AfterATimedOutFirstReading_IsOffline()
+    {
+        var rig = Create(new FakeSource { OnRead = () => new TaskCompletionSource<SourceReading>().Task });
+        var start = rig.Module.StartAsync(CancellationToken.None);
+        Assert.Equal("connexion…", rig.Module.StateLabel);
+
+        rig.Time.Advance(TimeSpan.FromSeconds(10));
+        await start;
+
+        Assert.Equal("hors ligne", rig.Module.StateLabel);
+    }
+
+    [Fact]
+    public async Task StateLabel_AfterTheFirstReading_NeverGoesBackToConnecting()
+    {
+        var rig = Create();
+        await rig.Module.StartAsync(CancellationToken.None);
+        rig.Source.OnRead = () => throw new InvalidOperationException("coupé");
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal("hors ligne", rig.Module.StateLabel);
+
+        rig.Source.OnRead = () => new TaskCompletionSource<SourceReading>().Task;
+        rig.Time.Advance(TimeSpan.FromSeconds(1)); // relecture en attente
+        Assert.Equal("hors ligne", rig.Module.StateLabel);
+    }
+
+    [Fact]
+    public async Task Render_TwoRows_Connecting_TitleIsMuted_WithoutValuesOrWarning()
+    {
+        var theme = Themes.Classique;
+        var rect = GridGeometry.ModuleRect(10, 0, 6, 2);
+        var inside = Inflate(rect, 30);
+        var titleRow = new SKRectI(inside.Left, inside.Top, inside.Right, inside.Top + 50);
+        using var rig = Create(new FakeSource { OnRead = () => new TaskCompletionSource<SourceReading>().Task });
+
+        using var bitmap = RenderOn(rig.Module, rect, new GridSize(6, 2), 1f, theme);
+
+        Assert.Equal(0, Count(bitmap, inside, c => c == theme.Warning)); // une connexion en cours n'est pas un avertissement
+        Assert.True(Count(bitmap, titleRow, c => c == theme.TextMuted) > 30);
+        var curveArea = new SKRectI(inside.Left, inside.Bottom - 62 - 18, inside.Right, inside.Bottom);
+        Assert.Equal(0, Count(bitmap, curveArea, c => c == theme.Accent)); // pas de courbe
+        // Les valeurs sont « — » sans unité, comme pour toute source sans échantillon.
+        using var empty = Create(new FakeSource { OnRead = () => Task.FromResult(new SourceReading(null, new ModuleStatus(ModuleHealth.Online))) });
+        await empty.Module.StartAsync(CancellationToken.None);
+        using var emptyBitmap = RenderOn(empty.Module, rect, new GridSize(6, 2), 1f, theme);
+        var valuesArea = new SKRectI(inside.Left, inside.Top + 50, inside.Right, inside.Bottom - 100);
+        for (var y = valuesArea.Top; y < valuesArea.Bottom; y++)
+            for (var x = valuesArea.Left; x < valuesArea.Right; x++)
+                Assert.Equal(emptyBitmap.GetPixel(x, y), bitmap.GetPixel(x, y));
+    }
+
+    [Fact]
+    public void Render_OneRow_Connecting_ShowsMutedText_InsteadOfValues()
+    {
+        var theme = Themes.Classique;
+        var rect = GridGeometry.ModuleRect(0, 3, 3, 1);
+        var inside = Inflate(rect, 30);
+        using var rig = Create(new FakeSource { OnRead = () => new TaskCompletionSource<SourceReading>().Task });
+
+        using var bitmap = RenderOn(rig.Module, rect, new GridSize(3, 1), 1f, theme);
+
+        Assert.True(Count(bitmap, inside, c => c == theme.TextMuted) > 50);
+        Assert.Equal(0, Count(bitmap, inside, c => c == theme.Warning));
+        Assert.Equal(0, Count(bitmap, inside, c => c == theme.Text));
+        Assert.Equal(0, Count(bitmap, inside, c => c == theme.Accent));
+    }
+
     [Fact]
     public void Render_BeforeStart_AndAfterDispose_DoesNotThrow()
     {
