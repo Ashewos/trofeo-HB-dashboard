@@ -15,6 +15,14 @@ public sealed record LoopConfig(DashboardLayout Layout, ThemeDefinition Theme, I
     /// Un rechargement qui garde ce fond les redonne, pour que la fenêtre de réglage les montre encore.
     /// </summary>
     public IReadOnlyList<string> BackgroundWarnings { get; init; } = [];
+
+    /// <summary>
+    /// Le fond est celui du thème : son fond par défaut (réglage « thème ») ou son repli d'un choix qui n'a pas pu se charger
+    /// (même quand l'hôte vidéo a averti seul, sans passer par <see cref="BackgroundWarnings"/>). Un tel fond dépend du thème et
+    /// se refait quand celui-ci change. <c>false</c> : un choix explicite chargé tel quel, indépendant du thème. Par prudence,
+    /// une configuration qui ne le dit pas est tenue pour un fond du thème.
+    /// </summary>
+    public bool BackgroundIsThemeFallback { get; init; } = true;
 }
 
 /// <summary>Un module en place : son état et ses remarques du moment.</summary>

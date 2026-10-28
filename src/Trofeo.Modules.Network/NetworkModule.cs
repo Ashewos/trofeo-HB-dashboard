@@ -34,6 +34,8 @@ public sealed class NetworkModule : IModule
     private const float UpStroke = 1.5f;
 
     private const string NoValue = "—";
+    private const string ConnectingText = "connexion…";
+    private const float ConnectingSize = 24f;
 
     /// <summary>Durée minimale accordée à une lecture ; au-delà elle vaut trois fois l'intervalle de la source.</summary>
     private static readonly TimeSpan MinReadTimeout = TimeSpan.FromSeconds(10);
@@ -50,6 +52,10 @@ public sealed class NetworkModule : IModule
     private int _reading;
     private ModuleStatus _status = new(ModuleHealth.Online);
     private ThroughputSample? _latest;
+
+    // Vrai tant que la source n'a rien rendu (ni mesure, ni échec, ni délai) : le titre dit « connexion… » au lieu de
+    // « en direct ». Posé à la création ; une source qui change recrée le module, donc repart d'ici. Écrit sous _gate.
+    private bool _connecting = true;
 
     public NetworkModule(ModuleDescriptor descriptor, IThroughputSource source, TimeProvider time, IModuleLog log)
     {
@@ -68,6 +74,9 @@ public sealed class NetworkModule : IModule
 
     /// <summary>Dernier échantillon affiché, ou <c>null</c> (rien lu, ou dernière lecture ratée).</summary>
     internal ThroughputSample? LatestSample => Volatile.Read(ref _latest);
+
+    /// <summary>Mot d'état affiché dans le titre (et en une rangée).</summary>
+    internal string StateLabel => StateText(Status, Volatile.Read(ref _connecting));
 
     /// <summary>Copie de l'historique des trois dernières minutes.</summary>
     internal IReadOnlyList<(DateTimeOffset At, ThroughputSample Sample)> HistorySnapshot() => _history.Snapshot();
@@ -233,6 +242,7 @@ public sealed class NetworkModule : IModule
             if (_disposed) return;
             if (sample is not null) _history.Add(_time.GetUtcNow(), sample);
             Volatile.Write(ref _latest, sample);
+            Volatile.Write(ref _connecting, false); // la première lecture a abouti, bien ou mal
 
             changed = !Equals(_status, status);
             if (changed) Volatile.Write(ref _status, status);
@@ -250,6 +260,7 @@ public sealed class NetworkModule : IModule
         if (bounds.Width <= 0f || bounds.Height <= 0f) return;
 
         var status = Status;
+        var connecting = Volatile.Read(ref _connecting);
         var sample = Volatile.Read(ref _latest);
         var scale = ctx.TextScale;
         var theme = ctx.Theme;
@@ -260,10 +271,12 @@ public sealed class NetworkModule : IModule
         {
             if (ctx.Size.Rows < 2)
             {
-                // En une rangée, ni titre ni courbe : le message d'action, l'état s'il n'est pas en direct, ou les valeurs.
+                // En une rangée, ni titre ni courbe : le message d'action, « connexion… » (en sourdine : ce n'est pas un
+                // avertissement), l'état s'il n'est pas en direct, ou les valeurs.
                 var area = SKRect.Inflate(bounds, -Padding * scale, -CompactPaddingY * scale);
-                if (status.ActionMessage is { } message) ModuleDrawing.DrawActionMessage(canvas, area, theme, scale, message);
-                else if (status.Health != ModuleHealth.Online) ModuleDrawing.DrawActionMessage(canvas, area, theme, scale, StateText(status));
+                if (connecting) DrawConnecting(canvas, area, theme, scale);
+                else if (status.ActionMessage is { } message) ModuleDrawing.DrawActionMessage(canvas, area, theme, scale, message);
+                else if (status.Health != ModuleHealth.Online) ModuleDrawing.DrawActionMessage(canvas, area, theme, scale, StateText(status, false));
                 else DrawValues(canvas, area, sample, theme, scale);
                 return;
             }
@@ -272,7 +285,7 @@ public sealed class NetworkModule : IModule
             if (content.Width <= 0f || content.Height <= 0f) return;
 
             var titleHeight = TitleSize * scale;
-            DrawTitle(canvas, content, titleHeight, status, theme, scale);
+            DrawTitle(canvas, content, titleHeight, status, connecting, theme, scale);
 
             var body = new SKRect(content.Left, content.Top + titleHeight + SectionGap * scale, content.Right, content.Bottom);
             if (body.Height <= 0f) return;
@@ -301,22 +314,31 @@ public sealed class NetworkModule : IModule
         }
     }
 
-    private static string StateText(ModuleStatus status) => status.Health switch
+    private static string StateText(ModuleStatus status, bool connecting) => connecting ? ConnectingText : status.Health switch
     {
         ModuleHealth.Online => "en direct",
         ModuleHealth.NotConfigured => "à configurer",
         _ => "hors ligne",
     };
 
-    private void DrawTitle(SKCanvas canvas, SKRect content, float height, ModuleStatus status, Theme theme, float scale)
+    /// <summary>« connexion… » centré, en sourdine, à la taille d'un message d'action.</summary>
+    private static void DrawConnecting(SKCanvas canvas, SKRect area, Theme theme, float scale)
     {
-        var online = status.Health == ModuleHealth.Online;
+        if (area.Width <= 0f || area.Height <= 0f) return;
+        using var font = ModuleDrawing.Font(theme, ConnectingSize * scale, subpixel: true);
+        using var paint = new SKPaint { Color = theme.TextMuted, IsAntialias = true };
+        DrawCentered(canvas, ConnectingText, area.MidX, area.MidY, SKTextAlign.Center, font, paint, area.Width);
+    }
+
+    private void DrawTitle(SKCanvas canvas, SKRect content, float height, ModuleStatus status, bool connecting, Theme theme, float scale)
+    {
+        var online = connecting || status.Health == ModuleHealth.Online;
         using var font = ModuleDrawing.Font(theme, height);
         using var mutedPaint = new SKPaint { Color = theme.TextMuted, IsAntialias = true };
         using var statePaint = new SKPaint { Color = online ? theme.TextMuted : theme.Warning, IsAntialias = true };
         var mid = content.Top + height / 2f;
 
-        var state = StateText(status);
+        var state = StateText(status, connecting);
         var stateWidth = Math.Min(ModuleDrawing.MeasureText(state, font), content.Width);
         DrawCentered(canvas, state, content.Right, mid, SKTextAlign.Right, font, statePaint, stateWidth);
 

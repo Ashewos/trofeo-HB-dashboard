@@ -15,6 +15,7 @@ using static Trofeo.Display.Tests.LoopRig;
 
 namespace Trofeo.Display.Tests;
 
+[Collection(GlobalTraceCollection.Name)]
 public sealed class ServiceControlHandlerTests
 {
     private static readonly Guid Conf1 = new("cccccccc-0000-0000-0000-000000000001");
@@ -289,6 +290,27 @@ public sealed class ServiceControlHandlerTests
         Assert.Equal(2, built.Count);
         Assert.True(built[0].Disposed);   // la boucle a libéré l'ancien fond
         Assert.False(built[1].Disposed);
+    }
+
+    [Fact]
+    public async Task Reload_SameAppearance_KeepsBackgroundWarningsForTheNextReload()
+    {
+        using var rig = new Rig();
+        var missing = Path.Combine(Path.GetTempPath(), "trofeo-absent", "fond.png");
+        var background = new BackgroundSettings(BackgroundKind.Image, Path: missing);
+        rig.Store.Save(Layout(Place(A, "fake")) with { Appearance = new AppearanceSettings(Background: background) });
+        var first = await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        rig.Store.Save(Layout(Place(A, "fake", column: 6)) with { Appearance = new AppearanceSettings(Background: background) }); // un module déplacé
+        await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+        rig.Store.Save(Layout(Place(A, "fake", column: 6)) with
+        {
+            Appearance = new AppearanceSettings(PanelOpacity: 0.5f, Background: background), // seule l'opacité change
+        });
+        var third = await rig.Pump(rig.Handler.ReloadAsync(CancellationToken.None));
+
+        Assert.Contains(first.Warnings, w => w.Contains("fond.png"));
+        Assert.Contains(third.Warnings, w => w.Contains("fond.png")); // le fond de repli est toujours à l'écran : il reste signalé
     }
 
     [Fact]

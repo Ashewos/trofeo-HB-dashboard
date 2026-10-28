@@ -9,6 +9,7 @@ using Trofeo.TestDoubles;
 
 namespace Trofeo.Display.Tests;
 
+[Collection(GlobalTraceCollection.Name)]
 public sealed class DisplayLoopTests
 {
     private static readonly Guid InstanceId = new("11111111-1111-1111-1111-111111111111");
