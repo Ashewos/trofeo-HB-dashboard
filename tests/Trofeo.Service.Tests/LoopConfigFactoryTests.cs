@@ -118,6 +118,43 @@ public sealed class LoopConfigFactoryTests
     }
 
     [Fact]
+    public void Build_ChosenVideoAndThemeChanged_KeepsTheCurrentBackground()
+    {
+        var opened = 0;
+        Func<string, IBackground?> video = _ => { opened++; return new TrackedBackground(SKColors.Red); };
+        var backgroundSettings = new BackgroundSettings(BackgroundKind.Video, Path: "clip.mp4");
+        var current = LoopConfigFactory.Build(
+            With(new AppearanceSettings("classique", Background: backgroundSettings)), new NoSystemFonts(), video, _ => { });
+
+        var next = LoopConfigFactory.Build(
+            With(new AppearanceSettings("pixel", Background: backgroundSettings)), new NoSystemFonts(), video, _ => { }, current);
+
+        Assert.NotEqual(current.Theme.DefaultBackground, next.Theme.DefaultBackground);
+        Assert.Equal("pixel", next.Theme.Theme.Id);
+        Assert.Same(current.Background, next.Background); // la vidéo choisie ne repart pas de zéro
+        Assert.Equal(1, opened);
+        current.Background.Dispose();
+    }
+
+    [Fact]
+    public void Build_ChosenBackgroundThatFellBackAndThemeChanged_RebuildsTheBackground()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), "trofeo-absent", "fond.png");
+        var backgroundSettings = new BackgroundSettings(BackgroundKind.Image, Path: missing);
+        var current = LoopConfigFactory.Build(
+            With(new AppearanceSettings("classique", Background: backgroundSettings)), new NoSystemFonts(), null, _ => { });
+
+        var next = LoopConfigFactory.Build(
+            With(new AppearanceSettings("pixel", Background: backgroundSettings)), new NoSystemFonts(), null, _ => { }, current);
+
+        Assert.NotEmpty(current.BackgroundWarnings); // le fond d'avant est le repli de l'ancien thème
+        Assert.NotSame(current.Background, next.Background);
+        Assert.NotEmpty(next.BackgroundWarnings);
+        current.Background.Dispose();
+        next.Background.Dispose();
+    }
+
+    [Fact]
     public void Build_BackgroundSettingsChanged_RebuildsTheBackground()
     {
         var current = LoopConfigFactory.Build(
