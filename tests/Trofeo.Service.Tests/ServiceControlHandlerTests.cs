@@ -15,6 +15,7 @@ using static Trofeo.Display.Tests.LoopRig;
 
 namespace Trofeo.Display.Tests;
 
+[Collection(GlobalTraceCollection.Name)]
 public sealed class ServiceControlHandlerTests
 {
     private static readonly Guid Conf1 = new("cccccccc-0000-0000-0000-000000000001");
