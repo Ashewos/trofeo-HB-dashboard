@@ -35,6 +35,9 @@ internal static class Program
         }
     }
 
+    // Rendu logiciel : avec la carte graphique (Direct3D par ANGLE), le pilote réserve environ 150 Mo dans le processus
+    // (189 à 215 Mo de mémoire propre contre 48 à 52 Mo, mesurés sur le PC d'Alex), pour 0,05 point de processeur gagné.
     public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<App>().UsePlatformDetect();
+        AppBuilder.Configure<App>().UsePlatformDetect()
+            .With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] });
 }
