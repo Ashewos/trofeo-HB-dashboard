@@ -15,8 +15,8 @@ public static class LoopConfigFactory
     /// Ce que la boucle applique en ce moment, s'il y en a un. Son fond est gardé (même instance, la vidéo n'est pas rouverte)
     /// quand le fond demandé n'a pas changé et que : soit le fond par défaut du thème résolu est resté le même (l'opacité, la
     /// police, la garde de lisibilité ou un autre thème de même fond par défaut ne le touchent pas), soit le fond est un choix
-    /// explicite (couleur, image, GIF, vidéo) qui s'est chargé sans repli, donc sans dépendre du thème : changer de thème ne
-    /// redémarre plus une vidéo choisie. Un fond de repli (le fond du thème, ou un choix qui a échoué) est reconstruit quand le
+    /// explicite (couleur, image, GIF, vidéo) qui s'est chargé sans repli (<see cref="LoopConfig.BackgroundIsThemeFallback"/>), donc sans dépendre du thème : changer de thème ne
+    /// redémarre plus une vidéo choisie. Un fond de repli (le fond du thème, ou un choix qui a échoué, même quand l'hôte vidéo a averti seul) est reconstruit quand le
     /// fond par défaut du thème change. Les avertissements du fond gardé sont redonnés à <paramref name="warn"/>.
     /// </param>
     public static LoopConfig Build(
@@ -25,24 +25,38 @@ public static class LoopConfigFactory
         var appearance = layout.Appearance ?? AppearanceSettings.Default;
         var theme = AppearanceResolver.Resolve(appearance, fonts, warn);
 
-        // Un choix explicite chargé sans repli ne dépend pas du thème ; sinon c'est le fond du thème (ou son repli) qu'il faut refaire.
-        var chosenWithoutFallback = appearance.Background is { Kind: not BackgroundKind.Theme }
-            && current?.BackgroundWarnings.Count == 0;
-
+        // Un fond du thème (par défaut, ou repli d'un choix raté) dépend du thème ; un choix explicite chargé tel quel, non.
         if (current is not null
             && Equals(current.Layout.Appearance?.Background, appearance.Background)
-            && (chosenWithoutFallback || Equals(current.Theme.DefaultBackground, theme.DefaultBackground)))
+            && (!current.BackgroundIsThemeFallback || Equals(current.Theme.DefaultBackground, theme.DefaultBackground)))
         {
             foreach (var message in current.BackgroundWarnings) warn(message);
-            return new LoopConfig(layout, theme, current.Background) { BackgroundWarnings = current.BackgroundWarnings };
+            return new LoopConfig(layout, theme, current.Background)
+            {
+                BackgroundWarnings = current.BackgroundWarnings,
+                BackgroundIsThemeFallback = current.BackgroundIsThemeFallback,
+            };
         }
 
         var backgroundWarnings = new List<string>();
-        var background = BackgroundFactory.Create(appearance.Background, theme, video, message =>
+        var openerFailed = false; // l'hôte vidéo qui rend null a averti lui-même : la fabrique n'ajoute rien
+        Func<string, IBackground?>? trackedVideo = video is null ? null : path =>
+        {
+            var opened = video(path);
+            if (opened is null) openerFailed = true;
+            return opened;
+        };
+        var background = BackgroundFactory.Create(appearance.Background, theme, trackedVideo, message =>
         {
             backgroundWarnings.Add(message);
             warn(message);
         });
-        return new LoopConfig(layout, theme, background) { BackgroundWarnings = backgroundWarnings };
+        var isThemeFallback = appearance.Background is not { Kind: not BackgroundKind.Theme }
+            || backgroundWarnings.Count > 0 || openerFailed;
+        return new LoopConfig(layout, theme, background)
+        {
+            BackgroundWarnings = backgroundWarnings,
+            BackgroundIsThemeFallback = isThemeFallback,
+        };
     }
 }

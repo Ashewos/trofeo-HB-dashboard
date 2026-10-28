@@ -132,6 +132,7 @@ public sealed class LoopConfigFactoryTests
         Assert.NotEqual(current.Theme.DefaultBackground, next.Theme.DefaultBackground);
         Assert.Equal("pixel", next.Theme.Theme.Id);
         Assert.Same(current.Background, next.Background); // la vidéo choisie ne repart pas de zéro
+        Assert.False(next.BackgroundIsThemeFallback);
         Assert.Equal(1, opened);
         current.Background.Dispose();
     }
@@ -150,6 +151,27 @@ public sealed class LoopConfigFactoryTests
         Assert.NotEmpty(current.BackgroundWarnings); // le fond d'avant est le repli de l'ancien thème
         Assert.NotSame(current.Background, next.Background);
         Assert.NotEmpty(next.BackgroundWarnings);
+        current.Background.Dispose();
+        next.Background.Dispose();
+    }
+
+    [Fact]
+    public void Build_ChosenVideoThatTheOpenerRefusedAndThemeChanged_RebuildsTheBackground()
+    {
+        // L'hôte vidéo averti seul et rend null : la fabrique n'ajoute aucun avertissement, mais le fond est le repli du thème.
+        var warnings = new List<string>();
+        Func<string, IBackground?> refusing = _ => null;
+        var backgroundSettings = new BackgroundSettings(BackgroundKind.Video, Path: "clip.mp4");
+        var current = LoopConfigFactory.Build(
+            With(new AppearanceSettings("classique", Background: backgroundSettings)), new NoSystemFonts(), refusing, warnings.Add);
+
+        var next = LoopConfigFactory.Build(
+            With(new AppearanceSettings("liquid-glass", Background: backgroundSettings)), new NoSystemFonts(), refusing, warnings.Add, current);
+
+        Assert.Empty(current.BackgroundWarnings);
+        Assert.True(current.BackgroundIsThemeFallback);
+        Assert.NotEqual(current.Theme.DefaultBackground, next.Theme.DefaultBackground);
+        Assert.NotSame(current.Background, next.Background); // le repli de l'ancien thème n'est pas gardé
         current.Background.Dispose();
         next.Background.Dispose();
     }
