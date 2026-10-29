@@ -61,7 +61,8 @@ public sealed class CodexDiscoveryTests : IDisposable
         File.AppendAllText(path, CodexTestLines.Event("task_started", Now.AddHours(3)) + "\n");
         File.SetLastWriteTimeUtc(path, stale.UtcDateTime);
 
-        var summary = Assert.Single(source.Poll(null, Now.AddHours(3)).Sessions);
+        // La conversation est sortie de la liste : elle revient au parcours complet suivant, une minute plus tard.
+        var summary = Assert.Single(source.Poll(null, Now.AddHours(3).AddMinutes(1)).Sessions);
         Assert.Equal("growing", summary.Id);
         Assert.Equal(AgentActivity.Working, summary.Activity);
     }
@@ -154,5 +155,70 @@ public sealed class CodexDiscoveryTests : IDisposable
         File.SetLastWriteTimeUtc(path, stale.UtcDateTime);
 
         Assert.Empty(source.Poll(null, Now).Sessions);
+    }
+
+    [Fact]
+    public void Source_ResumedConversation_AlreadyFound_IsUpdatedAtNextPoll()
+    {
+        var stale = Now.AddDays(-1);
+        var path = Rollout("resumed", 45, stale, CodexTestLines.Event("task_complete", Now.AddMinutes(-1)));
+        using var source = new CodexSource(_home, _time);
+        Assert.NotEqual(AgentActivity.Working, Assert.Single(source.Poll(null, Now).Sessions).Activity);
+
+        File.AppendAllText(path, CodexTestLines.Event("task_started", Now.AddSeconds(1)) + "\n");
+        File.SetLastWriteTimeUtc(path, stale.UtcDateTime);
+
+        // Le relevé suivant (1 s plus tard) suffit : la conversation reprise est surveillée sans attendre le relevé profond.
+        Assert.Equal(AgentActivity.Working, Assert.Single(source.Poll(null, Now.AddSeconds(1)).Sessions).Activity);
+    }
+
+    [Fact]
+    public void Source_ResumedConversation_AppearingBetweenDeepScans_IsSeenAtNextDeepScan()
+    {
+        using var source = new CodexSource(_home, _time);
+        Assert.Empty(source.Poll(null, Now).Sessions);
+
+        Rollout("late", 45, Now.AddSeconds(10), CodexTestLines.Event("task_started", Now.AddSeconds(10)));
+
+        Assert.Empty(source.Poll(null, Now.AddSeconds(30)).Sessions);
+        Assert.Empty(source.Poll(null, Now.AddSeconds(59)).Sessions);
+        Assert.Equal("late", Assert.Single(source.Poll(null, Now.AddSeconds(60)).Sessions).Id);
+    }
+
+    [Fact]
+    public void Source_ConversationInRecentFolders_AppearingBetweenDeepScans_IsSeenAtNextPoll()
+    {
+        using var source = new CodexSource(_home, _time);
+        Assert.Empty(source.Poll(null, Now).Sessions);
+
+        Rollout("fresh", 0, Now.AddSeconds(1), CodexTestLines.Event("task_started", Now.AddSeconds(1)));
+
+        Assert.Equal("fresh", Assert.Single(source.Poll(null, Now.AddSeconds(1)).Sessions).Id);
+    }
+
+    [Fact]
+    public void Source_FastPoll_DoesNotOpenOldInactiveFiles()
+    {
+        var path = Rollout("dormant", 45, Now.AddDays(-1), CodexTestLines.Event("task_complete", Now.AddHours(-3)));
+        using var source = new CodexSource(_home, _time);
+        Assert.Empty(source.Poll(null, Now).Sessions);
+
+        // Si le relevé rapide relisait les vieux dossiers, il verrait ce fichier devenu actif dès le relevé suivant.
+        File.Delete(path);
+        Rollout("dormant", 45, Now.AddSeconds(5), CodexTestLines.Event("task_started", Now.AddSeconds(5)));
+
+        Assert.Empty(source.Poll(null, Now.AddSeconds(10)).Sessions);
+        Assert.Equal("dormant", Assert.Single(source.Poll(null, Now.AddSeconds(60)).Sessions).Id);
+    }
+
+    [Fact]
+    public void Source_ClockMovedBack_TriggersADeepScan()
+    {
+        using var source = new CodexSource(_home, _time);
+        Assert.Empty(source.Poll(null, Now).Sessions);
+
+        Rollout("early", 45, Now.AddMinutes(-1), CodexTestLines.Event("task_started", Now.AddMinutes(-1)));
+
+        Assert.Equal("early", Assert.Single(source.Poll(null, Now.AddSeconds(-30)).Sessions).Id);
     }
 }

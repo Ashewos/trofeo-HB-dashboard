@@ -1,35 +1,52 @@
+using System.Globalization;
 using System.Text;
 
 namespace Trofeo.Modules.Agents;
 
 /// <summary>
-/// Source Codex : les transcriptions <c>sessions/AAAA/MM/JJ/rollout-*.jsonl</c> actives depuis moins de 2 h,
-/// quelle que soit leur date de création (les 12 plus récentes), lues par la fin puis seulement les octets ajoutés. Ne contacte rien en ligne
+/// Source Codex : les transcriptions <c>sessions/AAAA/MM/JJ/rollout-*.jsonl</c> actives depuis moins de 2 h
+/// (les 12 plus récentes), lues par la fin puis seulement les octets ajoutés. Ne contacte rien en ligne
 /// et l'index local facultatif des titres. Exclut les sous-agents internes. Appelée depuis un seul thread à la fois.
+/// La recherche se fait à deux cadences : à chaque relevé, les dossiers des 3 derniers jours et les conversations déjà
+/// connues ; tous les dossiers de dates seulement au premier relevé, puis au plus une fois par minute. Une ancienne
+/// conversation reprise est donc retrouvée en moins d'une minute, puis suivie à chaque relevé tant qu'elle reste active.
 /// </summary>
-public sealed class CodexSource : IAgentSource
+/// <param name="codexHome">Le dossier de configuration de Codex (voir <see cref="CodexHome.Resolve"/>).</param>
+/// <param name="time">Donne le fuseau local, qui nomme les dossiers de jour.</param>
+public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSource
 {
     private const int MaxFiles = 12;
     private const int MaxCandidates = 128;
+    private const int DaysScanned = 3;
     private const int HeadBytes = 64 * 1024;
     private static readonly TimeSpan MaxAge = TimeSpan.FromHours(2);
+    // Délai minimal entre deux parcours de tous les dossiers de dates (retrouver une ancienne conversation reprise).
+    private static readonly TimeSpan DeepScanInterval = TimeSpan.FromSeconds(60);
 
-    private readonly string _codexHome;
-    private readonly string _sessionsDir;
-    private readonly CodexTitles _titles;
+    // Les liens de répertoire ne sont pas suivis, ni dans le parcours complet ni dans un dossier de jour.
+    private static readonly EnumerationOptions DeepOptions = new()
+    {
+        RecurseSubdirectories = true,
+        MaxRecursionDepth = 3,
+        IgnoreInaccessible = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+    };
+
+    private static readonly EnumerationOptions DayOptions = new()
+    {
+        IgnoreInaccessible = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+    };
+
+    private readonly string _sessionsDir = Path.Combine(codexHome, "sessions");
+    private readonly CodexTitles _titles = new(codexHome);
     private readonly CodexSessionRecency _recency = new();
+    // Les conversations actives trouvées par le dernier parcours complet : surveillées à chaque relevé, où qu'elles soient rangées.
+    private readonly HashSet<string> _resumed = new(StringComparer.Ordinal);
+    private DateTimeOffset? _lastDeepScan;
     // ProjectNames remonte l'arborescence sur le disque : un seul calcul par dossier de travail.
     private readonly Dictionary<string, string> _projectNames = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FileState> _files = new(StringComparer.Ordinal);
-
-    /// <param name="codexHome">Le dossier de configuration de Codex.</param>
-    /// <param name="time">Conservé pour la compatibilité ; les dossiers ne sont plus filtrés par leur date.</param>
-    public CodexSource(string codexHome, TimeProvider time)
-    {
-        _codexHome = codexHome;
-        _sessionsDir = Path.Combine(codexHome, "sessions");
-        _titles = new CodexTitles(codexHome);
-    }
 
     private sealed class FileState(string path)
     {
@@ -49,7 +66,7 @@ public sealed class CodexSource : IAgentSource
     /// <inheritdoc />
     public AgentSnapshot Poll(string? selectedSessionId, DateTimeOffset now)
     {
-        if (!Directory.Exists(_codexHome))
+        if (!Directory.Exists(codexHome))
         {
             return new AgentSnapshot(false, [], null, null);
         }
@@ -120,33 +137,53 @@ public sealed class CodexSource : IAgentSource
         _projectNames.Clear();
         _files.Clear();
         _recency.Clear();
+        _resumed.Clear();
+        _lastDeepScan = null;
     }
 
     /// <summary>
-    /// Cherche les conversations reprises dans tous les dossiers de dates, sans suivre les liens de répertoire.
-    /// La fraîcheur combine date Windows et horodatages JSONL ; le contenu relu est borné et mis en cache.
-    /// Retient 128 candidats au plus pour garder 12 conversations après exclusion des sous-agents.
+    /// Les transcriptions à suivre : celles actives depuis moins de 2 h (date Windows ou horodatages JSONL), par date
+    /// décroissante (128 candidats au plus, pour retenir 12 conversations après exclusion des sous-agents). À chaque
+    /// relevé : les dossiers des 3 derniers jours (date locale), les conversations déjà suivies et les conversations
+    /// reprises que le dernier parcours complet a trouvées. Au premier relevé, puis dès qu'une minute au moins s'est
+    /// écoulée (ou que l'horloge a reculé), tous les dossiers de dates sont parcourus : une ancienne conversation
+    /// reprise est retrouvée au plus tard à ce parcours. Le contenu relu pour juger la fraîcheur est borné et mis en cache.
     /// </summary>
     private List<Candidate> Candidates(DateTimeOffset now)
     {
         var found = new List<Candidate>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var options = new EnumerationOptions
+        if (_lastDeepScan is not { } last || now < last || now - last >= DeepScanInterval)
         {
-            RecurseSubdirectories = true,
-            MaxRecursionDepth = 3,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.ReparsePoint,
-        };
+            ScanAll(now, found);
+        }
+        else
+        {
+            ScanRecent(now, found);
+        }
+
+        // Le quota porte sur les conversations, pas sur les sous-agents plus récents qui les masqueraient.
+        return found.OrderByDescending(c => c.WrittenAt).ThenBy(c => c.File.FullName, StringComparer.Ordinal).Take(MaxCandidates).ToList();
+    }
+
+    /// <summary>
+    /// Parcours complet : tous les dossiers de dates. Retient les transcriptions actives comme conversations reprises
+    /// (surveillées ensuite à chaque relevé) et ne garde en cache que les fichiers vus. Le cache n'est purgé qu'ici :
+    /// un relevé rapide ne voit pas les vieux fichiers, il ne doit pas les faire relire au parcours suivant.
+    /// </summary>
+    private void ScanAll(DateTimeOffset now, List<Candidate> found)
+    {
+        _lastDeepScan = now;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        _resumed.Clear();
         try
         {
-            foreach (var file in new DirectoryInfo(_sessionsDir).EnumerateFiles("rollout-*.jsonl", options))
+            foreach (var file in new DirectoryInfo(_sessionsDir).EnumerateFiles("rollout-*.jsonl", DeepOptions))
             {
                 seen.Add(file.FullName);
-                if (file.Name.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)
-                    && _recency.Read(file) is { } writtenAt && now - writtenAt < MaxAge)
+                if (Consider(file, now) is { } candidate)
                 {
-                    found.Add(new Candidate(file, writtenAt));
+                    found.Add(candidate);
+                    _resumed.Add(file.FullName);
                 }
             }
         }
@@ -155,10 +192,52 @@ public sealed class CodexSource : IAgentSource
             // Dossier absent ou devenu illisible : garder les candidats déjà découverts.
         }
         _recency.ForgetExcept(seen);
-
-        // Le quota porte sur les conversations, pas sur les sous-agents plus récents qui les masqueraient.
-        return found.OrderByDescending(c => c.WrittenAt).ThenBy(c => c.File.FullName, StringComparer.Ordinal).Take(MaxCandidates).ToList();
     }
+
+    /// <summary>
+    /// Relevé rapide : les dossiers des 3 derniers jours (date locale), plus les conversations reprises et celles déjà
+    /// suivies. Les autres dossiers ne sont pas ouverts avant le prochain parcours complet.
+    /// </summary>
+    private void ScanRecent(DateTimeOffset now, List<Candidate> found)
+    {
+        var today = TimeZoneInfo.ConvertTime(now, time.LocalTimeZone).Date;
+        var listed = new HashSet<string>(StringComparer.Ordinal);
+        for (var back = 0; back < DaysScanned; back++)
+        {
+            var day = today.AddDays(-back);
+            var dir = Path.Combine(_sessionsDir, day.Year.ToString("0000", CultureInfo.InvariantCulture),
+                day.Month.ToString("00", CultureInfo.InvariantCulture), day.Day.ToString("00", CultureInfo.InvariantCulture));
+            try
+            {
+                foreach (var file in new DirectoryInfo(dir).EnumerateFiles("rollout-*.jsonl", DayOptions))
+                {
+                    if (listed.Add(file.FullName) && Consider(file, now) is { } candidate)
+                    {
+                        found.Add(candidate);
+                    }
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Dossier du jour absent ou illisible : on passe au précédent.
+            }
+        }
+
+        foreach (var path in _resumed.Concat(_files.Keys))
+        {
+            if (listed.Add(path) && Consider(new FileInfo(path), now) is { } candidate)
+            {
+                found.Add(candidate);
+            }
+        }
+    }
+
+    /// <summary>La transcription si elle est active depuis moins de 2 h (date Windows ou horodatages JSONL), sinon <c>null</c>.</summary>
+    private Candidate? Consider(FileInfo file, DateTimeOffset now) =>
+        file.Name.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)
+        && _recency.Read(file) is { } writtenAt && now - writtenAt < MaxAge
+            ? new Candidate(file, writtenAt)
+            : null;
 
     /// <summary>
     /// Applique les lignes nouvelles de la transcription. Après un redémarrage de la lecture, l'état est remis à zéro et
