@@ -140,7 +140,8 @@ public sealed class CodexDiscoveryTests : IDisposable
         File.AppendAllText(path, "\n");
         File.SetLastWriteTimeUtc(path, stale.UtcDateTime);
 
-        Assert.Equal("partial", Assert.Single(source.Poll(null, Now).Sessions).Id);
+        // Fichier non suivi dont la date Windows est ancienne : il revient au parcours complet suivant.
+        Assert.Equal("partial", Assert.Single(source.Poll(null, Now.AddMinutes(1)).Sessions).Id);
     }
 
     [Fact]
@@ -220,5 +221,20 @@ public sealed class CodexDiscoveryTests : IDisposable
         Rollout("early", 45, Now.AddMinutes(-1), CodexTestLines.Event("task_started", Now.AddMinutes(-1)));
 
         Assert.Equal("early", Assert.Single(source.Poll(null, Now.AddSeconds(-30)).Sessions).Id);
+    }
+
+    [Fact]
+    public void Source_FastPoll_FiltersUntrackedRecentFolderFilesByWindowsWriteTime()
+    {
+        using var source = new CodexSource(_home, _time);
+        Assert.Empty(source.Poll(null, Now).Sessions);
+
+        // Dossier des 3 derniers jours, fichier non suivi : date Windows ancienne mais événement récent.
+        Rollout("stale-date", 1, Now.AddDays(-1), CodexTestLines.Event("task_started", Now.AddSeconds(5)));
+
+        // Le relevé rapide ne rouvre pas les fichiers non suivis dont la date est ancienne...
+        Assert.Empty(source.Poll(null, Now.AddSeconds(10)).Sessions);
+        // ... le parcours complet suivant les retrouve.
+        Assert.Equal("stale-date", Assert.Single(source.Poll(null, Now.AddSeconds(60)).Sessions).Id);
     }
 }

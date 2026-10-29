@@ -7,9 +7,11 @@ namespace Trofeo.Modules.Agents;
 /// Source Codex : les transcriptions <c>sessions/AAAA/MM/JJ/rollout-*.jsonl</c> actives depuis moins de 2 h
 /// (les 12 plus récentes), lues par la fin puis seulement les octets ajoutés. Ne contacte rien en ligne
 /// et l'index local facultatif des titres. Exclut les sous-agents internes. Appelée depuis un seul thread à la fois.
-/// La recherche se fait à deux cadences : à chaque relevé, les dossiers des 3 derniers jours et les conversations déjà
-/// connues ; tous les dossiers de dates seulement au premier relevé, puis au plus une fois par minute. Une ancienne
-/// conversation reprise est donc retrouvée en moins d'une minute, puis suivie à chaque relevé tant qu'elle reste active.
+/// La recherche se fait à deux cadences : à chaque relevé, les dossiers des 3 derniers jours (où seuls les fichiers
+/// récemment modifiés, selon la date de l'énumération, sont ouverts) et les conversations déjà connues ; tous les
+/// dossiers de dates, chaque fichier étant alors ouvert, seulement au premier relevé puis au plus une fois par minute.
+/// Une ancienne conversation reprise, ou un fichier récent dont Windows garde une date périmée, est donc retrouvé dans
+/// la minute environ, puis suivi à chaque relevé tant qu'il reste actif.
 /// </summary>
 /// <param name="codexHome">Le dossier de configuration de Codex (voir <see cref="CodexHome.Resolve"/>).</param>
 /// <param name="time">Donne le fuseau local, qui nomme les dossiers de jour.</param>
@@ -146,8 +148,9 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
     /// décroissante (128 candidats au plus, pour retenir 12 conversations après exclusion des sous-agents). À chaque
     /// relevé : les dossiers des 3 derniers jours (date locale), les conversations déjà suivies et les conversations
     /// reprises que le dernier parcours complet a trouvées. Au premier relevé, puis dès qu'une minute au moins s'est
-    /// écoulée (ou que l'horloge a reculé), tous les dossiers de dates sont parcourus : une ancienne conversation
-    /// reprise est retrouvée au plus tard à ce parcours. Le contenu relu pour juger la fraîcheur est borné et mis en cache.
+    /// écoulée (ou que l'horloge a reculé), tous les dossiers de dates sont parcourus, chaque fichier étant jugé sur sa
+    /// fraîcheur réelle : une ancienne conversation reprise est retrouvée au plus tard à ce parcours. Le contenu relu pour
+    /// juger la fraîcheur est borné et mis en cache.
     /// </summary>
     private List<Candidate> Candidates(DateTimeOffset now)
     {
@@ -196,7 +199,9 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
 
     /// <summary>
     /// Relevé rapide : les dossiers des 3 derniers jours (date locale), plus les conversations reprises et celles déjà
-    /// suivies. Les autres dossiers ne sont pas ouverts avant le prochain parcours complet.
+    /// suivies. Un fichier de ces dossiers qui n'est ni suivi ni repris n'est ouvert que si la date de l'énumération (gratuite)
+    /// est récente : s'il est récent mais que Windows garde une date périmée, le prochain parcours complet le retrouve.
+    /// Les autres dossiers ne sont pas ouverts avant ce parcours.
     /// </summary>
     private void ScanRecent(DateTimeOffset now, List<Candidate> found)
     {
@@ -211,7 +216,11 @@ public sealed class CodexSource(string codexHome, TimeProvider time) : IAgentSou
             {
                 foreach (var file in new DirectoryInfo(dir).EnumerateFiles("rollout-*.jsonl", DayOptions))
                 {
-                    if (listed.Add(file.FullName) && Consider(file, now) is { } candidate)
+                    // Ni suivi ni repris : la date de l'énumération suffit à écarter un fichier ancien sans l'ouvrir.
+                    if (listed.Add(file.FullName)
+                        && (_files.ContainsKey(file.FullName) || _resumed.Contains(file.FullName)
+                            || now - new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero) < MaxAge)
+                        && Consider(file, now) is { } candidate)
                     {
                         found.Add(candidate);
                     }
